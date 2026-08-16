@@ -1,10 +1,14 @@
 {
   "name": "closing-planner",
+  "version": "1.1.0",
   "private": true,
+  "description": "Closing & home-sale cash-flow planner with persisted daily reconciliation",
+  "main": "server.js",
   "scripts": {
-    "start": "serve -s . -l ${PORT:-3000}"
+    "start": "node server.js"
   },
-  "dependencies": {
-    "serve": "^14.2.3"
-  }
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {}
 }
