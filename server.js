@@ -106,6 +106,19 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  if (url.pathname === '/api/verify' && req.method === 'POST') {
+    let raw = '';
+    req.on('data', c => { raw += c; if (raw.length > 4096) req.destroy(); });
+    req.on('end', () => {
+      let b; try { b = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'Malformed request.' }); }
+      if (throttled(ip)) return json(res, 429, { error: 'Too many failed attempts. Try again in 15 minutes.' });
+      if (!PASSCODE) return json(res, 503, { error: 'Saving is disabled: RECONCILE_PASSCODE is not set on the server.' });
+      if (!passOk(b.passcode)) { noteFail(ip); return json(res, 401, { error: 'Incorrect PIN.' }); }
+      return json(res, 200, { ok: true });
+    });
+    return;
+  }
+
   if (url.pathname === '/api/reconciles' && req.method === 'POST') {
     let raw = '';
     req.on('data', c => { raw += c; if (raw.length > 32768) req.destroy(); });

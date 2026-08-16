@@ -37,6 +37,9 @@ Railway sets `PORT` automatically — don't set it yourself.
 
 - The trigger is a deliberately low-contrast button below the chart footnotes, right side.
   It only appears when at least one date is eligible.
+- Clicking it opens a centered modal that starts on a **PIN screen**. The PIN is checked
+  against the server (`POST /api/verify`) before the form is revealed — a wrong PIN never
+  gets you to the form. The PIN is held in memory only, never stored in the browser.
 - **Today** can be reconciled only after **19:00 America/Chicago**.
 - **Past dates** with no entry stay open indefinitely — no time-of-day restriction.
 - **Future dates** can never be reconciled.
@@ -46,17 +49,18 @@ Railway sets `PORT` automatically — don't set it yourself.
 
 ### What a reconcile does
 
-You enter the **actual** account balance for that day. The app stores that number
-(scenario-independent) and:
+You enter the **variance** (actual − projected) for that day. The modal shows the projected
+balance and the resulting **new balance** live as you type. On save the app stores the
+resulting actual balance and:
 
-- computes the **variance** = actual − projected for that day, under the current sale scenario;
-- **rebases** the projection: every day after that continues from the actual balance,
+- **rebases** the projection: every day after that continues from the new balance,
   so all later balances shift by the variance;
-- shows the entry in the **transaction table** (always, including $0 variance) and in the
-  **timeline tooltip** (only when the variance is non-zero), along with any note.
+- shows the entry in the **transaction table** and the **timeline tooltip** — but only when
+  the variance is non-zero. A $0.00 entry is saved and locks the date, yet appears nowhere
+  except the "Recorded" list inside the modal.
 
-Because the variance is computed against the live scenario, moving the sale date/price
-sliders re-derives the variance — the stored actual balance never changes.
+The stored value is the resulting balance, so it stays pinned to reality; the variance shown
+later is re-derived against whatever sale scenario is active.
 
 ---
 
