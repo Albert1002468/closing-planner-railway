@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <style>
-  .viz-root {
+  :root, .viz-root {
     color-scheme: light;
     --surface-1:#fcfcfb; --page:#f9f9f7;
     --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
@@ -20,6 +20,7 @@
     --good:#0ca30c; --crit:#d03b3b; --goodtext:#006300;
   }
   @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])),
     :root:where(:not([data-theme="light"])) .viz-root {
       color-scheme: dark;
       --surface-1:#1a1a19; --page:#0d0d0d;
@@ -29,7 +30,8 @@
       --good:#0ca30c; --crit:#d03b3b; --goodtext:#0ca30c;
     }
   }
-  html,body{margin:0;padding:0}
+  html{background:var(--page)}
+  html,body{margin:0;padding:0;min-height:100%}
   body{background:var(--page);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
   .viz-root{background:var(--page);color:var(--ink);padding:20px;max-width:1000px;margin:0 auto}
   h1{font-size:19px;margin:0 0 2px}
@@ -55,6 +57,12 @@
   .tip ul{margin:4px 0 0;padding-left:0;list-style:none}
   .tip li{display:flex;justify-content:space-between;gap:14px;font-variant-numeric:tabular-nums}
   .tip li span:first-child{color:var(--ink-2)}
+  /* touch: dock the readout away from the finger instead of following it */
+  .tip.docked{position:fixed;left:50%;transform:translateX(-50%);width:min(94vw,430px);max-width:none;
+              font-size:14px;padding:11px 14px;box-shadow:0 10px 34px rgba(0,0,0,.30);z-index:45}
+  .tip.docked .d{font-size:12px}
+  .tip.docked .b{font-size:18px}
+  .tip.docked li{padding:1px 0}
   .pos{position:relative}
   details{font-size:12.5px;color:var(--ink-2);margin-top:10px}
   details table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
@@ -471,13 +479,14 @@ function render(){
   const cross=add('line',{x1:0,x2:0,y1:m.t,y2:H-m.b,stroke:'var(--axis)','stroke-width':1,visibility:'hidden'});
   const dot=add('circle',{r:4.5,fill:'var(--s1)',stroke:'var(--surface-1)','stroke-width':2,visibility:'hidden'});
   const tip=document.getElementById('ttip');
-  const hit=add('rect',{x:m.l,y:m.t,width:iw,height:ih,fill:'transparent'});
-  function showAt(cx2,cy2){
+  const hit=add('rect',{x:m.l,y:m.t-8,width:iw,height:ih+16,fill:'transparent'});
+  function showAt(cx2,cy2,isTouch){
     const rect=svg.getBoundingClientRect();
     const px=(cx2-rect.left)*(W/rect.width);
     let i=Math.round((px-m.l)/iw*(n-1)); i=Math.max(0,Math.min(n-1,i));
     const d=DATA[i], x=X(i), y=Y(d.b);
     cross.setAttribute('x1',x);cross.setAttribute('x2',x);cross.setAttribute('visibility','visible');
+    dot.setAttribute('r',isTouch?6:4.5);
     dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.setAttribute('visibility','visible');
     const ds=dd(d.d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
     let h=`<div class="d">${ds}</div><div class="b">${fmt(d.b)}</div>`;
@@ -488,17 +497,42 @@ function render(){
       if(d.rec.note) h+=`<div style="color:var(--muted);margin-top:3px">“${esc(d.rec.note)}”</div>`;
     }
     tip.innerHTML=h; tip.style.display='block';
-    const prect=svg.parentNode.getBoundingClientRect();
-    const tx=cx2-prect.left, flip=tx>prect.width-310;
-    tip.style.left=Math.max(4,(flip? tx-300 : tx+16))+'px';
-    tip.style.top=(cy2-prect.top+8)+'px';
+    if(isTouch){
+      // dock to the edge of the screen furthest from the finger, so it is never covered
+      tip.classList.add('docked');
+      const fingerHigh = cy2 < window.innerHeight*0.5;
+      tip.style.top    = fingerHigh? 'auto' : '12px';
+      tip.style.bottom = fingerHigh? '12px' : 'auto';
+      tip.style.left='50%';
+    }else{
+      tip.classList.remove('docked');
+      tip.style.bottom='auto';
+      const prect=svg.parentNode.getBoundingClientRect();
+      const tx=cx2-prect.left, flip=tx>prect.width-310;
+      tip.style.left=Math.max(4,(flip? tx-300 : tx+16))+'px';
+      tip.style.top=(cy2-prect.top+8)+'px';
+    }
   }
-  hit.addEventListener('mousemove',e=>showAt(e.clientX,e.clientY));
-  hit.addEventListener('touchstart',e=>{const t=e.touches[0];showAt(t.clientX,t.clientY);},{passive:true});
-  hit.addEventListener('touchmove',e=>{const t=e.touches[0];showAt(t.clientX,t.clientY);},{passive:true});
-  const hide=()=>{tip.style.display='none';cross.setAttribute('visibility','hidden');dot.setAttribute('visibility','hidden');};
-  hit.addEventListener('mouseleave',hide);
-  hit.addEventListener('touchend',()=>setTimeout(hide,1500));
+  const hide=()=>{tip.style.display='none';tip.classList.remove('docked');
+                  cross.setAttribute('visibility','hidden');dot.setAttribute('visibility','hidden');};
+  let hideT=null;
+  const holdOpen=()=>{ clearTimeout(hideT); hideT=setTimeout(hide,6000); };
+  // Pointer Events: one code path, but touch and mouse behave differently.
+  // (Touch must not fall through to the mouse branch — browsers fire synthetic
+  //  mouse events after a tap, which would un-dock the readout.)
+  const isTouchLike=e=>e.pointerType==='touch'||e.pointerType==='pen';
+  let tracking=false;
+  hit.addEventListener('pointerdown',e=>{
+    if(isTouchLike(e)){ tracking=true; clearTimeout(hideT); showAt(e.clientX,e.clientY,true); }
+  });
+  hit.addEventListener('pointermove',e=>{
+    if(isTouchLike(e)){ if(tracking){ clearTimeout(hideT); showAt(e.clientX,e.clientY,true); } }
+    else showAt(e.clientX,e.clientY,false);
+  });
+  hit.addEventListener('pointerup',e=>{ if(isTouchLike(e)){ tracking=false; holdOpen(); } });
+  hit.addEventListener('pointercancel',e=>{ if(isTouchLike(e)){ tracking=false; holdOpen(); } });
+  hit.addEventListener('pointerleave',e=>{ if(!isTouchLike(e)) hide(); });
+  document.addEventListener('pointerdown',e=>{ if(isTouchLike(e) && !svg.contains(e.target)) hide(); },{passive:true});
 
   const b17=DATA.find(d=>d.d==='2026-09-17').b;
   const morn=+(b17+PAY10).toFixed(2);
