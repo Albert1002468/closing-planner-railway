@@ -115,6 +115,11 @@
     width:100%;box-sizing:border-box;background:var(--page);color:var(--ink);
     border:1px solid var(--axis);border-radius:8px;padding:9px 10px;font-size:16px;font-family:inherit}
   .fld textarea{resize:vertical;min-height:54px;font-size:14px}
+  .subhint{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.35}
+  .signrow{display:flex;gap:8px;margin-bottom:8px}
+  .signbtn{flex:1;background:var(--page);color:var(--ink-2);border:1px solid var(--axis);border-radius:8px;
+           padding:9px 10px;font-size:14px;font-family:inherit;cursor:pointer;font-weight:600}
+  .signbtn.on{background:var(--s1);border-color:var(--s1);color:#fff}
   .pin{text-align:center;letter-spacing:.5em;font-size:24px!important;padding:12px 10px!important;font-variant-numeric:tabular-nums}
   .recrow{display:flex;gap:10px;align-items:center;margin-top:13px;flex-wrap:wrap}
   .recrow button{background:var(--s1);color:#fff;border:0;border-radius:8px;padding:10px 18px;
@@ -195,6 +200,7 @@
       <span><i style="color:var(--crit)">&#9660;</i> money out (&ge;$800)</span>
       <span><span class="sw" style="background:var(--crit);opacity:.15;border-radius:2px"></span>below $0 — bridge needed</span>
       <span><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale day</span>
+      <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today &middot; shaded = elapsed</span>
     </div>
     <details><summary>Table view — every projected transaction</summary>
       <table id="evtable"><thead><tr><th>Date</th><th>Item</th><th style="text-align:right">Amount</th><th style="text-align:right">Balance</th></tr></thead><tbody></tbody></table>
@@ -220,8 +226,14 @@
           <p class="hint" id="rechint"></p>
           <div class="fld"><label for="recdate">Date</label><select id="recdate"></select></div>
           <div class="fld">
-            <label for="recvar">Variance (actual − projected)</label>
-            <input type="number" id="recvar" step="0.01" placeholder="0.00" inputmode="decimal">
+            <label for="recvar">Variance — how far off the projection was</label>
+            <div class="signrow">
+              <button type="button" class="signbtn on" id="signneg" aria-pressed="true">− Short</button>
+              <button type="button" class="signbtn" id="signpos" aria-pressed="false">+ Over</button>
+            </div>
+            <input type="text" id="recvar" inputmode="decimal" autocomplete="off"
+                   placeholder="0.00" aria-describedby="signhelp">
+            <div id="signhelp" class="subhint">Enter the amount as a positive number and pick a side above.</div>
           </div>
           <div class="fld">
             <label for="recnote">Note (optional)</label>
@@ -428,6 +440,11 @@ function buildSeries(sale, price){
 /* ---------- render ---------- */
 const NS='http://www.w3.org/2000/svg';
 let LAST_DATA=[];
+var TODAY_ISO=(function(){
+  const p=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const g=t=>p.find(x=>x.type===t).value;
+  return `${g('year')}-${g('month')}-${g('day')}`;
+})();
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function render(){
   const notsold=document.getElementById('notsold').checked;
@@ -448,6 +465,8 @@ function render(){
   const add=(tag,attrs)=>{const el=document.createElementNS(NS,tag);for(const k in attrs)el.setAttribute(k,attrs[k]);svg.appendChild(el);return el;};
 
   if(bmin<0) add('rect',{x:m.l,y:Y(0),width:iw,height:Y(y0)-Y(0),fill:'var(--crit)',opacity:.08});
+  const ti=DATA.findIndex(d=>d.d===TODAY_ISO);
+  if(ti>0) add('rect',{x:m.l,y:m.t,width:X(ti)-m.l,height:ih,fill:'var(--ink)',opacity:.05});
   const span=y1-y0;
   const step=mobile?(span>90000?50000:(span>40000?20000:10000)):(span>90000?40000:20000);
   for(let v=y0;v<=y1;v+=step){
@@ -460,13 +479,23 @@ function render(){
     add('line',{x1:X(i),x2:X(i),y1:m.t,y2:H-m.b,stroke:'var(--grid)','stroke-width':1,'stroke-dasharray':'2 3'});
     add('text',{x:X(i)+3,y:H-m.b+15,fill:'var(--muted)','font-size':mobile?10:11}).textContent=dd(d.d).toLocaleDateString('en-US',{month:'short'});
   }});
-  if(sale){
-    const si=DATA.findIndex(d=>d.d===sale);
-    if(si>=0){
-      add('line',{x1:X(si),x2:X(si),y1:m.t,y2:H-m.b,stroke:'var(--s3)','stroke-width':2,'stroke-dasharray':'4 3'});
-      add('text',{x:X(si)+5,y:m.t+12,fill:'var(--s3)','font-size':11,'font-weight':600}).textContent='SALE';
-    }
-  }
+  // marker lines first, then labels on top (so neither rule cuts through a label)
+  const si = sale? DATA.findIndex(d=>d.d===sale) : -1;
+  if(ti>=0) add('line',{x1:X(ti),x2:X(ti),y1:m.t,y2:H-m.b,stroke:'var(--ink-2)','stroke-width':1.5,'stroke-dasharray':'3 3'});
+  if(si>=0) add('line',{x1:X(si),x2:X(si),y1:m.t,y2:H-m.b,stroke:'var(--s3)','stroke-width':2,'stroke-dasharray':'4 3'});
+  const clash = ti>=0 && si>=0 && Math.abs(X(si)-X(ti))<58;
+  const markLabel=(xi,text,color,dy)=>{
+    const atEnd = X(xi) > W-m.r-58;
+    const el=add('text',{x:X(xi)+(atEnd?-5:5),y:m.t+dy,fill:color,'font-size':mobile?10:11,'font-weight':600,
+      stroke:'var(--surface-1)','stroke-width':3.5,'paint-order':'stroke','stroke-linejoin':'round'});
+    if(atEnd) el.setAttribute('text-anchor','end');
+    el.textContent=text;
+  };
+  const drawMarkerLabels=()=>{            // called after the event triangles so nothing paints over them
+    if(ti>=0) markLabel(ti,'TODAY','var(--ink-2)',12);
+    if(si>=0) markLabel(si,'SALE','var(--s3)',clash?27:12);
+  };
+
   let path='';
   DATA.forEach((d,i)=>{const x=X(i),y=Y(d.b); path+= i===0?`M${x} ${y}`:`L${x} ${Y(DATA[i-1].b)} L${x} ${y}`;});
   add('path',{d:path,fill:'none',stroke:'var(--s1)','stroke-width':2,'stroke-linejoin':'round'});
@@ -476,6 +505,7 @@ function render(){
       else if(e.a<-800) add('text',{x:X(i),y:Y(d.b)+16,'text-anchor':'middle',fill:'var(--crit)','font-size':10}).textContent='▼';
     });
   });
+  drawMarkerLabels();
   const cross=add('line',{x1:0,x2:0,y1:m.t,y2:H-m.b,stroke:'var(--axis)','stroke-width':1,visibility:'hidden'});
   const dot=add('circle',{r:4.5,fill:'var(--s1)',stroke:'var(--surface-1)','stroke-width':2,visibility:'hidden'});
   const tip=document.getElementById('ttip');
@@ -576,6 +606,21 @@ const TZ='America/Chicago';
 let UNLOCK_HOUR=19;   // synced from the server on load; server is the authority
 let SRV={today:null,hour:null,saveEnabled:false,online:false};
 let PIN='';   // held in memory only for this modal session
+let VSIGN=-1; // -1 = short (actual below projection), +1 = over. Mobile numeric keypads have no minus key.
+function varianceValue(){
+  const raw=($('recvar').value||'').replace(/[^0-9.]/g,'');
+  if(raw==='') return null;
+  const mag=Number(raw);
+  if(!isFinite(mag)) return null;
+  return +(mag===0? 0 : VSIGN*mag).toFixed(2);
+}
+function setSign(sign){
+  VSIGN=sign;
+  const neg=$('signneg'), pos=$('signpos');
+  neg.classList.toggle('on',sign<0); neg.setAttribute('aria-pressed',String(sign<0));
+  pos.classList.toggle('on',sign>0); pos.setAttribute('aria-pressed',String(sign>0));
+  updatePreview();
+}
 
 function localNowFallback(){
   const p=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hour12:false}).formatToParts(new Date());
@@ -619,11 +664,11 @@ function fillForm(){
   updatePreview();
 }
 function updatePreview(){
-  const date=$('recdate').value, raw=$('recvar').value;
+  const date=$('recdate').value;
   const proj=projectedFor(date);
   const box=$('recpreview');
   if(!date||proj==null){ box.innerHTML=''; return; }
-  const v=raw===''?null:Number(raw);
+  const v=varianceValue();
   const nb = v==null? proj : +(proj+v).toFixed(2);
   const col = v==null||v===0? 'var(--ink-2)' : (v<0?'var(--crit)':'var(--goodtext)');
   box.innerHTML =
@@ -646,7 +691,7 @@ function openModal(){
 function closeModal(){
   $('recmodal').hidden=true;
   document.body.style.overflow='';
-  PIN=''; $('pinput').value=''; $('recvar').value=''; $('recnote').value='';
+  PIN=''; $('pinput').value=''; $('recvar').value=''; $('recnote').value=''; setSign(-1);
   $('recmsg').textContent=''; $('recmsg').className='recmsg';
 }
 $('recbtn').addEventListener('click',openModal);
@@ -680,16 +725,26 @@ $('pinput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefaul
 
 /* stage 2 — form */
 $('recdate').addEventListener('change',updatePreview);
-$('recvar').addEventListener('input',updatePreview);
+$('recvar').addEventListener('input',e=>{
+  const el=e.target, had=el.value;
+  if(/[-−]/.test(had)) setSign(-1);            // typed a minus on a keyboard that has one
+  else if(/\+/.test(had)) setSign(1);
+  const clean=had.replace(/[^0-9.]/g,'');
+  if(clean!==had) el.value=clean;
+  updatePreview();
+});
+$('signneg').addEventListener('click',()=>setSign(-1));
+$('signpos').addEventListener('click',()=>setSign(1));
 
 $('recsave').addEventListener('click',async ()=>{
   const msg=$('recmsg'), btn=$('recsave');
-  const date=$('recdate').value, raw=$('recvar').value, note=$('recnote').value;
+  const date=$('recdate').value, note=$('recnote').value;
+  const variance=varianceValue();
   msg.className='recmsg';
   if(!date){ msg.className='recmsg err'; msg.textContent='Pick a date.'; return; }
-  if(raw===''||!isFinite(Number(raw))){ msg.className='recmsg err'; msg.textContent='Enter the variance (0 is valid).'; return; }
+  if(variance===null){ msg.className='recmsg err'; msg.textContent='Enter the variance (0 is valid).'; return; }
   if(!SRV.online||!PIN){ msg.className='recmsg err'; msg.textContent='Not authenticated.'; return; }
-  const proj=projectedFor(date), variance=+Number(raw).toFixed(2), actual=+(proj+variance).toFixed(2);
+  const proj=projectedFor(date), actual=+(proj+variance).toFixed(2);
   if(!confirm(`Reconcile ${dd(date).toLocaleDateString('en-US',{month:'long',day:'numeric'})}\n\nProjected: ${fmt(proj)}\nVariance: ${fmt(variance)}\nNew balance: ${fmt(actual)}\n\nThis is permanent and cannot be edited or deleted.`)) return;
   btn.disabled=true; msg.textContent='Saving…';
   try{
@@ -698,7 +753,7 @@ $('recsave').addEventListener('click',async ()=>{
     const body=await r.json().catch(()=>({}));
     if(!r.ok){ msg.className='recmsg err'; msg.textContent=body.error||'Could not save.'; btn.disabled=false; return; }
     RECON[date]={actual:body.actual,note:body.note};
-    $('recvar').value=''; $('recnote').value='';
+    $('recvar').value=''; $('recnote').value=''; setSign(-1);
     msg.className='recmsg ok'; msg.textContent='Saved and locked.';
     render(); refreshTrigger();
     if(eligibleDates().length===0){ setTimeout(closeModal,1600); } else fillForm();
@@ -715,6 +770,7 @@ $('recsave').addEventListener('click',async ()=>{
     const s=await r.json();
     SRV={today:s.today,hour:s.hour,saveEnabled:s.saveEnabled,online:true};
     if(Number.isFinite(s.unlockHour)) UNLOCK_HOUR=s.unlockHour;
+    if(s.today) TODAY_ISO=s.today;
     (s.reconciles||[]).forEach(x=>{ RECON[x.date]={actual:x.actual,note:x.note}; });
     render();
   }catch(e){
