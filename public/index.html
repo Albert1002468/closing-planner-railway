@@ -172,7 +172,7 @@
 
   <div class="card pos">
     <h2>Bank balance through Dec 31 — with your Midland home sale as a variable</h2>
-    <p class="note">Set the sale date and price; everything downstream recomputes: PennyMac payments &amp; payoff, interest reimbursements (2-payment cap), Midland utilities, Vivint rate, AutoFortiva payoff a week before sale, and the loss-on-sale credit two weeks after.</p>
+    <p class="note">Set the sale date and price; everything downstream recomputes: PennyMac payments &amp; payoff, interest reimbursements (2-payment cap), Midland utilities, the Vivint contract buyout a week before sale, and the loss-on-sale credit two weeks after.</p>
     <div class="controls">
       <div class="ctl">
         <label for="saledate">Sale (closing) date</label>
@@ -189,6 +189,7 @@
       <div class="tile"><div class="lab">Loan payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm" id="t_payoffsm"></div></div>
       <div class="tile"><div class="lab">Net proceeds (price − payoff)</div><div class="val" id="t_proceeds">—</div></div>
       <div class="tile"><div class="lab">Loss credit (+2 wks)</div><div class="val" id="t_loss">—</div><div class="sm">half of loss below $425k, max $25k</div></div>
+      <div class="tile"><div class="lab">Vivint buyout (−1 wk)</div><div class="val" id="t_viv">—</div><div class="sm" id="t_vivsm">50% of the contract months left</div></div>
       <div class="tile"><div class="lab">Sept 18 before wire</div><div class="val" id="t_morn">—</div><div class="sm">incl. that morning's paycheck</div></div>
       <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
       <div class="tile"><div class="lab">Dec 31 balance</div><div class="val" id="t_end">—</div></div>
@@ -249,7 +250,7 @@
         </div>
       </div>
     </div>
-    <p class="foot">Projection from your statements + stated plans; Closing Disclosure and actual payoff quote govern. Assumes relo covers commissions/seller costs (net = price − payoff), proceeds land on the sale date, loss credit 14 days later, AutoFortiva payoff 7 days before, Vivint returns to $57.77 after sale, Midland utilities end at sale with one final trailing bill, and the 6-mo car insurance renewal ($940 on 9/30) doesn't recur before March 2027.</p>
+    <p class="foot">Projection from your statements + stated plans; Closing Disclosure and actual payoff quote govern. Assumes relo covers commissions/seller costs (net = price − payoff), proceeds land on the sale date, loss credit 14 days later, AutoFortiva settled in full 8/20/26, the Vivint contract bought out 7 days before the sale at 50% of the months remaining on the 6/21/25 60-month term (drafts stop after that), Midland utilities end at sale with one final trailing bill, and the 6-mo car insurance renewal ($940 on 9/30) doesn't recur before March 2027.</p>
   </div>
 </div>
 
@@ -321,7 +322,19 @@ const T0='2026-08-14', T1='2026-12-31';
 const PAY10=3830.28, PAY5=3557.15;
 const MTG_BAL_AFTER_AUG = 336756.31;        // stated principal after Aug payment
 const MTG_RATE = 0.05375, MI = MTG_RATE/12, MTG_PI = 2131.90, MTG_PMT = 2318.72;
-const AF_BAL0 = 1436.90;                    // AutoFortiva balance (Vivint transfer financing)
+const AF_PAYOFF_DATE='2026-08-20', AF_PAYOFF_AMT=1436.90;  // AutoFortiva settled in full, no further drafts
+const VIVINT_RATE=59.99, VIVINT_LOW=8.58;                 // contract rate vs the negotiated rate now being paid
+const VIVINT_START='2025-06-21', VIVINT_TERM=60;
+function vivintMonthsLeft(onDate){          // payments still owed after the last one due on/before onDate
+  const s=dd(VIVINT_START), t=dd(onDate);
+  let made=0;
+  while(made<VIVINT_TERM){
+    const due=new Date(s.getFullYear(), s.getMonth()+made, s.getDate(), 12);
+    if(due>t) break;
+    made++;
+  }
+  return Math.max(0, VIVINT_TERM-made);
+}
 
 const dd = s => new Date(s+'T12:00:00');
 const iso = d => d.toISOString().slice(0,10);
@@ -391,18 +404,20 @@ function buildEvents(sale, price){
     arr.forEach(([d,a])=>{ if(!sale || lt(d,sale)) E(d,-a,lab); });
   });
   if(sale) E(addD(sale,10),-150.00,'Final Midland utility bills (prorated)');
+  // AutoFortiva: paid off in full 8/20/2026 — no further monthly drafts.
+  E(AF_PAYOFF_DATE,-AF_PAYOFF_AMT,'AutoFortiva payoff (paid in full)');
+
+  // Vivint: negotiated $8.58/mo until the buyout. One week before the sale, 50% of the
+  // remaining contract (months left x $59.99) settles it, and the drafts stop.
+  const buyout = sale? addD(sale,-7) : null;
   [['2026-08-22'],['2026-09-22'],['2026-10-22'],['2026-11-23'],['2026-12-22']].forEach(([d])=>{
-    const after = sale && !lt(d,sale);
-    E(d, after?-57.77:-8.58, after?'Vivint (post-transfer rate)':'Vivint (negotiated rate)');
+    if(!buyout || lt(d,buyout)) E(d,-VIVINT_LOW,'Vivint (negotiated rate)');
   });
-  const afDates=['2026-08-25','2026-09-25','2026-10-26','2026-11-25','2026-12-28'];
-  if(sale){
-    const payDate = addD(sale,-7);
-    let bal=AF_BAL0;
-    afDates.forEach(d=>{ if(lt(d,payDate)){ E(d,-30.57,'AutoFortiva (Vivint transfer financing)'); bal=+(bal-30.57).toFixed(2); } });
-    if(bal>0) E(payDate,-bal,'AutoFortiva payoff (Vivint transfer)');
-  } else {
-    afDates.forEach(d=>E(d,-30.57,'AutoFortiva (Vivint transfer financing)'));
+  let vivFee=0, vivMonthsLeft=0;
+  if(buyout){
+    vivMonthsLeft = vivintMonthsLeft(buyout);
+    vivFee = +(vivMonthsLeft*VIVINT_RATE*0.5).toFixed(2);
+    if(vivFee>0) E(buyout,-vivFee,`Vivint contract buyout (50% of ${vivMonthsLeft} mo x ${fmt(VIVINT_RATE)})`);
   }
   let payoff=null, proceeds=null, loss=0;
   if(sale){
@@ -412,11 +427,11 @@ function buildEvents(sale, price){
     loss = Math.min(25000, Math.max(0, 425000-price)*0.5);
     if(loss>0) E(addD(sale,14), loss, 'Relo loss-on-sale credit (half of loss, capped $25k)');
   }
-  return {ev, payoff, proceeds, loss};
+  return {ev, payoff, proceeds, loss, vivFee, vivMonthsLeft};
 }
 
 function buildSeries(sale, price){
-  const {ev,payoff,proceeds,loss}=buildEvents(sale,price);
+  const {ev,payoff,proceeds,loss,vivFee,vivMonthsLeft}=buildEvents(sale,price);
   const map={};
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
   const series=[]; let bal=START_BAL, cur=T0;
@@ -434,7 +449,7 @@ function buildSeries(sale, price){
     series.push(day);
     cur=addD(cur,1);
   }
-  return {series,payoff,proceeds,loss};
+  return {series,payoff,proceeds,loss,vivFee,vivMonthsLeft};
 }
 
 /* ---------- render ---------- */
@@ -450,7 +465,7 @@ function render(){
   const notsold=document.getElementById('notsold').checked;
   const sale = notsold? null : document.getElementById('saledate').value;
   const price = +document.getElementById('price').value;
-  const {series:DATA,payoff,proceeds,loss}=buildSeries(sale,price);
+  const {series:DATA,payoff,proceeds,loss,vivFee,vivMonthsLeft}=buildSeries(sale,price);
   const svg=document.getElementById('tl');
   while(svg.firstChild) svg.removeChild(svg.firstChild);
   const cw=svg.parentNode.clientWidth||940, mobile=cw<640;
@@ -572,6 +587,10 @@ function render(){
   document.getElementById('t_payoffsm').textContent = sale? 'incl. accrued per-diem interest':'home not sold in window';
   set('t_proceeds', sale? fmt(proceeds): '—', sale&&proceeds<0?'neg':(sale?'posv':''));
   set('t_loss', sale? (loss>0?fmt(loss):'$0.00'):'—', loss>0?'posv':'');
+  set('t_viv', sale? fmt(vivFee):'—', sale&&vivFee>0?'neg':'');
+  document.getElementById('t_vivsm').textContent = sale
+    ? `50% of ${vivMonthsLeft} mo left \u00d7 ${fmt(59.99)}`
+    : 'contract continues — no buyout';
   set('t_morn', fmt(morn));
   set('t_low', fmt(mnD.b), mnD.b<0?'neg':'');
   document.getElementById('t_lowd').textContent = dd(mnD.d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
