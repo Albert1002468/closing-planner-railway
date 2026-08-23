@@ -597,16 +597,19 @@ function render(){
   set('t_end', fmt(DATA[n-1].b), DATA[n-1].b<0?'neg':'posv');
 
   const tb=document.querySelector('#evtable tbody'); tb.innerHTML='';
+  let run=START_BAL;                     // true running balance, transaction by transaction
   DATA.forEach(d=>{
     const ds=dd(d.d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
     d.ev.forEach(e=>{
-      tb.insertAdjacentHTML('beforeend',`<tr><td>${ds}</td><td>${e.l}</td><td class="n">${fmt(e.a)}</td><td class="n">${fmt(d.b)}</td></tr>`);
+      run=+(run+e.a).toFixed(2);
+      tb.insertAdjacentHTML('beforeend',`<tr><td>${ds}</td><td>${e.l}</td><td class="n">${fmt(e.a)}</td><td class="n">${fmt(run)}</td></tr>`);
     });
     if(d.rec && d.rec.delta!==0){
       const note = d.rec.note? ` — “${esc(d.rec.note)}”` : '';
       tb.insertAdjacentHTML('beforeend',
         `<tr class="recrowT"><td>${ds}</td><td>RECONCILED — actual ${fmt(d.rec.actual)} vs projected ${fmt(d.rec.projected)}${note}</td><td class="n">${fmt(d.rec.delta)}</td><td class="n">${fmt(d.b)}</td></tr>`);
     }
+    run=d.b;                             // resync (also applies a reconcile rebase)
   });
   LAST_DATA=DATA;
 }
