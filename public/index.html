@@ -59,10 +59,12 @@
   .tip li span:first-child{color:var(--ink-2)}
   /* touch: dock the readout away from the finger instead of following it */
   .tip.docked{position:fixed;left:50%;transform:translateX(-50%);width:min(94vw,430px);max-width:none;
-              font-size:14px;padding:11px 14px;box-shadow:0 10px 34px rgba(0,0,0,.30);z-index:45}
+              font-size:14px;padding:11px 14px;box-shadow:0 10px 34px rgba(0,0,0,.30);z-index:45;
+              overflow:hidden}
   .tip.docked .d{font-size:12px}
   .tip.docked .b{font-size:18px}
   .tip.docked li{padding:1px 0}
+  :root{--sab:env(safe-area-inset-bottom,0px);--sat:env(safe-area-inset-top,0px)}
   .pos{position:relative}
   details{font-size:12.5px;color:var(--ink-2);margin-top:10px}
   details table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
@@ -186,13 +188,12 @@
       </div>
     </div>
     <div class="tiles">
+      <div class="tile"><div class="lab">Today's balance</div><div class="val" id="t_today">—</div><div class="sm" id="t_todayd"></div></div>
       <div class="tile"><div class="lab">Loan payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm" id="t_payoffsm"></div></div>
       <div class="tile"><div class="lab">Net proceeds (price − payoff)</div><div class="val" id="t_proceeds">—</div></div>
       <div class="tile"><div class="lab">Loss credit (+2 wks)</div><div class="val" id="t_loss">—</div><div class="sm">half of loss below $425k, max $25k</div></div>
-      <div class="tile"><div class="lab">Vivint buyout (−1 wk)</div><div class="val" id="t_viv">—</div><div class="sm" id="t_vivsm">50% of the contract months left</div></div>
       <div class="tile"><div class="lab">Sept 18 before wire</div><div class="val" id="t_morn">—</div><div class="sm">incl. that morning's paycheck</div></div>
       <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
-      <div class="tile"><div class="lab">Dec 31 balance</div><div class="val" id="t_end">—</div></div>
     </div>
     <svg id="tl" viewBox="0 0 940 380" width="940" height="380" role="img" aria-label="Projected bank balance timeline"></svg>
     <div class="tip" id="ttip"></div>
@@ -467,7 +468,7 @@ function render(){
   const notsold=document.getElementById('notsold').checked;
   const sale = notsold? null : document.getElementById('saledate').value;
   const price = +document.getElementById('price').value;
-  const {series:DATA,payoff,proceeds,loss,vivFee,vivMonthsLeft}=buildSeries(sale,price);
+  const {series:DATA,payoff,proceeds,loss}=buildSeries(sale,price);
   const svg=document.getElementById('tl');
   while(svg.firstChild) svg.removeChild(svg.firstChild);
   const cw=svg.parentNode.clientWidth||940, mobile=cw<640;
@@ -545,15 +546,25 @@ function render(){
     }
     tip.innerHTML=h; tip.style.display='block';
     if(isTouch){
-      // dock to the edge of the screen furthest from the finger, so it is never covered
+      // Dock to the edge of the screen furthest from the finger, so it is never covered.
+      // Measure against the *visual* viewport: on iOS the layout viewport runs under the
+      // browser toolbar, so a plain `bottom:12px` puts the last rows out of sight.
       tip.classList.add('docked');
-      const fingerHigh = cy2 < window.innerHeight*0.5;
-      tip.style.top    = fingerHigh? 'auto' : '12px';
-      tip.style.bottom = fingerHigh? '12px' : 'auto';
-      tip.style.left='50%';
+      tip.style.left='50%'; tip.style.bottom='auto';
+      const cs=getComputedStyle(document.documentElement);
+      const px=v=>parseFloat(cs.getPropertyValue(v))||0;
+      const vv=window.visualViewport;
+      const vTop=vv? vv.offsetTop : 0;
+      const vH=vv? vv.height : window.innerHeight;
+      const padT=12+px('--sat'), padB=12+px('--sab');
+      tip.style.maxHeight=(vH-padT-padB)+'px';
+      const th=tip.offsetHeight;
+      const fingerHigh=(cy2-vTop) < vH*0.5;
+      const top=fingerHigh? vTop+vH-padB-th : vTop+padT;
+      tip.style.top=Math.max(vTop+padT, Math.min(top, vTop+vH-padB-th))+'px';
     }else{
       tip.classList.remove('docked');
-      tip.style.bottom='auto';
+      tip.style.bottom='auto'; tip.style.maxHeight='';
       const prect=svg.parentNode.getBoundingClientRect();
       const tx=cx2-prect.left, flip=tx>prect.width-310;
       tip.style.left=Math.max(4,(flip? tx-300 : tx+16))+'px';
@@ -589,14 +600,14 @@ function render(){
   document.getElementById('t_payoffsm').textContent = sale? 'incl. accrued per-diem interest':'home not sold in window';
   set('t_proceeds', sale? fmt(proceeds): '—', sale&&proceeds<0?'neg':(sale?'posv':''));
   set('t_loss', sale? (loss>0?fmt(loss):'$0.00'):'—', loss>0?'posv':'');
-  set('t_viv', sale? fmt(vivFee):'—', sale&&vivFee>0?'neg':'');
-  document.getElementById('t_vivsm').textContent = sale
-    ? `50% of ${vivMonthsLeft} mo left \u00d7 ${fmt(59.99)}`
-    : 'contract continues — no buyout';
   set('t_morn', fmt(morn));
   set('t_low', fmt(mnD.b), mnD.b<0?'neg':'');
   document.getElementById('t_lowd').textContent = dd(mnD.d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
-  set('t_end', fmt(DATA[n-1].b), DATA[n-1].b<0?'neg':'posv');
+  // today's balance — the series starts 8/14, so clamp to the ends when today falls outside it
+  const tdD = ti>=0? DATA[ti] : (TODAY_ISO<DATA[0].d? DATA[0] : DATA[n-1]);
+  set('t_today', fmt(tdD.b), tdD.b<0?'neg':'posv');
+  document.getElementById('t_todayd').textContent =
+    dd(tdD.d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
 
   const tb=document.querySelector('#evtable tbody'); tb.innerHTML='';
   let run=START_BAL;                     // true running balance, transaction by transaction
