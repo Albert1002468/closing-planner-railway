@@ -138,7 +138,7 @@ Paychecks; the $104,462.90 closing wire on 9/18; Airbnb refunds on 9/19 (+$234 d
 +$750 pet deposit); new-home mortgage $2,691.97 on 11/2 and 12/1
 (first payment Nov 1 because interest is prepaid through 9/30); car $824.76 on the 16th;
 AT&T $80.65; card autopays ~$50; NY Life $59.10; Apple Cash $112; Claude $21.65; iCloud+ $0.99;
-Spotify $20.56; car insurance $940 on 9/30 (6-month policy, next renewal ~Mar 2027);
+Spotify $20.56; car insurance $940 on 9/25 (6-month policy, next renewal ~Mar 2027);
 new-home utilities $150 / $250 / $300 Oct–Dec.
 
 **Food and miscellaneous are $0** — the spouse covers them.
@@ -217,8 +217,10 @@ a live result box showing projected balance → variance → **new balance**.
 
 - Sept 18 morning balance: **$104,025.13** vs a **$104,462.90** wire → **~$438 short**
   (~8 OT hours, or fold into the bridge)
-- Lowest point: **−$3,114.63 on Oct 1** (car insurance + PennyMac land before the Oct 2 paycheck)
-  → stage a **~$3,500 bridge** from the other account before closing week
+- Lowest point: **−$3,114.63 on Oct 1** (PennyMac lands before the Oct 2 paycheck)
+- **Underwater Sept 25 → Oct 1** — the $940 insurance draft on 9/25 tips it negative and it
+  stays there until the Oct 2 paycheck → the **~$3,500 bridge must be in place by Sept 25**,
+  not Sept 30
 - Dec 31: **~$100,205**
 - Vivint buyout: **$1,289.79** (43 months left)
 
