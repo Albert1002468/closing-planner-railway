@@ -230,13 +230,16 @@
   #donut{max-width:290px;width:72vw;height:auto;display:block;margin:0 auto}
   .donut-wrap{justify-content:center}
   @media (max-width:640px){
-    .viz-root{padding:10px}
-    .card{padding:13px 14px;border-radius:10px}
+    .viz-root{padding:9px}
+    .card{padding:12px 12px;border-radius:10px}
     h1{font-size:17px}
     .sub{font-size:12px}
-    .tile .val{font-size:15px}
+    .tiles{gap:8px}
+    .tile{flex:0 0 180px;padding:7px 10px;border-radius:9px}
+    .tile .lab{font-size:9.5px;letter-spacing:.04em;line-height:1.2;margin-bottom:1px}
+    .tile .val{font-size:15px;line-height:1.2}
+    .tile .sm{font-size:9.5px;line-height:1.25;margin-top:1px}
     .ctl input[type=range]{width:100%;min-width:0}
-    .tile{flex:0 0 175px}
     .accchips{justify-content:flex-start;gap:10px 20px}
     .accbig .v{font-size:19px}
     details.acc summary{padding:15px 0}
@@ -727,6 +730,7 @@ const NS='http://www.w3.org/2000/svg';
 let LAST_DATA=[];
 let VIEW='2026';         // timeline window: 'all' | '2026' | '2027'
 let TPAGE=null;          // table page — a 'YYYY-MM' key
+let TPAGE_PINNED=false;  // true once the reader picks a month themselves
 let PMONTHS=[];          // month keys currently pageable, in order
 var TODAY_ISO=(function(){
   const p=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
@@ -929,8 +933,14 @@ function render(){
   });
   // pages follow the timeline window, so picking "2027" scopes both
   PMONTHS=[...new Set(rows.map(r=>r.ym))].filter(mo=>VIEW==='all'||mo.slice(0,4)===VIEW);
-  if(!PMONTHS.includes(TPAGE))
-    TPAGE = PMONTHS.includes(TODAY_ISO.slice(0,7))? TODAY_ISO.slice(0,7) : PMONTHS[0];
+  // Open on the month we are actually in, and keep re-snapping to it until the reader pages
+  // somewhere themselves. Re-snapping also lets the server's date — which lands after the
+  // first render — correct a wrong device clock. Outside the window, take the nearest month
+  // forward rather than blindly the first one.
+  const curYM=TODAY_ISO.slice(0,7);
+  if(!TPAGE_PINNED || !PMONTHS.includes(TPAGE))
+    TPAGE = PMONTHS.includes(curYM) ? curYM
+          : (PMONTHS.find(mo=>mo>curYM) || PMONTHS[PMONTHS.length-1]);
   const page=rows.filter(r=>r.ym===TPAGE);
   document.querySelector('#evtable tbody').innerHTML =
     page.length? page.map(r=>r.h).join('')
@@ -995,10 +1005,11 @@ document.getElementById('setbtn').addEventListener('click',openSet);
 document.getElementById('setdone').addEventListener('click',closeSet);
 $set.addEventListener('mousedown',e=>{ if(e.target===$set) closeSet(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$set.hidden) closeSet(); });
-const pgStep=n=>{const i=PMONTHS.indexOf(TPAGE)+n; if(i>=0&&i<PMONTHS.length){TPAGE=PMONTHS[i];render();}};
+const pgStep=n=>{const i=PMONTHS.indexOf(TPAGE)+n;
+  if(i>=0&&i<PMONTHS.length){TPAGE=PMONTHS[i];TPAGE_PINNED=true;render();}};
 document.getElementById('pgprev').addEventListener('click',()=>pgStep(-1));
 document.getElementById('pgnext').addEventListener('click',()=>pgStep(1));
-document.getElementById('pgsel').addEventListener('change',e=>{TPAGE=e.target.value;render();});
+document.getElementById('pgsel').addEventListener('change',e=>{TPAGE=e.target.value;TPAGE_PINNED=true;render();});
 let rsz; window.addEventListener('resize',()=>{clearTimeout(rsz);rsz=setTimeout(render,150);});
 window.addEventListener('resize',tileFades);
 render();

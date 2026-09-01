@@ -220,6 +220,11 @@ scroll, on resize and at the end of `render()`. Both fades show mid-strip; neith
 everything fits. If you ever change the card background, change the gradient stop with it or
 the fade will show as a grey smear.
 
+Tiles are `205px` wide (231 incl. padding) on desktop and **`180px` on mobile** — that is the
+narrowest basis at which every tile label still fits on **one line**. At ~165px they wrap and
+the whole row jumps from 59px tall back to 71px, so do not shrink it further to fit more
+tiles on screen; you get a taller strip, not a denser one.
+
 The tiles deliberately overhang the viewport inside that clip, so a naive "is anything past
 `clientWidth`" check will flag them. The real test is `documentElement.scrollWidth >
 clientWidth`, which stays false at every width.
@@ -344,6 +349,12 @@ a live result box showing projected balance → variance → **new balance**.
   picking "2027" scopes the pager to 12 pages. `PMONTHS` / `TPAGE` hold the paging state.
   The pager cannot use the `$` helper: it is declared `const` further down and is still in the
   TDZ when `render()` first runs.
+- **The table opens on the current month** and keeps re-snapping to it until the reader pages
+  somewhere themselves (`TPAGE_PINNED`). The re-snap matters: `TODAY_ISO` is the *client* date
+  at first render and is replaced by the **server's** date when `/api/state` resolves, so
+  without it a wrong device clock would strand the table on the wrong month — the same
+  correction the TODAY marker already gets. When the current month falls outside the window
+  (2027 selected in August 2026) it takes the nearest month **forward**, not `PMONTHS[0]`.
 - **Scenario controls** live in `#setmodal`; `.controls` is a plain vertical stack there. The sale price is a **text**
   input, not `number`, so it can carry thousands separators; `priceVal()` strips non-digits and
   clamps to the slider's `min`/`max`, and is the single source of truth for the price. It
@@ -401,6 +412,7 @@ September (−$4,736, the insurance renewal).
 | Change what the collapsed closing card shows | the `#accsum` block at the end of the donut IIFE |
 | Open the closing card by default | add `open` to `<details id="closingcard">` |
 | Change the default timeline window | `VIEW` initialiser **and** the `on`/`aria-pressed` markup on `.vbtn` |
+| Change tile size | `.tile` `flex-basis` (desktop) and the `@media (max-width:640px)` override — keep mobile ≥ 180px or labels wrap |
 | Reorder the page | the blocks inside `.card.pos`; modals can sit anywhere, they are `position:fixed` |
 | Change the sale-price range | `#pricer` `min`/`max` (`PRICE_MIN`/`PRICE_MAX` read from it) and the `.rends` labels |
 
