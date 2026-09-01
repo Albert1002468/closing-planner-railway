@@ -344,7 +344,11 @@ a live result box showing projected balance → variance → **new balance**.
   bottom corners square off when open to meet `.secbody`. Assumptions stays a plain small
   disclosure — that hierarchy is deliberate, one is a feature and one is fine print.
 - **Table** shows a true per-transaction running balance (`run`), resynced to the day's close
-  after each day so a reconcile rebase carries. Every row is built over the whole series, then
+  after each day so a reconcile rebase carries. Rows are **built forward** — the running
+  balance depends on it — and only **reversed at render** (`[...page].reverse()`), so the
+  table reads newest-first like a bank statement while each row still shows the balance
+  *after* that transaction. Money in is green (`td.pos`); outflows stay default, since
+  colouring them red would light up almost every row and signal nothing. Every row is built over the whole series, then
   **only the selected month is written to the DOM** — pages follow the window control, so
   picking "2027" scopes the pager to 12 pages. `PMONTHS` / `TPAGE` hold the paging state.
   The pager cannot use the `$` helper: it is declared `const` further down and is still in the

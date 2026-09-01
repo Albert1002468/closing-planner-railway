@@ -213,6 +213,7 @@
   .reclist div{display:flex;justify-content:space-between;gap:12px;padding:2.5px 0;font-variant-numeric:tabular-nums}
   .reclist .n{color:var(--muted)}
   tr.recrowT td{color:var(--s7)}
+  #evtable td.pos{color:var(--goodtext)}
   tr.mrule td{border-top:1px solid var(--axis)}
   .viewrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .vbtn{background:var(--page);color:var(--ink-2);border:1px solid var(--axis);border-radius:7px;
@@ -922,12 +923,12 @@ function render(){
     const ds=dd(d.d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
     d.ev.forEach(e=>{
       run=+(run+e.a).toFixed(2);
-      rows.push({ym,a:e.a,h:`<tr><td>${ds}</td><td>${esc(e.l)}</td><td class="n">${fmt(e.a)}</td><td class="n">${fmt(run)}</td></tr>`});
+      rows.push({ym,a:e.a,h:`<tr><td>${ds}</td><td>${esc(e.l)}</td><td class="n${e.a>0?' pos':''}">${fmt(e.a)}</td><td class="n">${fmt(run)}</td></tr>`});
     });
     if(d.rec && d.rec.delta!==0){
       const note = d.rec.note? ` — “${esc(d.rec.note)}”` : '';
       rows.push({ym,a:d.rec.delta,h:
-        `<tr class="recrowT"><td>${ds}</td><td>RECONCILED — actual ${fmt(d.rec.actual)} vs projected ${fmt(d.rec.projected)}${note}</td><td class="n">${fmt(d.rec.delta)}</td><td class="n">${fmt(d.b)}</td></tr>`});
+        `<tr class="recrowT"><td>${ds}</td><td>RECONCILED — actual ${fmt(d.rec.actual)} vs projected ${fmt(d.rec.projected)}${note}</td><td class="n${d.rec.delta>0?' pos':''}">${fmt(d.rec.delta)}</td><td class="n">${fmt(d.b)}</td></tr>`});
     }
     run=d.b;                             // resync (also applies a reconcile rebase)
   });
@@ -943,7 +944,7 @@ function render(){
           : (PMONTHS.find(mo=>mo>curYM) || PMONTHS[PMONTHS.length-1]);
   const page=rows.filter(r=>r.ym===TPAGE);
   document.querySelector('#evtable tbody').innerHTML =
-    page.length? page.map(r=>r.h).join('')
+    page.length? [...page].reverse().map(r=>r.h).join('')
                : '<tr><td colspan="4" style="color:var(--muted)">No transactions this month.</td></tr>';
   const pi=PMONTHS.indexOf(TPAGE);
   gid('pgsel').innerHTML=PMONTHS.map(mo=>
