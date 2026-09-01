@@ -225,6 +225,22 @@ narrowest basis at which every tile label still fits on **one line**. At ~165px 
 the whole row jumps from 59px tall back to 71px, so do not shrink it further to fit more
 tiles on screen; you get a taller strip, not a denser one.
 
+**Touch swipes the strip natively, a mouse cannot** — with the scrollbar hidden there is
+nothing to grab, and a vertical wheel scrolls the page. Desktop therefore gets two additions,
+both behind `@media (hover:hover) and (pointer:fine)` so they never appear on a phone:
+
+- **Edge arrows** (`.tnav`, `#tprev`/`#tnext`) that ride on the fades and share their
+  `more-l`/`more-r` visibility, so an arrow only shows when there is something that way.
+  A click jumps 80% of the visible width.
+- **Drag-to-pan**, mouse pointers only (`e.pointerType!=='mouse'` bails, leaving touch to the
+  browser). It engages only past a **5px threshold**, so a plain click can still select a
+  figure to copy; `user-select:none` is applied on engage, not on press.
+
+Plain vertical wheel is deliberately **not** hijacked — it would steal page scrolling whenever
+the cursor crossed the strip. Shift+wheel already pans it natively.
+
+`tileFades()` also toggles `can-scroll`, which is what gates the `grab` cursor.
+
 The tiles deliberately overhang the viewport inside that clip, so a naive "is anything past
 `clientWidth`" check will flag them. The real test is `documentElement.scrollWidth >
 clientWidth`, which stays false at every width.

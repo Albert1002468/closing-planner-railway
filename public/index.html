@@ -156,6 +156,22 @@
   .tiles{display:flex;gap:10px;overflow-x:auto;overscroll-behavior-x:contain;
          -webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
   .tiles::-webkit-scrollbar{display:none}
+  /* Touch swipes the strip natively; a mouse has nothing to grab, so desktop gets
+     drag-to-pan plus arrows on the fade edges. */
+  .tnav{position:absolute;top:50%;transform:translateY(-50%);z-index:2;display:none;
+        align-items:center;justify-content:center;width:27px;height:27px;padding:0;
+        border:1px solid var(--axis);border-radius:50%;background:var(--surface-1);
+        color:var(--ink-2);font:inherit;font-size:15px;line-height:1;cursor:pointer;
+        box-shadow:0 2px 9px rgba(0,0,0,.20)}
+  .tnav:hover{color:var(--ink);border-color:var(--ink-2)}
+  .tnav:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
+  .tprev{left:1px} .tnext{right:1px}
+  @media (hover:hover) and (pointer:fine){
+    .tilewrap.more-l .tprev,.tilewrap.more-r .tnext{display:flex}
+    .tilewrap.can-scroll .tiles{cursor:grab}
+    .tilewrap.can-scroll .tiles.dragging{cursor:grabbing}
+  }
+  .tiles.dragging{user-select:none;-webkit-user-select:none}
   .tile{flex:0 0 205px;background:var(--page);border:1px solid var(--ring);border-radius:10px;padding:10px 12px}
   .tile .lab{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
   .tile .val{font-size:17px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
@@ -266,6 +282,8 @@
         <div class="tile"><div class="lab">Car payoff (sale + 2 mo)</div><div class="val" id="t_car">—</div><div class="sm" id="t_card"></div></div>
         <div class="tile"><div class="lab">Dec 31, 2027 balance</div><div class="val" id="t_end">—</div><div class="sm">after every rule above</div></div>
       </div>
+      <button type="button" class="tnav tprev" id="tprev" aria-label="Scroll cards left">&lsaquo;</button>
+      <button type="button" class="tnav tnext" id="tnext" aria-label="Scroll cards right">&rsaquo;</button>
     </div>
 
     <div class="actionbar">
@@ -968,10 +986,41 @@ function render(){
 const $tiles=document.getElementById('tiles'), $tilewrap=$tiles.parentNode;
 function tileFades(){
   const max=$tiles.scrollWidth-$tiles.clientWidth, x=$tiles.scrollLeft;
+  $tilewrap.classList.toggle('can-scroll', max>2);
   $tilewrap.classList.toggle('more-l', x>2);
   $tilewrap.classList.toggle('more-r', x<max-2);
 }
 $tiles.addEventListener('scroll',tileFades,{passive:true});
+
+// Edge arrows: jump most of a screenful, so a couple of clicks crosses the whole strip.
+const tileNudge=dir=>$tiles.scrollBy({left:dir*Math.max(160,$tiles.clientWidth*0.8),behavior:'smooth'});
+document.getElementById('tprev').addEventListener('click',()=>tileNudge(-1));
+document.getElementById('tnext').addEventListener('click',()=>tileNudge(1));
+
+// Drag-to-pan for the mouse. Touch is left alone — it already scrolls natively. Panning only
+// engages past a 5px threshold so a plain click can still select a figure to copy.
+let dgDown=false, dgOn=false, dgX=0, dgLeft=0;
+$tiles.addEventListener('pointerdown',e=>{
+  if(e.pointerType!=='mouse' || e.button!==0) return;
+  dgDown=true; dgOn=false; dgX=e.clientX; dgLeft=$tiles.scrollLeft;
+});
+$tiles.addEventListener('pointermove',e=>{
+  if(!dgDown) return;
+  const dx=e.clientX-dgX;
+  if(!dgOn){
+    if(Math.abs(dx)<5) return;
+    dgOn=true; $tiles.classList.add('dragging');
+    try{ $tiles.setPointerCapture(e.pointerId); }catch(_){}
+  }
+  $tiles.scrollLeft=dgLeft-dx;
+});
+const dgEnd=e=>{
+  if(!dgDown) return;
+  dgDown=false; dgOn=false; $tiles.classList.remove('dragging');
+  try{ $tiles.releasePointerCapture(e.pointerId); }catch(_){}
+};
+$tiles.addEventListener('pointerup',dgEnd);
+$tiles.addEventListener('pointercancel',dgEnd);
 const $p=document.getElementById('price'), $pr=document.getElementById('pricer');
 const PRICE_MIN=+$pr.min, PRICE_MAX=+$pr.max;
 // The field is a text input so it can carry thousands separators; digits are the source of
