@@ -71,9 +71,11 @@
   details th{text-align:left;color:var(--muted);font-weight:500;border-bottom:1px solid var(--axis);padding:4px 8px 4px 0}
   details td{padding:3px 8px 3px 0;border-bottom:1px solid var(--grid)}
   details td.n{text-align:right}
-  .keyrow{display:flex;gap:18px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-top:8px}
+  .keyrow{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:8px}
   .keyrow span i{font-style:normal}
-  .foot{font-size:11px;color:var(--muted);margin-top:6px}
+  .foot{font-size:11px;color:var(--muted);margin-top:10px}
+  .foot summary{cursor:pointer;color:var(--muted)}
+  .foot p{margin:7px 0 0;line-height:1.5}
   /* ---- collapsible closing-cost card ---- */
   details.acc{padding-top:0;padding-bottom:0}
   details.acc summary{list-style:none;cursor:pointer;padding:18px 0;outline:none}
@@ -100,8 +102,7 @@
   .accchips b.pos{color:var(--goodtext)}
   details.acc>.donut-wrap{padding-bottom:18px}
   /* ---- scenario controls ---- */
-  .controls{display:flex;gap:14px 30px;flex-wrap:wrap;align-items:flex-start;margin-bottom:6px;
-            background:var(--page);border:1px solid var(--ring);border-radius:10px;padding:14px 16px}
+  .controls{display:flex;flex-direction:column;gap:16px;margin:0 0 4px}
   .ctl{display:flex;flex-direction:column;gap:6px}
   .ctl label{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
   .ctl input[type=date]{
@@ -117,7 +118,7 @@
   .moneyfld input::-webkit-outer-spin-button,.moneyfld input::-webkit-inner-spin-button{
     -webkit-appearance:none;margin:0}
   .moneyfld input[type=number]{-moz-appearance:textfield}
-  .ctl input[type=range]{width:230px;accent-color:var(--s1);margin:2px 0 0}
+  .ctl input[type=range]{width:100%;accent-color:var(--s1);margin:2px 0 0}
   .rends{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);
          font-variant-numeric:tabular-nums;margin-top:-2px}
   .switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;
@@ -131,22 +132,25 @@
   .switch input:checked+.track{background:var(--s1)}
   .switch input:checked+.track::after{transform:translateX(16px)}
   .switch input:focus-visible+.track{outline:2px solid var(--s1);outline-offset:2px}
-  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0 4px}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:0 0 14px}
   .tile{background:var(--page);border:1px solid var(--ring);border-radius:10px;padding:10px 12px}
   .tile .lab{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
   .tile .val{font-size:17px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
   .tile .val.neg{color:var(--crit)} .tile .val.posv{color:var(--goodtext)}
   .tile .sm{font-size:11px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
   /* reconcile — deliberately low-visibility trigger */
-  .recwrap{display:flex;justify-content:flex-end;margin-top:10px}
-  #recbtn{background:#f7f7f3;color:#f2f2ee;border:1px solid #f5f5f1;border-radius:6px;
-          padding:5px 12px;font-size:11px;font-family:inherit;cursor:pointer;letter-spacing:.02em}
-  #recbtn:hover{color:var(--muted);border-color:var(--grid)}
-  #recbtn:focus-visible{outline:2px solid var(--s1);color:var(--ink-2)}
-  @media (prefers-color-scheme: dark){
-    :root:where(:not([data-theme="light"])) #recbtn{background:#111110;color:#151514;border-color:#131312}
-  }
-  #recbtn[hidden]{display:none}
+  .actionbar{display:flex;align-items:center;justify-content:space-between;gap:10px;
+             flex-wrap:wrap;margin:2px 0 6px}
+  .acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .abtn{display:inline-flex;align-items:center;gap:7px;background:var(--page);color:var(--ink);
+        border:1px solid var(--axis);border-radius:8px;padding:6px 13px;font-size:12.5px;
+        font-family:inherit;cursor:pointer;font-weight:600;font-variant-numeric:tabular-nums}
+  .abtn:hover{border-color:var(--ink-2)}
+  .abtn:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
+  .abtn .ic{font-size:12px;color:var(--muted);font-weight:400}
+  .abtn.accent{background:var(--s1);border-color:var(--s1);color:#fff}
+  .abtn.accent .ic{color:rgba(255,255,255,.75)}
+  .abtn[hidden]{display:none}
   /* modal */
   .modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
          padding:14px;background:rgba(11,11,11,.55);backdrop-filter:blur(2px)}
@@ -187,8 +191,7 @@
   .reclist .n{color:var(--muted)}
   tr.recrowT td{color:var(--s7)}
   tr.mrule td{border-top:1px solid var(--axis)}
-  .viewrow{display:flex;gap:6px;align-items:center;margin:12px 0 2px;flex-wrap:wrap}
-  .viewrow .vlab{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-right:2px}
+  .viewrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .vbtn{background:var(--page);color:var(--ink-2);border:1px solid var(--axis);border-radius:7px;
         padding:5px 12px;font-size:12px;font-family:inherit;cursor:pointer;font-weight:600}
   .vbtn.on{background:var(--s1);border-color:var(--s1);color:#fff}
@@ -210,8 +213,6 @@
     .sub{font-size:12px}
     .tiles{grid-template-columns:repeat(2,1fr)}
     .tile .val{font-size:15px}
-    .controls{gap:12px 18px;padding:12px 13px}
-    .ctl{flex:1 1 100%}
     .ctl input[type=range]{width:100%;min-width:0}
     .accchips{justify-content:flex-start;gap:10px 20px}
     .accbig .v{font-size:19px}
@@ -224,15 +225,63 @@
 <body>
 <div class="viz-root">
   <h1>Closing &amp; Home-Sale Planner</h1>
-  <p class="sub">Lender 2 (5.99%, $12,000 pts), closing Fri Sept 18 &middot; 10 OT hrs on Sep 4 &amp; 18 checks, 5 OT hrs/check after &middot; spouse covers food/misc &middot; no bridge transfer shown &middot; current-home loan $336,756.31 @ 5.375% amortized exactly</p>
+  <p class="sub">Closing Fri, Sept 18, 2026 &middot; daily balance projected through Dec 31, 2027</p>
+
+  <div class="card pos">
+    <div class="tiles">
+      <div class="tile"><div class="lab">Today's balance</div><div class="val" id="t_today">—</div><div class="sm" id="t_todayd"></div></div>
+      <div class="tile"><div class="lab">Loan payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm" id="t_payoffsm"></div></div>
+      <div class="tile"><div class="lab">Net proceeds (price − payoff)</div><div class="val" id="t_proceeds">—</div></div>
+      <div class="tile"><div class="lab">Loss credit (+2 wks)</div><div class="val" id="t_loss">—</div><div class="sm">half of loss below $425k, max $25k</div></div>
+      <div class="tile"><div class="lab">Sept 18 before wire</div><div class="val" id="t_morn">—</div><div class="sm">incl. that morning's paycheck</div></div>
+      <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
+      <div class="tile"><div class="lab">Car payoff (sale + 2 mo)</div><div class="val" id="t_car">—</div><div class="sm" id="t_card"></div></div>
+      <div class="tile"><div class="lab">Dec 31, 2027 balance</div><div class="val" id="t_end">—</div><div class="sm">after every rule above</div></div>
+    </div>
+
+    <div class="actionbar">
+      <div class="viewrow" role="group" aria-label="Timeline window">
+        <button type="button" class="vbtn" data-view="all" aria-pressed="false">All</button>
+        <button type="button" class="vbtn on" data-view="2026" aria-pressed="true">2026</button>
+        <button type="button" class="vbtn" data-view="2027" aria-pressed="false">2027</button>
+      </div>
+      <div class="acts">
+        <button type="button" class="abtn accent" id="setbtn" aria-haspopup="dialog">
+          <span class="ic" aria-hidden="true">&#9881;</span><span id="setlab">Sale settings</span></button>
+        <button type="button" class="abtn" id="recbtn" hidden aria-haspopup="dialog">
+          <span class="ic" aria-hidden="true">&#9679;</span>Reconcile</button>
+      </div>
+    </div>
+
+    <svg id="tl" viewBox="0 0 940 380" width="940" height="380" role="img" aria-label="Projected bank balance timeline"></svg>
+    <div class="tip" id="ttip"></div>
+    <div class="keyrow">
+      <span><i style="color:var(--goodtext)">&#9650;</i> in &ge;$800</span>
+      <span><i style="color:var(--crit)">&#9660;</i> out &ge;$800</span>
+      <span><span class="sw" style="background:var(--crit);opacity:.15;border-radius:2px"></span>below $0</span>
+      <span><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale</span>
+      <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
+    </div>
+
+    <details id="tblwrap"><summary>Transactions &mdash; one month per page</summary>
+      <div class="pager">
+        <button type="button" id="pgprev" aria-label="Previous month">&lsaquo;</button>
+        <select id="pgsel" aria-label="Month to show"></select>
+        <button type="button" id="pgnext" aria-label="Next month">&rsaquo;</button>
+        <span class="pginfo" id="pginfo"></span>
+      </div>
+      <table id="evtable"><thead><tr><th>Date</th><th>Item</th><th style="text-align:right">Amount</th><th style="text-align:right">Balance</th></tr></thead><tbody></tbody></table>
+    </details>
+
+    <details class="foot"><summary>Assumptions &amp; sources</summary>
+      <p>Projection from your statements + stated plans; Closing Disclosure and actual payoff quote govern. Assumes relo covers commissions/seller costs (net = price − payoff), proceeds land on the sale date, loss credit 14 days later, AutoFortiva settled in full 8/20/26, the Vivint contract bought out 7 days before the sale at 50% of the months remaining on the 6/21/25 60-month term (drafts stop after that), Midland utilities end at sale with one final trailing bill, and the 6-mo car insurance renewal ($940) recurs each March and September. Car payoff uses simple interest at 6.74% actual/365 from the $40,862.63 principal standing after the 8/16/26 payment, with no further $500 extra payments. The new-home payment steps from $2,691.97 to $3,180.72 on Jan 1, 2027 (escrow re-set for $6,000/yr property tax, no shortage spread). The March 2027 bonus is shown net at 65.60% of gross (22% federal supplemental + 6.2% + 1.45% + 4.75% Oklahoma). 2027 utilities and the $6,000 tax figure are estimates.</p>
+    </details>
+  </div>
 
   <details class="card acc" id="closingcard">
     <summary>
       <div class="acchead">
-        <div>
-          <h2>Where the closing money goes</h2>
-          <p class="note">Gross costs $124,761.90, reduced by the builder credit and earnest money already paid &middot; tap to see the full breakdown</p>
-        </div>
+        <div><h2>Where the closing money goes</h2></div>
         <span class="accchev" aria-hidden="true">&#9660;</span>
       </div>
       <div class="accsum" id="accsum"></div>
@@ -244,66 +293,37 @@
     </div>
   </details>
 
-  <div class="card pos">
-    <h2>Bank balance through Dec 31, 2027 — with your Midland home sale as a variable</h2>
-    <p class="note">Set the sale date and price; everything downstream recomputes: PennyMac payments &amp; payoff, interest reimbursements (2-payment cap), Midland utilities, the Vivint contract buyout a week before sale, the loss-on-sale credit two weeks after, the $27,000 repayment to your fianc&eacute;e a week after, and the car payoff two months after (which also stops the $824.76 drafts and triggers the $2,300 warranty refund a month later).</p>
-    <div class="controls">
-      <div class="ctl">
-        <label for="saledate">Sale (closing) date</label>
-        <input type="date" id="saledate" min="2026-09-15" max="2027-12-31" value="2026-10-30">
-        <span class="rends" id="saleday">&nbsp;</span>
-      </div>
-      <div class="ctl">
-        <label for="price">Sale price</label>
-        <div class="moneyfld"><span>$</span>
-          <input type="text" id="price" inputmode="numeric" autocomplete="off" value="425,000" aria-label="Sale price in dollars">
-        </div>
-        <input type="range" id="pricer" min="330000" max="480000" step="1000" value="425000" aria-label="Sale price slider">
-        <div class="rends"><span>$330k</span><span>$480k</span></div>
-      </div>
-      <div class="ctl">
-        <label id="scenlab">Scenario</label>
-        <label class="switch" for="notsold">
-          <input type="checkbox" id="notsold" aria-labelledby="scenlab notsoldtxt">
-          <span class="track"></span><span id="notsoldtxt">Never sold in window</span>
-        </label>
-      </div>
+  <div class="modal" id="setmodal" hidden role="dialog" aria-modal="true" aria-labelledby="settitle">
+    <div class="sheet">
+      <h3 id="settitle">Home sale scenario</h3>
+      <p class="hint">Everything downstream recomputes as you change these.</p>
+  <div class="controls">
+    <div class="ctl">
+      <label for="saledate">Sale (closing) date</label>
+      <input type="date" id="saledate" min="2026-09-15" max="2027-12-31" value="2026-10-30">
+      <span class="rends" id="saleday">&nbsp;</span>
     </div>
-    <div class="tiles">
-      <div class="tile"><div class="lab">Today's balance</div><div class="val" id="t_today">—</div><div class="sm" id="t_todayd"></div></div>
-      <div class="tile"><div class="lab">Loan payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm" id="t_payoffsm"></div></div>
-      <div class="tile"><div class="lab">Net proceeds (price − payoff)</div><div class="val" id="t_proceeds">—</div></div>
-      <div class="tile"><div class="lab">Loss credit (+2 wks)</div><div class="val" id="t_loss">—</div><div class="sm">half of loss below $425k, max $25k</div></div>
-      <div class="tile"><div class="lab">Sept 18 before wire</div><div class="val" id="t_morn">—</div><div class="sm">incl. that morning's paycheck</div></div>
-      <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
-      <div class="tile"><div class="lab">Car payoff (sale + 2 mo)</div><div class="val" id="t_car">—</div><div class="sm" id="t_card"></div></div>
-      <div class="tile"><div class="lab">Dec 31, 2027 balance</div><div class="val" id="t_end">—</div><div class="sm">after every rule above</div></div>
-    </div>
-    <div class="viewrow" role="group" aria-label="Timeline window">
-      <span class="vlab">Window</span>
-      <button type="button" class="vbtn on" data-view="all" aria-pressed="true">All</button>
-      <button type="button" class="vbtn" data-view="2026" aria-pressed="false">2026</button>
-      <button type="button" class="vbtn" data-view="2027" aria-pressed="false">2027</button>
-    </div>
-    <svg id="tl" viewBox="0 0 940 380" width="940" height="380" role="img" aria-label="Projected bank balance timeline"></svg>
-    <div class="tip" id="ttip"></div>
-    <div class="keyrow">
-      <span><i style="color:var(--goodtext)">&#9650;</i> money in (&ge;$800)</span>
-      <span><i style="color:var(--crit)">&#9660;</i> money out (&ge;$800)</span>
-      <span><span class="sw" style="background:var(--crit);opacity:.15;border-radius:2px"></span>below $0 — bridge needed</span>
-      <span><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale day</span>
-      <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today &middot; shaded = elapsed</span>
-    </div>
-    <details id="tblwrap"><summary>Table view — every projected transaction, one month per page</summary>
-      <div class="pager">
-        <button type="button" id="pgprev" aria-label="Previous month">&lsaquo;</button>
-        <select id="pgsel" aria-label="Month to show"></select>
-        <button type="button" id="pgnext" aria-label="Next month">&rsaquo;</button>
-        <span class="pginfo" id="pginfo"></span>
+    <div class="ctl">
+      <label for="price">Sale price</label>
+      <div class="moneyfld"><span>$</span>
+        <input type="text" id="price" inputmode="numeric" autocomplete="off" value="425,000" aria-label="Sale price in dollars">
       </div>
-      <table id="evtable"><thead><tr><th>Date</th><th>Item</th><th style="text-align:right">Amount</th><th style="text-align:right">Balance</th></tr></thead><tbody></tbody></table>
-    </details>
-    <div class="recwrap"><button id="recbtn" hidden aria-label="Reconcile">·</button></div>
+      <input type="range" id="pricer" min="330000" max="480000" step="1000" value="425000" aria-label="Sale price slider">
+      <div class="rends"><span>$330k</span><span>$480k</span></div>
+    </div>
+    <div class="ctl">
+      <label id="scenlab">Scenario</label>
+      <label class="switch" for="notsold">
+        <input type="checkbox" id="notsold" aria-labelledby="scenlab notsoldtxt">
+        <span class="track"></span><span id="notsoldtxt">Never sold in window</span>
+      </label>
+    </div>
+  </div>
+
+      <div class="recrow"><button id="setdone">Done</button></div>
+    </div>
+  </div>
+
     <div class="modal" id="recmodal" hidden role="dialog" aria-modal="true" aria-labelledby="rectitle">
       <div class="sheet" id="recsheet">
         <div id="stagepin">
@@ -347,8 +367,6 @@
         </div>
       </div>
     </div>
-    <p class="foot">Projection from your statements + stated plans; Closing Disclosure and actual payoff quote govern. Assumes relo covers commissions/seller costs (net = price − payoff), proceeds land on the sale date, loss credit 14 days later, AutoFortiva settled in full 8/20/26, the Vivint contract bought out 7 days before the sale at 50% of the months remaining on the 6/21/25 60-month term (drafts stop after that), Midland utilities end at sale with one final trailing bill, and the 6-mo car insurance renewal ($940) recurs each March and September. Car payoff uses simple interest at 6.74% actual/365 from the $40,862.63 principal standing after the 8/16/26 payment, with no further $500 extra payments. The new-home payment steps from $2,691.97 to $3,180.72 on Jan 1, 2027 (escrow re-set for $6,000/yr property tax, no shortage spread). The March 2027 bonus is shown net at 65.60% of gross (22% federal supplemental + 6.2% + 1.45% + 4.75% Oklahoma). 2027 utilities and the $6,000 tax figure are estimates.</p>
-  </div>
 </div>
 
 <script>
@@ -660,7 +678,7 @@ function buildSeries(sale, price){
 /* ---------- render ---------- */
 const NS='http://www.w3.org/2000/svg';
 let LAST_DATA=[];
-let VIEW='all';          // timeline window: 'all' | '2026' | '2027'
+let VIEW='2026';         // timeline window: 'all' | '2026' | '2027'
 let TPAGE=null;          // table page — a 'YYYY-MM' key
 let PMONTHS=[];          // month keys currently pageable, in order
 var TODAY_ISO=(function(){
@@ -836,6 +854,9 @@ function render(){
   set('t_end', fmt(endB), endB<0?'neg':'posv');
   document.getElementById('saleday').textContent =
     sale? dd(sale).toLocaleDateString('en-US',{weekday:'long'}) : 'no sale modeled';
+  document.getElementById('setlab').textContent = sale
+    ? dd(sale).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' · '+fmt0(price)
+    : 'Never sold';
 
   // ---- table ----
   // Every row is built over the WHOLE series so the running balance stays true, then only the
@@ -903,6 +924,14 @@ document.querySelectorAll('.vbtn').forEach(b=>b.addEventListener('click',()=>{
   });
   render();
 }));
+/* the scenario controls live in a sheet; edits apply live, so "Done" only closes it */
+const $set=document.getElementById('setmodal');
+const openSet =()=>{$set.hidden=false; document.body.style.overflow='hidden';};
+const closeSet=()=>{$set.hidden=true;  document.body.style.overflow='';};
+document.getElementById('setbtn').addEventListener('click',openSet);
+document.getElementById('setdone').addEventListener('click',closeSet);
+$set.addEventListener('mousedown',e=>{ if(e.target===$set) closeSet(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$set.hidden) closeSet(); });
 const pgStep=n=>{const i=PMONTHS.indexOf(TPAGE)+n; if(i>=0&&i<PMONTHS.length){TPAGE=PMONTHS[i];render();}};
 document.getElementById('pgprev').addEventListener('click',()=>pgStep(-1));
 document.getElementById('pgnext').addEventListener('click',()=>pgStep(1));

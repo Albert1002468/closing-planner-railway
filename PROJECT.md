@@ -186,7 +186,43 @@ new-home utilities $150 / $250 / $300 Oct–Dec 2026, then a seasonal 2027 table
 
 ---
 
-## 5. Closing figures (the donut — collapsed by default)
+## 4b. Page order
+
+Deliberate, top to bottom:
+
+```
+h1 + one-line subtitle
+card ─ tiles (8, a 4x2 grid)
+     ─ action bar: [All|2026|2027]            [scenario btn] [Reconcile]
+     ─ timeline + legend
+     ─ <details> Transactions (paginated)
+     ─ <details> Assumptions & sources
+card ─ <details> Where the closing money goes   <- bottom, collapsed
+modals ─ #setmodal, #recmodal (siblings of the cards, position:fixed)
+```
+
+Prose is kept to a minimum: the subtitle is one line, the two long descriptive
+paragraphs are gone, and the assumptions live in a closed `<details>`. **The numbers do
+the explaining** — the scenario button is labelled with the live scenario
+(`Oct 30, 2026 · $425,000`, or `Never sold`), which is why removing the descriptive
+paragraph lost nothing.
+
+### The two sheet buttons
+
+Both sit in `.acts` and open a `.modal`. **`#setbtn`** holds the sale date, price and the
+"never sold" switch; edits apply live through the normal `render()` path, so *Done* only
+closes the sheet — there is no apply step and no separate state to reconcile.
+**`#recbtn`** is unchanged in behaviour: still `hidden` until `refreshTrigger()` finds an
+eligible date, just no longer disguised as a low-contrast dot. It is set visible from an
+**async** continuation (`loadState`), so a synchronous check right after parse will always
+see it hidden — that is timing, not a bug.
+
+`VIEW` defaults to **`'2026'`**; the matching `.vbtn` must carry `class="vbtn on"` and
+`aria-pressed="true"` in the markup to match.
+
+---
+
+## 5. Closing figures (the donut — collapsed, at the foot of the page)
 
 The card is a native `<details class="card acc">`, **closed on load**. The chevron is our own
 (`.accchev`, rotated 180° by `details.acc[open]`); the default marker is removed with
@@ -281,7 +317,7 @@ a live result box showing projected balance → variance → **new balance**.
   picking "2027" scopes the pager to 12 pages. `PMONTHS` / `TPAGE` hold the paging state.
   The pager cannot use the `$` helper: it is declared `const` further down and is still in the
   TDZ when `render()` first runs.
-- **Scenario controls** sit in one bordered panel (`.controls`). The sale price is a **text**
+- **Scenario controls** live in `#setmodal`; `.controls` is a plain vertical stack there. The sale price is a **text**
   input, not `number`, so it can carry thousands separators; `priceVal()` strips non-digits and
   clamps to the slider's `min`/`max`, and is the single source of truth for the price. It
   reformats on **blur only** — reformatting on every keystroke fights the caret. Empty or
@@ -337,6 +373,8 @@ September (−$4,736, the insurance renewal).
 | Add a stat tile | markup in `.tiles` + a `set('t_xxx', …)` call at the end of `render()` |
 | Change what the collapsed closing card shows | the `#accsum` block at the end of the donut IIFE |
 | Open the closing card by default | add `open` to `<details id="closingcard">` |
+| Change the default timeline window | `VIEW` initialiser **and** the `on`/`aria-pressed` markup on `.vbtn` |
+| Reorder the page | the blocks inside `.card.pos`; modals can sit anywhere, they are `position:fixed` |
 | Change the sale-price range | `#pricer` `min`/`max` (`PRICE_MIN`/`PRICE_MAX` read from it) and the `.rends` labels |
 
 After any change: hard-refresh (HTML is served `no-store`), check the browser console, and
