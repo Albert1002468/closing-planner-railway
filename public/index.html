@@ -73,7 +73,22 @@
   details td.n{text-align:right}
   .keyrow{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:8px}
   .keyrow span i{font-style:normal}
-  .foot{font-size:11px;color:var(--muted);margin-top:10px}
+  #tblwrap{margin-top:16px}
+  .secsum{display:flex;align-items:center;gap:10px;list-style:none;cursor:pointer;
+          background:var(--page);border:1px solid var(--axis);border-radius:9px;
+          padding:10px 13px;font-size:13px;color:var(--ink);font-weight:600}
+  .secsum::-webkit-details-marker{display:none}
+  .secsum:hover{border-color:var(--ink-2)}
+  .secsum:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
+  .secic{display:flex;color:var(--muted)}
+  .secic svg{width:15px;height:15px}
+  .secmeta{margin-left:auto;font-size:11.5px;color:var(--muted);font-weight:400;
+           font-variant-numeric:tabular-nums}
+  .secchev{color:var(--muted);font-size:10px;transition:transform .18s;flex:none}
+  details[open]>.secsum .secchev{transform:rotate(180deg)}
+  details[open]>.secsum{border-bottom-left-radius:0;border-bottom-right-radius:0}
+  .secbody{border:1px solid var(--axis);border-top:0;border-radius:0 0 9px 9px;padding:4px 13px 12px}
+  .foot{font-size:11px;color:var(--muted);margin-top:12px}
   .foot summary{cursor:pointer;color:var(--muted)}
   .foot p{margin:7px 0 0;line-height:1.5}
   /* ---- collapsible closing-cost card ---- */
@@ -132,8 +147,16 @@
   .switch input:checked+.track{background:var(--s1)}
   .switch input:checked+.track::after{transform:translateX(16px)}
   .switch input:focus-visible+.track{outline:2px solid var(--s1);outline-offset:2px}
-  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:0 0 14px}
-  .tile{background:var(--page);border:1px solid var(--ring);border-radius:10px;padding:10px 12px}
+  .tilewrap{position:relative;margin:0 0 14px}
+  .tilewrap::before,.tilewrap::after{content:'';position:absolute;top:0;bottom:0;width:38px;
+    pointer-events:none;opacity:0;transition:opacity .18s;z-index:1}
+  .tilewrap::before{left:0;background:linear-gradient(to left,transparent,var(--surface-1))}
+  .tilewrap::after{right:0;background:linear-gradient(to right,transparent,var(--surface-1))}
+  .tilewrap.more-l::before,.tilewrap.more-r::after{opacity:1}
+  .tiles{display:flex;gap:10px;overflow-x:auto;overscroll-behavior-x:contain;
+         -webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
+  .tiles::-webkit-scrollbar{display:none}
+  .tile{flex:0 0 205px;background:var(--page);border:1px solid var(--ring);border-radius:10px;padding:10px 12px}
   .tile .lab{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
   .tile .val{font-size:17px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
   .tile .val.neg{color:var(--crit)} .tile .val.posv{color:var(--goodtext)}
@@ -147,9 +170,9 @@
         font-family:inherit;cursor:pointer;font-weight:600;font-variant-numeric:tabular-nums}
   .abtn:hover{border-color:var(--ink-2)}
   .abtn:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
-  .abtn .ic{font-size:12px;color:var(--muted);font-weight:400}
   .abtn.accent{background:var(--s1);border-color:var(--s1);color:#fff}
-  .abtn.accent .ic{color:rgba(255,255,255,.75)}
+  .iconbtn{width:36px;height:32px;padding:0;justify-content:center}
+  .iconbtn svg{width:17px;height:17px;display:block}
   .abtn[hidden]{display:none}
   /* modal */
   .modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
@@ -211,9 +234,9 @@
     .card{padding:13px 14px;border-radius:10px}
     h1{font-size:17px}
     .sub{font-size:12px}
-    .tiles{grid-template-columns:repeat(2,1fr)}
     .tile .val{font-size:15px}
     .ctl input[type=range]{width:100%;min-width:0}
+    .tile{flex:0 0 175px}
     .accchips{justify-content:flex-start;gap:10px 20px}
     .accbig .v{font-size:19px}
     details.acc summary{padding:15px 0}
@@ -228,15 +251,17 @@
   <p class="sub">Closing Fri, Sept 18, 2026 &middot; daily balance projected through Dec 31, 2027</p>
 
   <div class="card pos">
-    <div class="tiles">
-      <div class="tile"><div class="lab">Today's balance</div><div class="val" id="t_today">—</div><div class="sm" id="t_todayd"></div></div>
-      <div class="tile"><div class="lab">Loan payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm" id="t_payoffsm"></div></div>
-      <div class="tile"><div class="lab">Net proceeds (price − payoff)</div><div class="val" id="t_proceeds">—</div></div>
-      <div class="tile"><div class="lab">Loss credit (+2 wks)</div><div class="val" id="t_loss">—</div><div class="sm">half of loss below $425k, max $25k</div></div>
-      <div class="tile"><div class="lab">Sept 18 before wire</div><div class="val" id="t_morn">—</div><div class="sm">incl. that morning's paycheck</div></div>
-      <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
-      <div class="tile"><div class="lab">Car payoff (sale + 2 mo)</div><div class="val" id="t_car">—</div><div class="sm" id="t_card"></div></div>
-      <div class="tile"><div class="lab">Dec 31, 2027 balance</div><div class="val" id="t_end">—</div><div class="sm">after every rule above</div></div>
+    <div class="tilewrap">
+      <div class="tiles" id="tiles">
+        <div class="tile"><div class="lab">Today's balance</div><div class="val" id="t_today">—</div><div class="sm" id="t_todayd"></div></div>
+        <div class="tile"><div class="lab">Loan payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm" id="t_payoffsm"></div></div>
+          <div class="tile"><div class="lab">Net proceeds (price − payoff)</div><div class="val" id="t_proceeds">—</div><div class="sm" id="t_proceedsm"></div></div>
+        <div class="tile"><div class="lab">Loss credit (+2 wks)</div><div class="val" id="t_loss">—</div><div class="sm">half of loss below $425k, max $25k</div></div>
+        <div class="tile"><div class="lab">Sept 18 before wire</div><div class="val" id="t_morn">—</div><div class="sm">incl. that morning's paycheck</div></div>
+        <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
+        <div class="tile"><div class="lab">Car payoff (sale + 2 mo)</div><div class="val" id="t_car">—</div><div class="sm" id="t_card"></div></div>
+        <div class="tile"><div class="lab">Dec 31, 2027 balance</div><div class="val" id="t_end">—</div><div class="sm">after every rule above</div></div>
+      </div>
     </div>
 
     <div class="actionbar">
@@ -246,10 +271,20 @@
         <button type="button" class="vbtn" data-view="2027" aria-pressed="false">2027</button>
       </div>
       <div class="acts">
-        <button type="button" class="abtn accent" id="setbtn" aria-haspopup="dialog">
-          <span class="ic" aria-hidden="true">&#9881;</span><span id="setlab">Sale settings</span></button>
-        <button type="button" class="abtn" id="recbtn" hidden aria-haspopup="dialog">
-          <span class="ic" aria-hidden="true">&#9679;</span>Reconcile</button>
+        <button type="button" class="abtn accent iconbtn" id="setbtn" aria-haspopup="dialog"
+                aria-label="Sale settings" title="Sale settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" aria-hidden="true">
+            <line x1="3.5" y1="8" x2="20.5" y2="8"/><line x1="3.5" y1="16" x2="20.5" y2="16"/>
+            <circle cx="15" cy="8" r="2.6" fill="currentColor" stroke="none"/>
+            <circle cx="9" cy="16" r="2.6" fill="currentColor" stroke="none"/>
+          </svg></button>
+        <button type="button" class="abtn iconbtn" id="recbtn" hidden aria-haspopup="dialog"
+                aria-label="Reconcile a day's balance" title="Reconcile a day's balance">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="8.6"/><path d="M8.2 12.3l2.6 2.6 5-5.4"/>
+          </svg></button>
       </div>
     </div>
 
@@ -263,14 +298,26 @@
       <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
     </div>
 
-    <details id="tblwrap"><summary>Transactions &mdash; one month per page</summary>
-      <div class="pager">
-        <button type="button" id="pgprev" aria-label="Previous month">&lsaquo;</button>
-        <select id="pgsel" aria-label="Month to show"></select>
-        <button type="button" id="pgnext" aria-label="Next month">&rsaquo;</button>
-        <span class="pginfo" id="pginfo"></span>
+    <details id="tblwrap">
+      <summary class="secsum">
+        <span class="secic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/>
+            <line x1="4" y1="17" x2="20" y2="17"/>
+          </svg></span>
+        <span>Transactions</span>
+        <span class="secmeta" id="tblmeta"></span>
+        <span class="secchev" aria-hidden="true">&#9660;</span>
+      </summary>
+      <div class="secbody">
+        <div class="pager">
+          <button type="button" id="pgprev" aria-label="Previous month">&lsaquo;</button>
+          <select id="pgsel" aria-label="Month to show"></select>
+          <button type="button" id="pgnext" aria-label="Next month">&rsaquo;</button>
+          <span class="pginfo" id="pginfo"></span>
+        </div>
+        <table id="evtable"><thead><tr><th>Date</th><th>Item</th><th style="text-align:right">Amount</th><th style="text-align:right">Balance</th></tr></thead><tbody></tbody></table>
       </div>
-      <table id="evtable"><thead><tr><th>Date</th><th>Item</th><th style="text-align:right">Amount</th><th style="text-align:right">Balance</th></tr></thead><tbody></tbody></table>
     </details>
 
     <details class="foot"><summary>Assumptions &amp; sources</summary>
@@ -854,9 +901,12 @@ function render(){
   set('t_end', fmt(endB), endB<0?'neg':'posv');
   document.getElementById('saleday').textContent =
     sale? dd(sale).toLocaleDateString('en-US',{weekday:'long'}) : 'no sale modeled';
-  document.getElementById('setlab').textContent = sale
+  const scen = sale
     ? dd(sale).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' · '+fmt0(price)
-    : 'Never sold';
+    : 'never sold in window';
+  const sb=document.getElementById('setbtn');
+  sb.title='Sale settings — '+scen; sb.setAttribute('aria-label','Sale settings — '+scen);
+  document.getElementById('t_proceedsm').textContent = sale? scen : '';
 
   // ---- table ----
   // Every row is built over the WHOLE series so the running balance stays true, then only the
@@ -892,12 +942,25 @@ function render(){
   gid('pgnext').disabled = pi>=PMONTHS.length-1;
   const net=+page.reduce((a,r)=>a+r.a,0).toFixed(2);
   const mEnd=DATA.filter(d=>d.d.slice(0,7)===TPAGE).slice(-1)[0];
+  gid('tblmeta').textContent =
+    `${rows.filter(r=>VIEW==='all'||r.ym.slice(0,4)===VIEW).length} across ${PMONTHS.length} months`;
   gid('pginfo').textContent =
     `${page.length} line${page.length===1?'':'s'} · net ${fmt(net)}`+
     (mEnd? ` · month-end ${fmt(mEnd.b)}`:'')+
     ` · page ${pi+1} of ${PMONTHS.length}`;
   LAST_DATA=DATA;
+  tileFades();
 }
+
+/* The tile row scrolls horizontally with no visible scrollbar, so the only affordance is a
+   fade at whichever edge still has content off-screen. */
+const $tiles=document.getElementById('tiles'), $tilewrap=$tiles.parentNode;
+function tileFades(){
+  const max=$tiles.scrollWidth-$tiles.clientWidth, x=$tiles.scrollLeft;
+  $tilewrap.classList.toggle('more-l', x>2);
+  $tilewrap.classList.toggle('more-r', x<max-2);
+}
+$tiles.addEventListener('scroll',tileFades,{passive:true});
 const $p=document.getElementById('price'), $pr=document.getElementById('pricer');
 const PRICE_MIN=+$pr.min, PRICE_MAX=+$pr.max;
 // The field is a text input so it can carry thousands separators; digits are the source of
@@ -937,6 +1000,7 @@ document.getElementById('pgprev').addEventListener('click',()=>pgStep(-1));
 document.getElementById('pgnext').addEventListener('click',()=>pgStep(1));
 document.getElementById('pgsel').addEventListener('change',e=>{TPAGE=e.target.value;render();});
 let rsz; window.addEventListener('resize',()=>{clearTimeout(rsz);rsz=setTimeout(render,150);});
+window.addEventListener('resize',tileFades);
 render();
 
 /* ================= reconciliation ================= */

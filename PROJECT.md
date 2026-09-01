@@ -192,10 +192,10 @@ Deliberate, top to bottom:
 
 ```
 h1 + one-line subtitle
-card ─ tiles (8, a 4x2 grid)
+card ─ tiles (8, one horizontally scrolling row)
      ─ action bar: [All|2026|2027]            [scenario btn] [Reconcile]
      ─ timeline + legend
-     ─ <details> Transactions (paginated)
+     ─ <details> Transactions (paginated, `.secsum` header)
      ─ <details> Assumptions & sources
 card ─ <details> Where the closing money goes   <- bottom, collapsed
 modals ─ #setmodal, #recmodal (siblings of the cards, position:fixed)
@@ -207,10 +207,33 @@ the explaining** — the scenario button is labelled with the live scenario
 (`Oct 30, 2026 · $425,000`, or `Never sold`), which is why removing the descriptive
 paragraph lost nothing.
 
+### The tile strip
+
+The 8 tiles are **one non-wrapping row** (`.tiles`, flex, `flex:0 0 205px` each) that scrolls
+horizontally with the scrollbar suppressed on every engine
+(`scrollbar-width:none` + `-ms-overflow-style` + `::-webkit-scrollbar{display:none}`).
+`overscroll-behavior-x:contain` stops a swipe past the end from scrolling the page.
+
+With no scrollbar the only affordance is the **edge fade**: `.tilewrap::before/::after` are
+gradients to `--surface-1`, revealed by `more-l` / `more-r`, which `tileFades()` toggles on
+scroll, on resize and at the end of `render()`. Both fades show mid-strip; neither shows when
+everything fits. If you ever change the card background, change the gradient stop with it or
+the fade will show as a grey smear.
+
+The tiles deliberately overhang the viewport inside that clip, so a naive "is anything past
+`clientWidth`" check will flag them. The real test is `documentElement.scrollWidth >
+clientWidth`, which stays false at every width.
+
 ### The two sheet buttons
 
-Both sit in `.acts` and open a `.modal`. **`#setbtn`** holds the sale date, price and the
-"never sold" switch; edits apply live through the normal `render()` path, so *Done* only
+Both are **icon-only** (`.iconbtn`, 36x32, inline SVG on `currentColor` so it inverts on the
+accent fill) and carry the wording in `title` + `aria-label` instead of on screen: sliders for
+the scenario sheet, a circled check for reconcile. `#setbtn`'s label is **live** — it reads
+`Sale settings — Oct 30, 2026 · $425,000`. Because that text is no longer visible, the same
+string is also written into the **net-proceeds tile's** `.sm` line, so the scenario is still
+readable without hovering. Drop that and the sale price disappears from the page entirely.
+
+**`#setbtn`** holds the sale date, price and the "never sold" switch; edits apply live through the normal `render()` path, so *Done* only
 closes the sheet — there is no apply step and no separate state to reconcile.
 **`#recbtn`** is unchanged in behaviour: still `hidden` until `refreshTrigger()` finds an
 eligible date, just no longer disguised as a low-contrast dot. It is set visible from an
@@ -311,6 +334,10 @@ a live result box showing projected balance → variance → **new balance**.
 - **Axis label thinning**: 17 months will not fit. `mStep` is 1–3 by width, January is always
   labelled and carries the year (`Jan '27`), and the spacing counter **resyncs from January**
   so you never get Dec/Jan/Feb in a row.
+- **Transactions** is styled as a real section rather than a bare triangle: `.secsum` is a
+  bordered, full-width header row (icon, title, live count from `#tblmeta`, chevron) whose
+  bottom corners square off when open to meet `.secbody`. Assumptions stays a plain small
+  disclosure — that hierarchy is deliberate, one is a feature and one is fine print.
 - **Table** shows a true per-transaction running balance (`run`), resynced to the day's close
   after each day so a reconcile rebase carries. Every row is built over the whole series, then
   **only the selected month is written to the DOM** — pages follow the window control, so
