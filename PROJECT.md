@@ -260,7 +260,16 @@ anchor and are *not* re-simulated. **No further extra payments are assumed.**
 `carWalk(stopBefore)` applies payments strictly before a date and returns the running
 principal; `carPayoffOn(date)` adds per-diem interest since the last posted payment. The
 same walk drives both the payment events and the payoff quote, so the two cannot disagree.
-Without a payoff the loan would run to ~Feb 2031.
+
+**Payments run until something stops them**, and only two things do: a sale (payoff two months
+later, remaining balance settled in full) or the loan amortising to zero. With no sale the
+drafts continue unbroken to **2030-12-16 — 53 payments, $43,712.28 paid, $5,057.52 still owed**
+at the end of the window. Left alone the loan clears **2031-07-16** on a final short payment of
+$198.47, past `T1`, which is why the tile reports what is still owed rather than a payoff.
+
+The `t_car` tile therefore has three states: settled by a sale inside the window; a payoff that
+lands past `T1` (sales after ~Oct 2030); or no sale at all. The **warranty refund is emitted
+inside `if(carPayoff>0)`** — it is triggered by the payoff, so it must never fire without one.
 
 ### Payroll math (how PAY10 / PAY5 were derived)
 

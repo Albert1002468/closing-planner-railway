@@ -287,7 +287,7 @@
         <div class="tile"><div class="lab">Loss credit (+2 wks)</div><div class="val" id="t_loss">—</div><div class="sm">half of loss below $425k, max $25k</div></div>
         <div class="tile"><div class="lab">Sept 18 before wire</div><div class="val" id="t_morn">—</div><div class="sm">incl. that morning's paycheck</div></div>
         <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
-        <div class="tile"><div class="lab">Car payoff (sale + 2 mo)</div><div class="val" id="t_car">—</div><div class="sm" id="t_card"></div></div>
+        <div class="tile"><div class="lab">Car loan</div><div class="val" id="t_car">—</div><div class="sm" id="t_card"></div></div>
         <div class="tile"><div class="lab">Rent collected</div><div class="val" id="t_rent">—</div><div class="sm" id="t_rentd"></div></div>
         <div class="tile"><div class="lab">Recapture tax</div><div class="val" id="t_recap">—</div><div class="sm" id="t_recapd"></div></div>
         <div class="tile"><div class="lab">Relo closing costs</div><div class="val" id="t_relo">—</div><div class="sm" id="t_relod"></div></div>
@@ -957,19 +957,27 @@ function buildEvents(sale, price, rent, home){
   let carPayoff=null;
   if(carPayoffDate){
     carPayoff = carPayoffOn(carPayoffDate);
-    if(carPayoff>0) E(carPayoffDate,-carPayoff,'CAR PAYOFF — loan settled, no further payments');
-    E(addM(carPayoffDate,1), WARRANTY_REFUND, 'Extended warranty + gap refund (dealer)');
+    if(carPayoff>0){
+      E(carPayoffDate,-carPayoff,'CAR PAYOFF — remaining balance settled in full');
+      // the dealer refund is triggered by the payoff, so it cannot happen without one
+      E(addM(carPayoffDate,1), WARRANTY_REFUND, 'Extended warranty + gap refund (dealer)');
+    }
   }
+  // What the loan does if nothing ever pays it off early: it amortises to zero on its own.
+  const carFull = carWalk(null);
+  const carNatural = carFull.paid[carFull.paid.length-1];
+  const carOwedAtEnd = carPayoffOn(T1);
 
   return {ev, payoff, proceeds, loss, vivFee, vivMonthsLeft, carPayoff, carPayoffDate,
           sellerCost, reloOK, rentEnd, rentTotal:rentDates.length*(rent? rent.amt:0),
-          myRentTotal, myEnd, buyDate, buyCC, recapDep, recapTax};
+          myRentTotal, myEnd, buyDate, buyCC, recapDep, recapTax,
+          carNaturalDate:carNatural.d, carNaturalAmt:carNatural.amt, carOwedAtEnd};
 }
 
 function buildSeries(sale, price, rent, home){
   const {ev,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,
-         recapDep,recapTax}=buildEvents(sale,price,rent,home);
+         recapDep,recapTax,carNaturalDate,carNaturalAmt,carOwedAtEnd}=buildEvents(sale,price,rent,home);
   const map={};
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
   const series=[]; let bal=START_BAL, cur=T0;
@@ -988,7 +996,8 @@ function buildSeries(sale, price, rent, home){
     cur=addD(cur,1);
   }
   return {series,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
-          sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,recapDep,recapTax};
+          sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,recapDep,recapTax,
+          carNaturalDate,carNaturalAmt,carOwedAtEnd};
 }
 
 /* ---------- render ---------- */
@@ -1077,7 +1086,7 @@ function render(){
   const price = priceVal();
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentTotal,myRentTotal,buyDate,buyCC,
-         recapDep,recapTax}=buildSeries(sale,price,rent,home);
+         recapDep,recapTax,carNaturalDate,carOwedAtEnd}=buildSeries(sale,price,rent,home);
   // the chart draws only the selected window; the tiles and the running balance stay whole-series
   const VD = VIEW==='all'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
   const svg=document.getElementById('tl');
@@ -1231,12 +1240,15 @@ function render(){
   set('t_today', fmt(tdD.b), tdD.b<0?'neg':'posv');
   document.getElementById('t_todayd').textContent =
     dd(tdD.d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-  set('t_car', carPayoffDate? (carPayoff>0? fmt(carPayoff):'$0.00') : '—', carPayoff>0?'neg':'');
-  document.getElementById('t_card').textContent = carPayoffDate
-    ? (carPayoffDate>T1? 'falls after Dec 31, 2027'
-       : dd(carPayoffDate).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
-         +' · then no car payment')
-    : 'needs a sale date';
+  // Three outcomes: settled early by a sale, settled inside the window but too late to show,
+  // or never settled here — in which case say what is still owed on Dec 31, 2030.
+  const carSettled = carPayoffDate && carPayoffDate<=T1 && carPayoff>0;
+  set('t_car', carSettled? fmt(carPayoff) : fmt(carOwedAtEnd), 'neg');
+  document.getElementById('t_card').textContent = carSettled
+    ? nice(carPayoffDate)+' · then no car payment'
+    : carPayoffDate
+      ? `payoff ${nice(carPayoffDate)} is past the window — ${fmt0(carOwedAtEnd)} owed Dec 31, 2030`
+      : `still owed Dec 31, 2030 · clears ${nice(carNaturalDate)} if never sold`;
   const endB=DATA[DATA.length-1].b;
   set('t_end', fmt(endB), endB<0?'neg':'posv');
   set('t_rent', rent? fmt(rentTotal):'—', rent?'posv':'');
