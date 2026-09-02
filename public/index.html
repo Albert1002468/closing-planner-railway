@@ -916,7 +916,7 @@ function buildEvents(sale, price, rent, home){
      here and emitted at the very end, once all of them are known. */
   const TAXDUE={};
   const addTax=(taxYear,label,amt)=>{
-    if(!(amt>0)) return;
+    if(!amt) return;               // negative = a credit on that year's return
     (TAXDUE[taxYear]=TAXDUE[taxYear]||[]).push({label,amt:+amt.toFixed(2)});
   };
   const {dates:rentDates, end:rentEnd}=rentSchedule(rent);
@@ -1075,7 +1075,7 @@ function buildEvents(sale, price, rent, home){
   //      interest, property tax, insurance, depreciation, management and maintenance. With the
   //      landlord costs in, $3,600/mo runs a small paper LOSS. Losses are not carried: passive
   //      losses are suspended above ~$150k MAGI, so only profitable years are taxed here. ----
-  let rentNetIncome=0, rentIncTax=0;
+  let rentNetIncome=0, rentIncTax=0, suspendedLoss=0;
   if(rent && rentDates.length){
     const yrs={};
     const BLANK={rent:0,int:0,tax:0,ins:0,dep:0,mgmt:0,maint:0};
@@ -1098,6 +1098,10 @@ function buildEvents(sale, price, rent, home){
         const t=+(net*rent.taxRate/100).toFixed(2);
         rentIncTax+=t;
         addTax(+y, `rental income (${fmt(net)} net)`, t);
+      } else {
+        // Above ~$150k MAGI the $25k special allowance is fully phased out, so a rental loss
+        // is a SUSPENDED passive loss: no benefit now, carried until disposal.
+        suspendedLoss += -net;
       }
     });
   }
@@ -1152,6 +1156,11 @@ function buildEvents(sale, price, rent, home){
     // guard: the template reads rent.rate, which is evaluated before addTax can reject a zero
     if(recapTax>0) addTax(YR(sale),
       `depreciation recapture (${rentDates.length} mo, ${fmt(recapDep)} @ ${rent.rate}%)`, recapTax);
+    // IRC 469(g): disposing of the activity releases every suspended loss in full. Recapturing
+    // the depreciation without releasing the losses it created taxes one side of the same coin.
+    if(suspendedLoss>0) addTax(YR(sale),
+      `suspended passive losses released (${fmt(suspendedLoss)})`,
+      -(suspendedLoss*rent.taxRate/100));
     // Sec.121 excludes the gain ABOVE recapture, and only if you sell in time
     if(sale > SEC121_LAST){
       cgTax = +(Math.max(0, gain-recapDep)*LTCG_RATE/100).toFixed(2);
@@ -1195,6 +1204,7 @@ function buildEvents(sale, price, rent, home){
           myRentTotal, myEnd, buyDate, buyCC, recapDep, recapTax, cgTax,
           carNaturalDate:carNatural.d, carNaturalAmt:carNatural.amt, carOwedAtEnd, midEscEnd,
           rentNetIncome:+rentNetIncome.toFixed(2), rentIncTax:+rentIncTax.toFixed(2),
+          suspendedLoss:+suspendedLoss.toFixed(2),
           rentCostTotal:+(rCost*rentDates.length).toFixed(2)};
 }
 
@@ -1202,7 +1212,7 @@ function buildSeries(sale, price, rent, home, apy){
   const {ev,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,
          recapDep,recapTax,cgTax,carNaturalDate,carNaturalAmt,carOwedAtEnd,
-         midEscEnd,rentNetIncome,rentIncTax,rentCostTotal}=buildEvents(sale,price,rent,home);
+         midEscEnd,rentNetIncome,rentIncTax,rentCostTotal,suspendedLoss}=buildEvents(sale,price,rent,home);
   const map={};
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
   const series=[]; let bal=START_BAL, cur=T0;
@@ -1224,7 +1234,8 @@ function buildSeries(sale, price, rent, home, apy){
   }
   return {series,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
           sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,recapDep,recapTax,cgTax,
-          carNaturalDate,carNaturalAmt,carOwedAtEnd,midEscEnd,rentNetIncome,rentIncTax,rentCostTotal};
+          carNaturalDate,carNaturalAmt,carOwedAtEnd,midEscEnd,rentNetIncome,rentIncTax,rentCostTotal,
+          suspendedLoss};
 }
 
 /* Net worth, not just cash. The bank balance alone ranks scenarios by how long you avoided
@@ -1267,7 +1278,9 @@ function netWorth(res, sale, rent, home){
     const gain = endValue*(1-SELL_COST) - (MID_BASIS - dep);
     const recap= Math.max(0, Math.min(dep, gain))*(rent? rent.rate:0)/100;
     const cg   = T1 > SEC121_LAST ? Math.max(0, gain-dep)*LTCG_RATE/100 : 0;
-    deferred = recap + cg;
+    // That same hypothetical sale would release the suspended losses, so net them off.
+    const released = rent? (res.suspendedLoss||0)*rent.taxRate/100 : 0;
+    deferred = recap + cg - released;
   }
   // 3. debts the cash balance never sees
   const carSettled = res.carPayoffDate && res.carPayoffDate<=T1 && res.carPayoff>0;
@@ -1388,7 +1401,7 @@ function render(){
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentTotal,myRentTotal,buyDate,buyCC,
          recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,midEscEnd,
-         rentNetIncome,rentIncTax,rentCostTotal}=buildSeries(sale,price,rent,home,apy);
+         rentNetIncome,rentIncTax,rentCostTotal,suspendedLoss}=buildSeries(sale,price,rent,home,apy);
   // the chart draws only the selected window; the tiles and the running balance stay whole-series
   const VD = VIEW==='all'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
   const svg=document.getElementById('tl');
@@ -1543,7 +1556,8 @@ function render(){
   document.getElementById('t_thind').textContent = thinDays
     ? `from ${nice(firstThin.d)} · ${DATA.filter(d=>d.b<5000).length} under ${fmt0(5000)}`
     : `never below ${fmt0(CUSHION)}`;
-  const NW = netWorth({series:DATA,buyDate,carPayoffDate,carPayoff,carOwedAtEnd,midEscEnd}, sale, rent, home);
+  const NW = netWorth({series:DATA,buyDate,carPayoffDate,carPayoff,carOwedAtEnd,midEscEnd,
+                       suspendedLoss}, sale, rent, home);
   set('t_nw', fmt(NW.nw), NW.nw<0?'neg':'posv');
   document.getElementById('t_nwd').textContent =
     `cash ${fmt0(NW.cash)}${NW.okc?' · OKC equity '+fmt0(NW.okc):''}`

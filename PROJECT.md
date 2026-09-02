@@ -280,6 +280,38 @@ a $5,000 loss, but after 6 months' depreciation the basis is $418,818, so $1,182
 recapture**, only the excess above it — worth about $3,700 at 3%/yr appreciation. Do not let it
 drive timing.
 
+### Suspended passive losses (rule 22)
+
+The model deducted depreciation every year, let the year net a loss, charged no tax — and then
+**discarded the loss** while still recapturing the full depreciation at sale. That taxes one
+side of the same coin.
+
+At this income the $25,000 special allowance is fully phased out (it tapers to zero between
+$100k and $150k MAGI), so a rental loss is a **suspended passive loss**: no benefit in the
+year it arises, carried until disposal. **IRC 469(g)** then releases every suspended loss in
+full when the activity is disposed of in a taxable sale, deductible against any income.
+
+`suspendedLoss` accumulates in the loss branch and is released in the sale block as a
+**negative** `addTax` entry, so it appears inside the same annual settlement:
+
+```
+Taxes — 2029 return (IRS balance $5,000.00
+                     + depreciation recapture (30 mo, $30,909.09 @ 29.75%) $7,795.46
+                     + suspended passive losses released ($8,382.10) -$2,409.85)
+```
+
+| Term | Suspended loss | Recapture | Released credit | Net at sale |
+|---|---|---|---|---|
+| 9 mo | $2,525.67 | $0 | +$726.13 | **+$726.13** |
+| 18 mo | $5,130.59 | −$477.87 | +$1,475.04 | +$997.17 |
+| 30 mo | $8,382.10 | −$7,795.46 | +$2,409.85 | −$5,385.61 |
+
+`addTax` now accepts negatives, since a credit is a legitimate line on a return. The net-worth
+`deferred` figure nets the release too — the hypothetical sale that justifies valuing the house
+net of selling costs would release the losses as surely as it triggers the recapture.
+
+**Not released without a sale.** Hold the house and the losses stay suspended, which is correct.
+
 ### One tax settlement per year (rule 21)
 
 Tax used to arrive as 2-3 scattered lines a year — the $5,000 IRS balance on Mar 19, rental
@@ -853,7 +885,9 @@ confirm the table's last balance matches the Dec 31 tile.
 - The **landlord insurance premium** is still the owner-occupied $1,329/yr. A DP-3 landlord
   policy typically runs 15-25% more, and because insurance is escrowed that would also feed
   the June escrow analysis — not a one-line change
-- Suspended passive losses are not released at sale, only ignored
+- The suspension assumes MAGI stays above $150k. Below it the $25k special allowance would let
+  you deduct rental losses **currently** instead of at sale — better, and worth checking against
+  a real return
 - Net worth assumes OKC appreciates 3%/yr and sells at 7% cost; neither is modelled as an input
 - Your own rent is modelled without a security deposit, application fees, renter's insurance,
   or a lease-break penalty if a purchase lets you leave early
