@@ -280,6 +280,34 @@ a $5,000 loss, but after 6 months' depreciation the basis is $418,818, so $1,182
 recapture**, only the excess above it — worth about $3,700 at 3%/yr appreciation. Do not let it
 drive timing.
 
+### One tax settlement per year (rule 21)
+
+Tax used to arrive as 2-3 scattered lines a year — the $5,000 IRS balance on Mar 19, rental
+income tax on Apr 15, and recapture plus capital gains on Apr 15 of the year after a sale.
+Everything owed on one year's return now settles as **one line on the following April 15**,
+with every component named:
+
+```
+Taxes — 2029 return (IRS balance $5,000.00 + rental income ($3,558.23 net) $1,022.99
+                     + depreciation recapture (33 mo, $34,000.00 @ 29.75%) $9,649.43)
+```
+
+`addTax(taxYear, label, amount)` collects into `TAXDUE`; the bundle is emitted **last in
+`buildEvents`**, because contributions arrive from three places and the sale block is the
+latest of them. Emit it earlier — as the first attempt did — and the rental and recapture
+amounts are silently missing while the IRS line still appears, which looks like a working
+feature. The stray-line count in the test is what catches that.
+
+The `$5,000` moved from **Mar 19 to Apr 15**, so it is now a tax-year label rather than a
+payment date: `addTax(y-1, …)` inside the `YEARS_AHEAD` loop keeps the same payment *years*.
+
+⚠️ A template literal is evaluated **before** the call that would reject it. `addTax` ignores a
+zero amount, but `` `… @ ${rent.rate}%` `` still threw on a no-rent scenario. Guard the call,
+not just the amount.
+
+A 2030 rental profit's tax would fall due April 2031, outside `T1`, so `E()` drops it — the
+same window edge as the 2030 property-tax bill.
+
 ### Landlord costs (rule 20)
 
 Three inputs, defaulting to the reference figures: **8% management, 1 month/yr vacancy,

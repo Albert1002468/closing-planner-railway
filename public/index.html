@@ -911,6 +911,14 @@ function payoffOn(dateS){
 function buildEvents(sale, price, rent, home){
   const ev=[];
   const E=(d,a,l)=>{ if(d>=T0 && d<=T1) ev.push({d,a:+a.toFixed(2),l}); };
+  /* Everything owed on one year's return settles as ONE line on the following April 15.
+     Contributions arrive from three different places in this function, so they are collected
+     here and emitted at the very end, once all of them are known. */
+  const TAXDUE={};
+  const addTax=(taxYear,label,amt)=>{
+    if(!(amt>0)) return;
+    (TAXDUE[taxYear]=TAXDUE[taxYear]||[]).push({label,amt:+amt.toFixed(2)});
+  };
   const {dates:rentDates, end:rentEnd}=rentSchedule(rent);
   const rented = d => !!rent && d>=rentDates[0] && lt(d,rentEnd);   // tenant in the Midland house
 
@@ -972,7 +980,7 @@ function buildEvents(sale, price, rent, home){
   // ---- rules 3 & 4: the March 2027 bonus and the IRS payment ----
   YEARS_AHEAD.forEach(y=>{
     E(bumpWk(y+'-03-01'), BONUS_NET, `Annual bonus — ${fmt0(BONUS_GROSS)} gross, net of fed/OASDI/Medicare/OK`);
-    E(bumpWk(y+'-03-19'), -IRS_AMT, 'IRS tax payment');
+    addTax(+y-1, 'IRS balance', IRS_AMT);   // paid with the return filed in year y
   });
 
   // ---- sale-dependent ----
@@ -1089,8 +1097,7 @@ function buildEvents(sale, price, rent, home){
       if(net>0){
         const t=+(net*rent.taxRate/100).toFixed(2);
         rentIncTax+=t;
-        E(bumpWk((+y+1)+'-04-15'), -t,
-          `Rental income tax — ${y} (${fmt(net)} net @ ${rent.taxRate}%)`);
+        addTax(+y, `rental income (${fmt(net)} net)`, t);
       }
     });
   }
@@ -1142,13 +1149,13 @@ function buildEvents(sale, price, rent, home){
     const gain = +(realized - (MID_BASIS - recapDep)).toFixed(2);
     // recapture is capped at the actual gain — a sale at a loss owes none
     recapTax = +(Math.max(0, Math.min(recapDep, gain))*(rent? rent.rate:0)/100).toFixed(2);
-    if(recapTax>0) E(bumpWk((YR(sale)+1)+'-04-15'), -recapTax,
-      `Depreciation recapture tax (${rentDates.length} mo rented, ${fmt(recapDep)} @ ${rent.rate}%)`);
+    // guard: the template reads rent.rate, which is evaluated before addTax can reject a zero
+    if(recapTax>0) addTax(YR(sale),
+      `depreciation recapture (${rentDates.length} mo, ${fmt(recapDep)} @ ${rent.rate}%)`, recapTax);
     // Sec.121 excludes the gain ABOVE recapture, and only if you sell in time
     if(sale > SEC121_LAST){
       cgTax = +(Math.max(0, gain-recapDep)*LTCG_RATE/100).toFixed(2);
-      if(cgTax>0) E(bumpWk((YR(sale)+1)+'-04-15'), -cgTax,
-        `Capital gains tax — Sec.121 expired ${SEC121_LAST}`);
+      addTax(YR(sale), `capital gains (Sec.121 expired ${SEC121_LAST})`, cgTax);
     }
   }
 
@@ -1172,6 +1179,16 @@ function buildEvents(sale, price, rent, home){
   const carFull = carWalk(null);
   const carNatural = carFull.paid[carFull.paid.length-1];
   const carOwedAtEnd = carPayoffOn(T1);
+
+  // ---- ONE bundled settlement per tax year, due the following April 15. This must be the
+  //      last thing emitted: contributions arrive from the fixed events, the rental block and
+  //      the sale block, and the sale block is the latest of the three. ----
+  Object.keys(TAXDUE).sort().forEach(ty=>{
+    const parts=TAXDUE[ty];
+    const total=+parts.reduce((a,p)=>a+p.amt,0).toFixed(2);
+    E(bumpWk((+ty+1)+'-04-15'), -total,
+      `Taxes — ${ty} return (${parts.map(p=>p.label+' '+fmt(p.amt)).join(' + ')})`);
+  });
 
   return {ev, payoff, proceeds, loss, vivFee, vivMonthsLeft, carPayoff, carPayoffDate,
           sellerCost, reloOK, rentEnd, rentTotal:rentDates.length*(rent? rent.amt:0),
