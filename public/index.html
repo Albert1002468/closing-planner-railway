@@ -728,7 +728,9 @@ const MID_INS        = 1329.00;       // annual homeowners premium
 const MID_PMI        = 28.75;         // monthly PMI — removable, >20% equity already
 const MID_PMI_OFF    = '2026-11-01';  // first payment without it; needs a written request
 const MID_LAND_TAX   = 567.84;        // 2025 land-only assessment
-const MID_ESC_START  = 316.14;        // ESTIMATE of the escrow balance at T0 (2 months' cushion)
+// Statement balance was $1,135.33 on 2026-09-02, i.e. AFTER the Sept 1 draft posted, so the
+// walk starts one deposit earlier: 1135.33 - 158.07.
+const MID_ESC_START  = 977.26;
 const ESC_CUSHION_MO = 2;
 const ESC_ANALYSIS_M = 6;             // new payment effective with the June draft
 
@@ -1000,7 +1002,11 @@ function buildEvents(sale, price, rent, home){
   if(sale){
     const before=Object.entries(ESC.notes).filter(([d])=>lt(d,sale));
     const escBal = before.length? before[before.length-1][1].bal : MID_ESC_START;
+    // A credit balance is refunded after payoff; a DEFICIENCY is added to the payoff quote and
+    // comes out of the proceeds at closing. Between Jan 2027 and Feb 2028 the account is
+    // underwater, so a sale in that window costs money rather than returning any.
     if(escBal>0) E(addD(sale,30), escBal, 'PennyMac escrow refund (account closed)');
+    else if(escBal<0) E(bumpWk(sale), escBal, 'PennyMac escrow deficiency (added to the payoff)');
   }
   const escVals=Object.values(ESC.notes);
   const midEscEnd = sale? 0 : (escVals.length? escVals[escVals.length-1].bal : MID_ESC_START);

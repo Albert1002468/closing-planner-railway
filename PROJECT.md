@@ -120,7 +120,7 @@ RENT_DEFAULT = {start:'2026-11-01', months:9, amt:3600}
 RAISE_PCT = 0.03, INFL_PCT = 0.03          // both apply from 2028 only
 DEPREC_YEARS = 27.5, RECAP_DEFAULT = {basis:340000, rate:29.75}
 MID_INS = 1329.00, MID_PMI = 28.75, MID_PMI_OFF = '2026-11-01'
-MID_LAND_TAX = 567.84, MID_ESC_START = 316.14   // start balance is an ESTIMATE
+MID_LAND_TAX = 567.84, MID_ESC_START = 977.26   // statement said 1,135.33 AFTER the Sept 1 draft
 ESC_CUSHION_MO = 2, ESC_ANALYSIS_M = 6          // analysis effective with the June draft
 MYRENT_DEFAULT = {start:'2026-09-18', months:12, amt:2200, util:120}
 BUY_DEFAULT = {cash:104462.90, pmt:3180.72, cc:8000}, BUY_LEAD_MONTHS = 2
@@ -224,13 +224,27 @@ over the following year. The resulting payment steps:
 |---|---|---|
 | today | $2,318.72 | |
 | Nov 2026 | $2,289.97 | PMI drops off (>20% equity — **needs a written request**) |
-| **Jun 2027** | **$3,191.78** | first full-house tax bill, +$901.81, incl. $444.91/mo shortage |
-| Jun 2028 | $2,764.50 | shortage cleared |
+| **Jun 2027** | **$3,136.69** | first full-house tax bill, +$846.72, incl. **$389.82/mo shortage** |
+| Jun 2028 | $2,764.50 | shortage cleared, −$372.19 |
 | Jun 2029 | $2,780.17 | appraisal drift |
 | Jun 2030 | $2,796.30 | |
 
-Only a **sale** produces a cash tax event — the seller's prorated share at closing — plus the
-escrow balance refunded ~30 days after payoff.
+`MID_ESC_START` is anchored to a real statement: $1,135.33 on 2026-09-02, which is *after* the
+Sept 1 draft posted, so the walk begins one deposit earlier at $977.26. Change one and the
+other must move with it.
+
+**The account is underwater from Jan 2027 to Feb 2028 — 10 drafts, bottoming at −$3,447.85.**
+A credit balance is refunded ~30 days after payoff, but a **deficiency is added to the payoff
+quote and comes out of the proceeds at closing**. Guarding the refund on `escBal>0` and doing
+nothing else silently dropped that, which made a mid-2027 sale look ~$3,400 cheaper than it is.
+What a sale actually costs at the table:
+
+| Sale | Prorated tax | Escrow | Net |
+|---|---|---|---|
+| Oct 30 2026 | −$3,751.17 | +$1,293.40 refund | **−$2,457.77** |
+| Feb 1 2027 | −$530.46 | −$2,751.13 deficiency | **−$3,281.59** |
+| Jun 1 2027 | −$2,519.70 | −$3,447.85 deficiency | **−$5,967.55** |
+| Jun 1 2028 | −$2,605.23 | +$1,230.04 refund | **−$1,375.19** |
 
 **The bill is charged for the whole calendar year you owned it, not from `T0`.** The projection
 starting 2026-08-14 does not change the fact that the full 2026 bill arrives on Feb 1, 2027 —
@@ -728,8 +742,9 @@ confirm the table's last balance matches the Dec 31 tile.
 - Capital gains beyond depreciation recapture are not modelled, nor is the Sec.121 clock that
   renting eventually breaks (you must have lived there 2 of the last 5 years)
 - 2028-2030 have no statement backing at all — they are the 2027 shapes grown at 3%
-- **`MID_ESC_START` = $316.14 is an estimate** of the escrow balance at T0 — the real figure is
-  on a PennyMac statement and shifts the June 2027 shortage roughly dollar for dollar
+- The **escrow analysis is assumed annual, effective with the June draft.** PennyMac will know
+  the 2026 assessment by autumn 2026 and could run an off-cycle analysis sooner, which would
+  start the increase earlier and make the shortage smaller
 - **PMI removal is assumed effective Nov 1, 2026.** It needs a written request and PennyMac may
   want a BPO or appraisal (~$500). If the house becomes a rental the threshold can rise to 30%
   equity, which would block it
