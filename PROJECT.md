@@ -280,6 +280,43 @@ a $5,000 loss, but after 6 months' depreciation the basis is $418,818, so $1,182
 recapture**, only the excess above it — worth about $3,700 at 3%/yr appreciation. Do not let it
 drive timing.
 
+### Landlord costs (rule 20)
+
+Three inputs, defaulting to the reference figures: **8% management, 1 month/yr vacancy,
+$2,500/yr maintenance**. Emitted as **one combined monthly line** — three separate ones would
+add 90 rows to a 30-month tenancy — with the split spelled out in the label.
+
+```
+vacancy   = rent x vacancyMo/12          (uncollected rent, NOT a deduction)
+collected = rent - vacancy
+mgmt      = collected x mgmtPct          (8% of what is actually collected)
+maint     = maintAnnual/12
+```
+
+Reproduces the reference exactly: $3,000 rent at 8% / 1 mo / $2,500 nets **$2,321.67/mo**.
+
+**Vacancy is not an expense.** It is rent you never receive, so it reduces the Schedule E
+*income* line; management and maintenance are deductions on top of it. Getting that backwards
+double-counts the vacancy.
+
+**These flip the rental from a taxable profit to a paper loss at every term:**
+
+| Term | Gross | Landlord costs | Schedule E | Income tax |
+|---|---|---|---|---|
+| 9 mo | $32,400 | −$6,950.97 | **−$2,525.67** | $0 (was $1,272) |
+| 18 mo | $64,800 | −$13,901.94 | −$5,130.59 | $0 (was $2,522) |
+| 30 mo | $108,000 | −$23,169.90 | −$8,382.10 | $0 (was $4,252) |
+
+⚠️ **Two falsy-zero traps, both real bugs that shipped.** `+value || fallback` and
+`(!isFinite(n) || !n) ? fallback : …` both treat a deliberate **0** as absent, so typing 0 into
+a rate or a maintenance field silently reapplied the default. `numOr()` and `digits()` now test
+for an **empty string** instead. Any new numeric input must do the same.
+
+⚠️ **Seed every key in an accumulator.** The Schedule E `add()` initialiser was missing `mgmt`
+and `maint`, so `undefined += v` produced `NaN` — and the `(a.mgmt||0)` guard turned that NaN
+into a silent **zero**, dropping both deductions from the net. The guard hid the bug rather
+than preventing it; the fix is a complete `BLANK` template and no `||0`.
+
 ### Rental income tax (rule 19)
 
 **Property tax during a tenancy is already paid — it is inside the PennyMac escrow**, which is
@@ -785,9 +822,9 @@ confirm the table's last balance matches the Dec 31 tile.
   confirm with Midland CAD — at 0% appreciation the ranking flips at 1.31x
 - No landlord costs: management fee, vacancy, maintenance, landlord-policy premium. Enter a net
   rent figure (~$2,321.67 for a $3,000 gross at 8% / 1 month vacancy / $2,500 maintenance)
-- Rental **expenses** are still not deducted because they are not modelled: no management fee,
-  vacancy, maintenance or landlord-policy premium. Adding them would lower the taxable profit
-  as well as the cash, so the income tax above is if anything an overestimate
+- The **landlord insurance premium** is still the owner-occupied $1,329/yr. A DP-3 landlord
+  policy typically runs 15-25% more, and because insurance is escrowed that would also feed
+  the June escrow analysis — not a one-line change
 - Suspended passive losses are not released at sale, only ignored
 - Net worth assumes OKC appreciates 3%/yr and sells at 7% cost; neither is modelled as an input
 - Your own rent is modelled without a security deposit, application fees, renter's insurance,

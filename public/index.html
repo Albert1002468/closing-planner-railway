@@ -456,6 +456,21 @@
               </div>
             </div>
             <div class="ctl">
+              <label for="rentmgmt">Property management %</label>
+              <input type="number" id="rentmgmt" min="0" max="30" step="0.5" value="8">
+            </div>
+            <div class="ctl">
+              <label for="rentvac">Vacancy — months per year</label>
+              <input type="number" id="rentvac" min="0" max="6" step="0.5" value="1">
+            </div>
+            <div class="ctl">
+              <label for="rentmaint">Maintenance reserve — per year</label>
+              <div class="moneyfld"><span>$</span>
+                <input type="text" id="rentmaint" inputmode="numeric" autocomplete="off" value="2,500"
+                       aria-label="Annual maintenance reserve">
+              </div>
+            </div>
+            <div class="ctl">
               <label for="rentbasis">Depreciation basis — building only</label>
               <div class="moneyfld"><span>$</span>
                 <input type="text" id="rentbasis" inputmode="numeric" autocomplete="off" value="340,000"
@@ -711,6 +726,9 @@ const RECAP_DEFAULT={basis:340000, rate:29.75};
 // Rental profit is ordinary income. 24% federal + 4.75% Oklahoma for a single filer at this
 // income; drop to 26.75% if you file jointly and land in the 22% bracket.
 const RENT_TAX_DEFAULT=28.75;
+/* Landlord costs. Vacancy is not an expense — it is rent you never collect — so it reduces the
+   Schedule E income line, while management and maintenance are deductions on top. */
+const LANDLORD_DEFAULT={mgmt:8, vacancyMo:1, maint:2500};
 
 /* --- relocation benefit window: 7/20/2026 + one year. The sale must CLOSE on or before
        this date. After it every relo benefit is gone: seller closing costs come out of
@@ -1032,26 +1050,41 @@ function buildEvents(sale, price, rent, home){
     vivFee = +(vivMonthsLeft*VIVINT_RATE*0.5).toFixed(2);
     if(vivFee>0) E(buyout,-vivFee,`Vivint contract buyout (50% of ${vivMonthsLeft} mo x ${fmt(VIVINT_RATE)})`);
   }
-  rentDates.forEach((d,i)=>E(bumpWk(d), rent.amt, `Rent — Midland home (${i+1} of ${rent.months})`));
+  // One combined line per month; three separate ones would add 90 rows to the ledger.
+  const rVac   = rent? +(rent.amt*rent.vacancyMo/12).toFixed(2) : 0;
+  const rColl  = rent? +(rent.amt-rVac).toFixed(2) : 0;
+  const rMgmt  = rent? +(rColl*rent.mgmtPct/100).toFixed(2) : 0;
+  const rMaint = rent? +(rent.maint/12).toFixed(2) : 0;
+  const rCost  = +(rVac+rMgmt+rMaint).toFixed(2);
+  rentDates.forEach((d,i)=>{
+    // Emitted cost-first so the newest-first table shows the rent above its costs on the day.
+    if(rCost>0) E(bumpWk(d), -rCost,
+      `Landlord costs (vacancy ${fmt(rVac)} + management ${fmt(rMgmt)} + maintenance ${fmt(rMaint)})`);
+    E(bumpWk(d), rent.amt, `Rent — Midland home (${i+1} of ${rent.months})`);
+  });
 
-  // ---- Rental income tax (Schedule E). Rent, less mortgage interest, property tax, insurance
-  //      and depreciation. At $3,600/mo this is a PROFIT — a lower rent would run the paper
-  //      loss people assume. Losses are NOT carried: passive losses are suspended above ~$150k
-  //      MAGI and released at sale, so only profitable years are taxed here. ----
+  // ---- Rental income tax (Schedule E). COLLECTED rent (gross less vacancy), then mortgage
+  //      interest, property tax, insurance, depreciation, management and maintenance. With the
+  //      landlord costs in, $3,600/mo runs a small paper LOSS. Losses are not carried: passive
+  //      losses are suspended above ~$150k MAGI, so only profitable years are taxed here. ----
   let rentNetIncome=0, rentIncTax=0;
   if(rent && rentDates.length){
     const yrs={};
-    const add=(y,k,v)=>{ (yrs[y]=yrs[y]||{rent:0,int:0,tax:0,ins:0,dep:0})[k]+=v; };
+    const BLANK={rent:0,int:0,tax:0,ins:0,dep:0,mgmt:0,maint:0};
+    const add=(y,k,v)=>{ (yrs[y]=yrs[y]||{...BLANK})[k]+=v; };
     rentDates.forEach(d=>{
       const y=YR(d);
-      add(y,'rent',rent.amt);
+      add(y,'rent',rColl);          // vacancy is uncollected rent, not a deduction
+      add(y,'mgmt',rMgmt);
+      add(y,'maint',rMaint);
       add(y,'tax',midTaxForYear(y)/12);
       add(y,'ins',MID_INS/12);
       add(y,'dep',rent.basis/DEPREC_YEARS/12);
     });
     sched.forEach(r=>{ if(rented(r.draft)) add(YR(r.draft),'int',r.int); });
     Object.keys(yrs).sort().forEach(y=>{
-      const a=yrs[y], net=+(a.rent-a.int-a.tax-a.ins-a.dep).toFixed(2);
+      const a=yrs[y];
+      const net=+(a.rent-a.int-a.tax-a.ins-a.dep-a.mgmt-a.maint).toFixed(2);
       rentNetIncome+=net;
       if(net>0){
         const t=+(net*rent.taxRate/100).toFixed(2);
@@ -1144,14 +1177,15 @@ function buildEvents(sale, price, rent, home){
           sellerCost, reloOK, rentEnd, rentTotal:rentDates.length*(rent? rent.amt:0),
           myRentTotal, myEnd, buyDate, buyCC, recapDep, recapTax, cgTax,
           carNaturalDate:carNatural.d, carNaturalAmt:carNatural.amt, carOwedAtEnd, midEscEnd,
-          rentNetIncome:+rentNetIncome.toFixed(2), rentIncTax:+rentIncTax.toFixed(2)};
+          rentNetIncome:+rentNetIncome.toFixed(2), rentIncTax:+rentIncTax.toFixed(2),
+          rentCostTotal:+(rCost*rentDates.length).toFixed(2)};
 }
 
 function buildSeries(sale, price, rent, home, apy){
   const {ev,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,
          recapDep,recapTax,cgTax,carNaturalDate,carNaturalAmt,carOwedAtEnd,
-         midEscEnd,rentNetIncome,rentIncTax}=buildEvents(sale,price,rent,home);
+         midEscEnd,rentNetIncome,rentIncTax,rentCostTotal}=buildEvents(sale,price,rent,home);
   const map={};
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
   const series=[]; let bal=START_BAL, cur=T0;
@@ -1173,7 +1207,7 @@ function buildSeries(sale, price, rent, home, apy){
   }
   return {series,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
           sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,recapDep,recapTax,cgTax,
-          carNaturalDate,carNaturalAmt,carOwedAtEnd,midEscEnd,rentNetIncome,rentIncTax};
+          carNaturalDate,carNaturalAmt,carOwedAtEnd,midEscEnd,rentNetIncome,rentIncTax,rentCostTotal};
 }
 
 /* Net worth, not just cash. The bank balance alone ranks scenarios by how long you avoided
@@ -1244,9 +1278,14 @@ function numOr(id,fallback){
   const el=document.getElementById(id), v=+el.value;
   return el.value!=='' && isFinite(v)? v : fallback;
 }
+// Same trap as numOr: `!n` is true for a deliberate 0. Maintenance, utilities and closing
+// costs can all legitimately be zero, so only an EMPTY field falls back. Fields that must be
+// positive say so through their own `min`.
 function digits(id,min,max,fallback){
-  const n=+String(document.getElementById(id).value).replace(/[^0-9]/g,'');
-  return (!isFinite(n)||!n)? fallback : Math.min(max,Math.max(min,n));
+  const raw=String(document.getElementById(id).value).replace(/[^0-9]/g,'');
+  if(raw==='') return fallback;
+  const n=+raw;
+  return isFinite(n)? Math.min(max,Math.max(min,n)) : fallback;
 }
 function readRent(){
   if(!document.getElementById('renton').checked) return null;
@@ -1255,7 +1294,10 @@ function readRent(){
           amt:    digits('rentamt',1,20000,RENT_DEFAULT.amt),
           basis:  digits('rentbasis',0,2000000,RECAP_DEFAULT.basis),
           rate:   numOr('rentrate',RECAP_DEFAULT.rate),
-          taxRate:numOr('renttax',RENT_TAX_DEFAULT)};
+          taxRate:numOr('renttax',RENT_TAX_DEFAULT),
+          mgmtPct:   numOr('rentmgmt',LANDLORD_DEFAULT.mgmt),
+          vacancyMo: numOr('rentvac',LANDLORD_DEFAULT.vacancyMo),
+          maint:     digits('rentmaint',0,100000,LANDLORD_DEFAULT.maint)};
 }
 function readHome(){
   if(!document.getElementById('hown').checked) return {own:true};
@@ -1329,7 +1371,7 @@ function render(){
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentTotal,myRentTotal,buyDate,buyCC,
          recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,midEscEnd,
-         rentNetIncome,rentIncTax}=buildSeries(sale,price,rent,home,apy);
+         rentNetIncome,rentIncTax,rentCostTotal}=buildSeries(sale,price,rent,home,apy);
   // the chart draws only the selected window; the tiles and the running balance stay whole-series
   const VD = VIEW==='all'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
   const svg=document.getElementById('tl');
@@ -1508,11 +1550,11 @@ function render(){
       : `still owed Dec 31, 2030 · clears ${nice(carNaturalDate)} if never sold`;
   const endB=DATA[DATA.length-1].b;
   set('t_end', fmt(endB), endB<0?'neg':'posv');
-  set('t_rent', rent? fmt(rentTotal):'—', rent?'posv':'');
+  const rentNetCash = rent? +(rentTotal - rentCostTotal - rentIncTax).toFixed(2) : 0;
+  set('t_rent', rent? fmt(rentNetCash):'—', rent?'posv':'');
   document.getElementById('t_rentd').textContent = rent
-    ? `${rent.months} × ${fmt0(rent.amt)}`
-      + (rentIncTax? ` · less ${fmt0(rentIncTax)} income tax` : ' · no taxable profit')
-      + ` · free ${nice(rentEndDate)}`
+    ? `${fmt0(rentTotal)} gross − ${fmt0(rentCostTotal)} landlord costs`
+      + (rentIncTax? ` − ${fmt0(rentIncTax)} tax` : ' · paper loss, no tax')
     : 'not renting';
   set('t_recap', recapTax? fmt(-recapTax) : (rent?'$0.00':'—'), recapTax?'neg':'');
   document.getElementById('t_recapd').textContent = recapTax
@@ -1691,11 +1733,12 @@ document.getElementById('hown').addEventListener('change',e=>{
 document.getElementById('hbuy').addEventListener('change',e=>{
   document.getElementById('hbuyfields').hidden = !e.target.checked; render();
 });
-['rentrate','renttax','apprec','cashapy'].forEach(id=>document.getElementById(id).addEventListener('input',render));
+['rentrate','renttax','rentmgmt','rentvac','apprec','cashapy']
+  .forEach(id=>document.getElementById(id).addEventListener('input',render));
 document.getElementById('priceover').addEventListener('change',e=>{
   document.getElementById('pricefields').hidden = !e.target.checked; render();
 });
-['hamt','hutil','hbuycash','hbuypmt','hbuycc','rentbasis','midvalue'].forEach(id=>{
+['hamt','hutil','hbuycash','hbuypmt','hbuycc','rentbasis','midvalue','rentmaint'].forEach(id=>{
   const el=document.getElementById(id), max=(id==='hbuycash'||id==='rentbasis'||id==='midvalue')?2000000:100000;
   el.addEventListener('input',render);
   el.addEventListener('blur',()=>{el.value=digits(id,0,max,0).toLocaleString('en-US');render();});
