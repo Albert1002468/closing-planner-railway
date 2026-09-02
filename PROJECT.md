@@ -115,7 +115,51 @@ CAR_ANCHOR = '2026-08-16', CAR_BAL_AFTER_ANCHOR = 40862.63
 WARRANTY_REFUND = 2300.00, FIANCEE_REPAY = 27000.00
 BONUS_DATE = '2027-03-01', BONUS_GROSS = 30000.00, BONUS_NET = 19680.00
 IRS_DATE = '2027-03-19', IRS_AMT = 5000.00
+RELO_DEADLINE = '2027-07-20', SELLER_COST_PCT = 0.075
+RENT_DEFAULT = {start:'2026-11-01', months:12, amt:2400}
 ```
+
+### The relocation window (rule 8)
+
+7/20/2026 + one year. The sale must **close** on or before `RELO_DEADLINE` — not merely be
+under contract. Past it, `reloOK` is false and **every** relo benefit is gone at once:
+
+| Benefit | Inside the window | After it |
+|---|---|---|
+| Seller closing costs | relo pays | `price x 7.5%` out of pocket at close |
+| Loss-on-sale credit | up to $25,000 | $0 |
+| Interest reimbursement | 2 payments max, while double-mortgaged | stops |
+
+The reimbursement is gated on the **payment date**, not the sale date — it is paid as
+incurred. In practice both payments land Oct/Nov 2026 and the deadline never binds on them.
+
+**One day matters enormously.** At $425k, closing 7/21/2027 instead of 7/20/2027 costs
+**$31,875**; at $380k it costs $28,500 *plus* the $22,500 loss credit — **$51,000** for a
+single day.
+
+### Renting the Midland home (rule 7)
+
+`rentSchedule(rent)` puts income on the **1st of each month** — the first 1st on or after the
+start date, then one a month for the term — weekend-bumped like every other draft. `end` is
+the day the tenancy is up.
+
+While a tenant is in (`rented(d)`), **Cirro, Atmos, Midland water and the Vivint draft stop**.
+The **PennyMac mortgage keeps drafting** — you still owe it — and the rent lands as income
+against it. The Vivint *contract buyout* still fires 7 days before the sale; only the monthly
+$8.58 pauses.
+
+**A sale cannot close before the tenancy ends.** `saleMin` is the rent end date, applied to
+`#saledate.min`. A date parked exactly on that floor **rides it** when the term changes
+(`LAST_SALE_MIN`), but a date the reader chose themselves is left alone, and turning renting
+off never drags the date back to 2026. If the tenancy runs past `T1` the sale input is
+disabled and the scenario becomes "never sold".
+
+### The two rules collide, and the app says so
+
+Renting past 7/20/2027 forfeits the relo benefits. From a **Nov 1 2026** start, **8 months is
+the longest term** that still frees the house inside the window (ends 7/1/2027; 9 months ends
+8/1/2027 and is too late). `#rentwarn` turns red and names the cost the moment the term
+crosses it; `#relowarn` does the same on the sale date itself.
 
 ### Date helpers (all dates are ISO strings, never Date objects in the model)
 
@@ -425,6 +469,8 @@ September (−$4,736, the insurance renewal).
 | Change the assumed property tax | `NH_PMT_27` — recompute as `2538.89 + 1702/12 + tax/12` |
 | Move the escrow step-up date | the `d<'2027-01-01'` test and the `monthly(1,…)` split in `buildEvents` |
 | Change the bonus | `BONUS_GROSS`; `BONUS_NET` re-derives at 65.60% |
+| Change the relo deadline or seller-cost % | `RELO_DEADLINE` / `SELLER_COST_PCT` |
+| Change rent defaults | `RENT_DEFAULT` and the `value` attributes on `#rentstart`/`#rentterm`/`#rentamt` |
 | Resume extra car payments | `carWalk` — add to `CAR_PMT` for the relevant dates |
 | Change the reconcile unlock hour | `RECONCILE_UNLOCK_HOUR` env var (client syncs from `/api/state`) |
 | Change closing costs | the `slices` / `credits` arrays near the top of the script |
@@ -461,6 +507,10 @@ confirm the table's last balance matches the Dec 31 tile.
   which is what last year's $22,512/$32,000 implies, and that OASDI is not yet capped by March
 - The car payoff assumes the lender quotes plain principal + per-diem with **no early-payoff
   fee**; get a written 10-day payoff quote before wiring
+- Rent is modelled **gross**: no property-management fee (typically 8-10%), no vacancy
+  allowance, no landlord-policy premium increase, no maintenance reserve, and no security
+  deposit in or out. Enter a net figure if you want those covered
+- Renting is assumed not to change the relo deadline itself, only whether you can meet it
 - The $2,300 warranty/gap refund is assumed to arrive as cash one month after payoff — some
   lenders instead apply it straight to the loan, which would reduce the payoff rather than
   pay you back
