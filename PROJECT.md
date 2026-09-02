@@ -116,7 +116,7 @@ WARRANTY_REFUND = 2300.00, FIANCEE_REPAY = 27000.00
 BONUS_DATE = '2027-03-01', BONUS_GROSS = 30000.00, BONUS_NET = 19680.00
 IRS_DATE = '2027-03-19', IRS_AMT = 5000.00
 RELO_DEADLINE = '2027-07-20', SELLER_COST_PCT = 0.075
-RENT_DEFAULT = {start:'2026-11-01', months:9, amt:3300}
+RENT_DEFAULT = {start:'2026-10-01', months:6, amt:3300}
 RAISE_PCT = 0.03, INFL_PCT = 0.03          // both apply from 2028 only
 DEPREC_YEARS = 27.5, RECAP_DEFAULT = {basis:373210, rate:29.75}   // Midland CAD improvements line
 LANDLORD_DEFAULT = {mgmt:10, vacancyMo:1, maint:2500}
@@ -150,6 +150,9 @@ because the lease is still owed.
 **Buyer closing costs (`buy.cc`, default $8,000) are charged only when the purchase closes after
 `RELO_DEADLINE`** — inside the window relo absorbs them, which is why they never appear in the
 donut. They are an input because they vary.
+
+The rent-out default now frees the house **Apr 1, 2027**, comfortably inside the relo window,
+so switching it on shows the green note rather than the red one it used to.
 
 **The lease length decides whether a purchase can beat the deadline.** From a 9/18/2026 start,
 **11 months is the longest lease** that still allows a closing inside the window: it ends
