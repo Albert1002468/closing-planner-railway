@@ -119,7 +119,7 @@ RELO_DEADLINE = '2027-07-20', SELLER_COST_PCT = 0.075
 RENT_DEFAULT = {start:'2026-10-01', months:6, amt:3300}
 RAISE_PCT = 0.03, INFL_PCT = 0.03          // both apply from 2028 only
 DEPREC_YEARS = 27.5, RECAP_DEFAULT = {basis:373210, rate:29.75}   // Midland CAD improvements line
-LANDLORD_DEFAULT = {mgmt:10, vacancyMo:1, maint:2500}
+LANDLORD_DEFAULT = {mgmt:10, vacancyMo:1, maint:2500}, RENT_ESCAL_DEFAULT = 3
 MID_INS = 1329.00, MID_PMI = 28.75, MID_PMI_OFF = '2026-11-01'
 MID_LAND_TAX = 567.84, MID_ESC_START = 977.26   // statement said 1,135.33 AFTER the Sept 1 draft
 ESC_CUSHION_MO = 2, ESC_ANALYSIS_M = 6          // analysis effective with the June draft
@@ -344,6 +344,28 @@ not just the amount.
 
 A 2030 rental profit's tax would fall due April 2031, outside `T1`, so `E()` drops it — the
 same window edge as the 2030 property-tax bill.
+
+### Rent escalation (rule 23)
+
+Rent steps up **on each lease anniversary**, `Math.floor(i/12)` on the payment index — so a
+term under 13 months never sees one, and at the 6-month default the setting is **provably
+inert** (0%, 3% and 10% all produce identical output).
+
+`rentRows` replaced the four flat scalars: one row per payment carrying its own escalated rent,
+vacancy, collected, management and maintenance. **The ledger and the Schedule E read the same
+rows**, so an escalating rent cannot show one figure in the table and another in the tax
+calculation — which is exactly what parallel scalars would have allowed.
+
+Maintenance is a flat annual reserve and deliberately does **not** step; only the
+percentage-based costs follow the rent.
+
+| Term | 0% | 3% | 5% |
+|---|---|---|---|
+| 18 mo gross | $59,400.00 | $59,994.00 | $60,390.00 |
+| 30 mo gross | $99,000.00 | **$101,393.82** | $103,009.50 |
+
+Payment 12 is $3,300.00 and payment 13 is $3,399.00 — the step lands on the anniversary, not on
+a calendar year, and the ledger label says `· escalated 3%/yr` once it applies.
 
 ### Landlord costs (rule 20)
 

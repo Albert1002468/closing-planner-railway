@@ -456,6 +456,10 @@
               </div>
             </div>
             <div class="ctl">
+              <label for="rentescal">Rent increase %/yr — on each lease anniversary</label>
+              <input type="number" id="rentescal" min="0" max="20" step="0.25" value="3">
+            </div>
+            <div class="ctl">
               <label for="rentmgmt">Property management %</label>
               <input type="number" id="rentmgmt" min="0" max="30" step="0.5" value="10">
             </div>
@@ -730,6 +734,8 @@ const RENT_TAX_DEFAULT=28.75;
 /* Landlord costs. Vacancy is not an expense — it is rent you never collect — so it reduces the
    Schedule E income line, while management and maintenance are deductions on top. */
 const LANDLORD_DEFAULT={mgmt:10, vacancyMo:1, maint:2500};
+// Rent steps up on each LEASE anniversary, so a term under 13 months never sees one.
+const RENT_ESCAL_DEFAULT=3;
 
 /* --- relocation benefit window: 7/20/2026 + one year. The sale must CLOSE on or before
        this date. After it every relo benefit is gone: seller closing costs come out of
@@ -1059,17 +1065,25 @@ function buildEvents(sale, price, rent, home){
     vivFee = +(vivMonthsLeft*VIVINT_RATE*0.5).toFixed(2);
     if(vivFee>0) E(buyout,-vivFee,`Vivint contract buyout (50% of ${vivMonthsLeft} mo x ${fmt(VIVINT_RATE)})`);
   }
-  // One combined line per month; three separate ones would add 90 rows to the ledger.
-  const rVac   = rent? +(rent.amt*rent.vacancyMo/12).toFixed(2) : 0;
-  const rColl  = rent? +(rent.amt-rVac).toFixed(2) : 0;
-  const rMgmt  = rent? +(rColl*rent.mgmtPct/100).toFixed(2) : 0;
-  const rMaint = rent? +(rent.maint/12).toFixed(2) : 0;
-  const rCost  = +(rVac+rMgmt+rMaint).toFixed(2);
-  rentDates.forEach((d,i)=>{
+  /* One row per payment, because the rent escalates on each lease anniversary and the
+     percentage-based costs move with it. Both the ledger and the Schedule E read these same
+     rows, so they cannot drift apart. Maintenance is a flat annual reserve and does not step. */
+  const rentRows = rentDates.map((d,i)=>{
+    const amt  = +(rent.amt*Math.pow(1+rent.escal/100, Math.floor(i/12))).toFixed(2);
+    const vac  = +(amt*rent.vacancyMo/12).toFixed(2);
+    const coll = +(amt-vac).toFixed(2);
+    const mgmt = +(coll*rent.mgmtPct/100).toFixed(2);
+    const maint= +(rent.maint/12).toFixed(2);
+    return {d, i, amt, vac, coll, mgmt, maint, cost:+(vac+mgmt+maint).toFixed(2)};
+  });
+  const rentGross = +rentRows.reduce((a,r)=>a+r.amt,0).toFixed(2);
+  const rentCostTotal = +rentRows.reduce((a,r)=>a+r.cost,0).toFixed(2);
+  rentRows.forEach(r=>{
     // Emitted cost-first so the newest-first table shows the rent above its costs on the day.
-    if(rCost>0) E(bumpWk(d), -rCost,
-      `Landlord costs (vacancy ${fmt(rVac)} + management ${fmt(rMgmt)} + maintenance ${fmt(rMaint)})`);
-    E(bumpWk(d), rent.amt, `Rent — Midland home (${i+1} of ${rent.months})`);
+    if(r.cost>0) E(bumpWk(r.d), -r.cost,
+      `Landlord costs (vacancy ${fmt(r.vac)} + management ${fmt(r.mgmt)} + maintenance ${fmt(r.maint)})`);
+    E(bumpWk(r.d), r.amt, `Rent — Midland home (${r.i+1} of ${rent.months})`
+      + (r.amt!==rent.amt? ` · escalated ${rent.escal}%/yr` : ''));
   });
 
   // ---- Rental income tax (Schedule E). COLLECTED rent (gross less vacancy), then mortgage
@@ -1081,11 +1095,11 @@ function buildEvents(sale, price, rent, home){
     const yrs={};
     const BLANK={rent:0,int:0,tax:0,ins:0,dep:0,mgmt:0,maint:0};
     const add=(y,k,v)=>{ (yrs[y]=yrs[y]||{...BLANK})[k]+=v; };
-    rentDates.forEach(d=>{
-      const y=YR(d);
-      add(y,'rent',rColl);          // vacancy is uncollected rent, not a deduction
-      add(y,'mgmt',rMgmt);
-      add(y,'maint',rMaint);
+    rentRows.forEach(r=>{
+      const y=YR(r.d);
+      add(y,'rent',r.coll);         // vacancy is uncollected rent, not a deduction
+      add(y,'mgmt',r.mgmt);
+      add(y,'maint',r.maint);
       add(y,'tax',midTaxForYear(y)/12);
       add(y,'ins',MID_INS/12);
       add(y,'dep',rent.basis/DEPREC_YEARS/12);
@@ -1201,12 +1215,12 @@ function buildEvents(sale, price, rent, home){
   });
 
   return {ev, payoff, proceeds, loss, vivFee, vivMonthsLeft, carPayoff, carPayoffDate,
-          sellerCost, reloOK, rentEnd, rentTotal:rentDates.length*(rent? rent.amt:0),
+          sellerCost, reloOK, rentEnd, rentTotal:rentGross,
           myRentTotal, myEnd, buyDate, buyCC, recapDep, recapTax, cgTax,
           carNaturalDate:carNatural.d, carNaturalAmt:carNatural.amt, carOwedAtEnd, midEscEnd,
           rentNetIncome:+rentNetIncome.toFixed(2), rentIncTax:+rentIncTax.toFixed(2),
           suspendedLoss:+suspendedLoss.toFixed(2),
-          rentCostTotal:+(rCost*rentDates.length).toFixed(2)};
+          rentCostTotal};
 }
 
 function buildSeries(sale, price, rent, home, apy){
@@ -1326,6 +1340,7 @@ function readRent(){
           basis:  digits('rentbasis',0,2000000,RECAP_DEFAULT.basis),
           rate:   numOr('rentrate',RECAP_DEFAULT.rate),
           taxRate:numOr('renttax',RENT_TAX_DEFAULT),
+          escal:  numOr('rentescal',RENT_ESCAL_DEFAULT),
           mgmtPct:   numOr('rentmgmt',LANDLORD_DEFAULT.mgmt),
           vacancyMo: numOr('rentvac',LANDLORD_DEFAULT.vacancyMo),
           maint:     digits('rentmaint',0,100000,LANDLORD_DEFAULT.maint)};
@@ -1769,7 +1784,7 @@ document.getElementById('hown').addEventListener('change',e=>{
 document.getElementById('hbuy').addEventListener('change',e=>{
   document.getElementById('hbuyfields').hidden = !e.target.checked; render();
 });
-['rentrate','renttax','rentmgmt','rentvac','apprec','cashapy']
+['rentrate','renttax','rentmgmt','rentvac','rentescal','apprec','cashapy']
   .forEach(id=>document.getElementById(id).addEventListener('input',render));
 document.getElementById('priceover').addEventListener('change',e=>{
   document.getElementById('pricefields').hidden = !e.target.checked; render();
