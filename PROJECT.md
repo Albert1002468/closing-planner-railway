@@ -116,9 +116,10 @@ WARRANTY_REFUND = 2300.00, FIANCEE_REPAY = 27000.00
 BONUS_DATE = '2027-03-01', BONUS_GROSS = 30000.00, BONUS_NET = 19680.00
 IRS_DATE = '2027-03-19', IRS_AMT = 5000.00
 RELO_DEADLINE = '2027-07-20', SELLER_COST_PCT = 0.075
-RENT_DEFAULT = {start:'2026-11-01', months:9, amt:3600}
+RENT_DEFAULT = {start:'2026-11-01', months:9, amt:3300}
 RAISE_PCT = 0.03, INFL_PCT = 0.03          // both apply from 2028 only
-DEPREC_YEARS = 27.5, RECAP_DEFAULT = {basis:340000, rate:29.75}
+DEPREC_YEARS = 27.5, RECAP_DEFAULT = {basis:373210, rate:29.75}   // Midland CAD improvements line
+LANDLORD_DEFAULT = {mgmt:10, vacancyMo:1, maint:2500}
 MID_INS = 1329.00, MID_PMI = 28.75, MID_PMI_OFF = '2026-11-01'
 MID_LAND_TAX = 567.84, MID_ESC_START = 977.26   // statement said 1,135.33 AFTER the Sept 1 draft
 ESC_CUSHION_MO = 2, ESC_ANALYSIS_M = 6          // analysis effective with the June draft
@@ -185,7 +186,8 @@ forces the sale past the end of the tenancy, months rented always equals the ful
 dep = basis / 27.5 / 12 x months        tax = dep x rate      due Apr 15 of the following year
 ```
 
-Default basis $340,000 (building only, land excluded) and **29.75% = 25% federal unrecaptured
+Default basis **$373,210 — the improvements line from the Midland CAD assessment** (land is
+never depreciable) and **29.75% = 25% federal unrecaptured
 Sec.1250 + 4.75% Oklahoma**. Oklahoma taxes its residents on all income wherever earned, so the
 gain on a Texas house is still OK-taxable, and because **Texas levies no income tax there is no
 resident credit to offset it**. Oklahoma's capital-gains deduction only covers OK-located
@@ -342,8 +344,7 @@ same window edge as the 2030 property-tax bill.
 
 ### Landlord costs (rule 20)
 
-Three inputs, defaulting to the reference figures: **8% management, 1 month/yr vacancy,
-$2,500/yr maintenance**. Emitted as **one combined monthly line** — three separate ones would
+Three inputs, defaulting to **10% management, 1 month/yr vacancy, $2,500/yr maintenance**. Emitted as **one combined monthly line** — three separate ones would
 add 90 rows to a 30-month tenancy — with the split spelled out in the label.
 
 ```

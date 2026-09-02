@@ -451,13 +451,13 @@
             <div class="ctl">
               <label for="rentamt">Monthly rent — paid the 1st</label>
               <div class="moneyfld"><span>$</span>
-                <input type="text" id="rentamt" inputmode="numeric" autocomplete="off" value="3,600"
+                <input type="text" id="rentamt" inputmode="numeric" autocomplete="off" value="3,300"
                        aria-label="Monthly rent in dollars">
               </div>
             </div>
             <div class="ctl">
               <label for="rentmgmt">Property management %</label>
-              <input type="number" id="rentmgmt" min="0" max="30" step="0.5" value="8">
+              <input type="number" id="rentmgmt" min="0" max="30" step="0.5" value="10">
             </div>
             <div class="ctl">
               <label for="rentvac">Vacancy — months per year</label>
@@ -473,7 +473,7 @@
             <div class="ctl">
               <label for="rentbasis">Depreciation basis — building only</label>
               <div class="moneyfld"><span>$</span>
-                <input type="text" id="rentbasis" inputmode="numeric" autocomplete="off" value="340,000"
+                <input type="text" id="rentbasis" inputmode="numeric" autocomplete="off" value="373,210"
                        aria-label="Building basis for depreciation">
               </div>
             </div>
@@ -722,13 +722,14 @@ const YEARS_AHEAD=['2027','2028','2029','2030'];
    unrecaptured Sec.1250 plus Oklahoma's 4.75% — as an OK resident the gain is taxable there
    even though the house is in Texas, and Texas levies nothing to credit against. */
 const DEPREC_YEARS=27.5;
-const RECAP_DEFAULT={basis:340000, rate:29.75};
+// Basis is the improvements line from the Midland CAD assessment — land is not depreciable.
+const RECAP_DEFAULT={basis:373210, rate:29.75};
 // Rental profit is ordinary income. 24% federal + 4.75% Oklahoma for a single filer at this
 // income; drop to 26.75% if you file jointly and land in the 22% bracket.
 const RENT_TAX_DEFAULT=28.75;
 /* Landlord costs. Vacancy is not an expense — it is rent you never collect — so it reduces the
    Schedule E income line, while management and maintenance are deductions on top. */
-const LANDLORD_DEFAULT={mgmt:8, vacancyMo:1, maint:2500};
+const LANDLORD_DEFAULT={mgmt:10, vacancyMo:1, maint:2500};
 
 /* --- relocation benefit window: 7/20/2026 + one year. The sale must CLOSE on or before
        this date. After it every relo benefit is gone: seller closing costs come out of
@@ -772,7 +773,7 @@ const RELO_DEADLINE='2027-07-20';
 const SELLER_COST_PCT=0.075;                // 6% commission + ~1.5% title/escrow/misc
 
 /* --- renting the Midland home out --- */
-const RENT_DEFAULT={start:'2026-11-01', months:9, amt:3600};
+const RENT_DEFAULT={start:'2026-11-01', months:9, amt:3300};
 
 /* --- renting somewhere yourself instead of closing on Sept 18 --- */
 const MYRENT_DEFAULT={start:'2026-09-18', months:12, amt:2200, util:120};
@@ -1073,7 +1074,7 @@ function buildEvents(sale, price, rent, home){
 
   // ---- Rental income tax (Schedule E). COLLECTED rent (gross less vacancy), then mortgage
   //      interest, property tax, insurance, depreciation, management and maintenance. With the
-  //      landlord costs in, $3,600/mo runs a small paper LOSS. Losses are not carried: passive
+  //      landlord costs in, this runs a paper LOSS at these rents. Losses are not carried: passive
   //      losses are suspended above ~$150k MAGI, so only profitable years are taxed here. ----
   let rentNetIncome=0, rentIncTax=0, suspendedLoss=0;
   if(rent && rentDates.length){
@@ -1588,9 +1589,13 @@ function render(){
       + (rentIncTax? ` − ${fmt0(rentIncTax)} tax` : ' · paper loss, no tax')
     : 'not renting';
   set('t_recap', recapTax? fmt(-recapTax) : (rent?'$0.00':'—'), recapTax?'neg':'');
-  document.getElementById('t_recapd').textContent = recapTax
-    ? `${fmt0(recapDep)} depreciation @ ${rent.rate}% · due Apr ${YR(sale)+1}`
-    : (rent? 'no sale — nothing to recapture' : 'only applies if you rent it out');
+  // Zero recapture has two very different causes: no sale yet, or a sale whose gain is too
+  // small to recapture against. Saying "no sale" when a sale is set was simply wrong.
+  document.getElementById('t_recapd').textContent =
+    !rent ? 'only applies if you rent it out'
+    : recapTax ? `${fmt0(recapDep)} depreciation @ ${rent.rate}% · due Apr ${YR(sale)+1}`
+    : sale ? `capped at the gain — none owed on a ${nice(sale)} sale`
+    : 'no sale set — nothing to recapture yet';
   set('t_relo', sale? (reloOK? '$0.00' : fmt(-sellerCost)) : '—',
       sale? (reloOK?'posv':'neg') : '');
   document.getElementById('t_relod').textContent = !sale
