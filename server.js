@@ -21,7 +21,7 @@ const PASSCODE = process.env.RECONCILE_PASSCODE || '';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const TZ = 'America/Chicago';
 const RANGE_START = '2026-08-14';
-const RANGE_END = '2027-12-31';
+const RANGE_END = '2030-12-31';
 const UNLOCK_HOUR = Number(process.env.RECONCILE_UNLOCK_HOUR ?? 19); // today unlocks at 7pm local
 
 if (!PASSCODE) console.warn('[warn] RECONCILE_PASSCODE not set — saving is disabled.');

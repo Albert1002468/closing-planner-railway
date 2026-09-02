@@ -2,7 +2,7 @@
 
 A personal cash-flow planner for a new-home closing on **Fri Sept 18, 2026** and the
 sale of the current (Midland, TX) home. Projects a daily bank balance from **2026-08-14
-through 2027-12-31**, driven by two user inputs (home sale date + price), and lets the
+through 2030-12-31**, driven by two user inputs (home sale date + price), and lets the
 owner lock in permanent daily reconciliations against the real account balance.
 
 Built from ~7 months of Wells Fargo statements + two Coterra paystubs. Deployed on Railway.
@@ -71,7 +71,7 @@ can't bypass them):
 - today rejected before `UNLOCK_HOUR` local
 - past dates with no entry always allowed (no time restriction)
 - one entry per date, ever — duplicates 409
-- date must fall inside 2026-08-14 … 2027-12-31
+- date must fall inside 2026-08-14 … 2030-12-31
 - 8 failed passcode attempts from one IP ⇒ 15-minute lockout
 - passcode compared with `crypto.timingSafeEqual`
 
@@ -103,7 +103,7 @@ stat tiles, and rewrites the transaction table. Called on every input change and
 
 ```js
 START_BAL   = 99026.57      // available balance, morning of 8/14/26
-T0, T1      = '2026-08-14', '2027-12-31'
+T0, T1      = '2026-08-14', '2030-12-31'   // 1,601 days, 53 table pages
 PAY10, PAY5 = 3830.28, 3557.15   // net paycheck w/ 10 and 5 OT hrs
 MTG_BAL_AFTER_AUG = 336756.31    // current-home principal after Aug payment
 MTG_RATE = 0.05375, MTG_PI = 2131.90, MTG_PMT = 2318.72
@@ -117,6 +117,8 @@ BONUS_DATE = '2027-03-01', BONUS_GROSS = 30000.00, BONUS_NET = 19680.00
 IRS_DATE = '2027-03-19', IRS_AMT = 5000.00
 RELO_DEADLINE = '2027-07-20', SELLER_COST_PCT = 0.075
 RENT_DEFAULT = {start:'2026-11-01', months:9, amt:3600}
+RAISE_PCT = 0.03, INFL_PCT = 0.03          // both apply from 2028 only
+DEPREC_YEARS = 27.5, RECAP_DEFAULT = {basis:340000, rate:29.75}
 MYRENT_DEFAULT = {start:'2026-09-18', months:12, amt:2200, util:120}
 BUY_DEFAULT = {cash:104462.90, pmt:3180.72, cc:8000}, BUY_LEAD_MONTHS = 2
 ```
@@ -149,6 +151,45 @@ donut. They are an input because they vary.
 **11 months is the longest lease** that still allows a closing inside the window: it ends
 9/1/2027, so the earliest purchase is 7/1/2027. Twelve months ends 10/1/2027 and forces an
 8/1/2027 purchase — two weeks late, $8,000.
+
+### Growth in the out-years (rules 10-11)
+
+**2026 and 2027 are modelled from statements and must never move.** `inflAt(d)` and `payAt(d)`
+both raise `(1+pct)` to `max(0, year-2027)`, so they return exactly **1x for 2027** and the whole
+near-term projection is untouched — the regression guard is that Sept 17 2026 is still
+$100,194.85 and Dec 31 2027 still $96,709.57.
+
+- **Pay** rises 3%/yr from the first cheque of 2028: $3,557.15 -> $3,663.86 -> $3,773.78 -> $3,886.99.
+- **Costs** inflate 3%/yr from 2028 — utilities, insurance, subscriptions and the **escrow half**
+  of the new-home payment (`nhPmtAt` = fixed `NH_PI` + inflating `NH_ESC_27`). The mortgage P&I
+  and the car payment are contractual and never inflate.
+- **Bonus** is flat $30,000 gross / $19,680 net each March, with the **$5,000 IRS payment**
+  alongside it, 2027 through 2030.
+- `seasonal(days, amts, fromY, toY)` carries the 2027 utility shapes forward rather than
+  hand-typing 36 more rows; 2026/2027 literals stay literal.
+- Vivint drafts are guarded by `vivintMonthsLeft(d)>0` — the 60-month term from 6/21/2025 runs
+  out mid-2030 and would otherwise bill forever.
+
+Approximating a gross raise as an equal net raise is fine at the margin (62.35% marginal take-home)
+but ignores bracket drift.
+
+### Depreciation recapture (rule 12)
+
+Only bites when the Midland home is **rented and then sold**. Because the sale floor already
+forces the sale past the end of the tenancy, months rented always equals the full term:
+
+```
+dep = basis / 27.5 / 12 x months        tax = dep x rate      due Apr 15 of the following year
+```
+
+Default basis $340,000 (building only, land excluded) and **29.75% = 25% federal unrecaptured
+Sec.1250 + 4.75% Oklahoma**. Oklahoma taxes its residents on all income wherever earned, so the
+gain on a Texas house is still OK-taxable, and because **Texas levies no income tax there is no
+resident credit to offset it**. Oklahoma's capital-gains deduction only covers OK-located
+property, so it does not help either. Both basis and rate are inputs — confirm with a CPA.
+
+Capital gain beyond the recapture is **not** modelled: the loss-on-sale credit implies the home
+is worth less than was paid, and Sec.121 would cover a modest gain anyway.
 
 ### The relocation window (rule 8)
 
@@ -505,6 +546,8 @@ September (−$4,736, the insurance renewal).
 | Change the relo deadline or seller-cost % | `RELO_DEADLINE` / `SELLER_COST_PCT` |
 | Change rent defaults | `RENT_DEFAULT` / `MYRENT_DEFAULT` / `BUY_DEFAULT` **and** the matching `value` attributes in the markup |
 | Change the purchase lead time | `BUY_LEAD_MONTHS` |
+| Change raises or inflation | `RAISE_PCT` / `INFL_PCT` (both keyed off 2027 as the base year) |
+| Extend past 2030 | `T1`, `RANGE_END`, the `seasonal(...)` end years, `monthly(...)` ranges, `YEARS_AHEAD`, `mortgageSchedule`, a `.vbtn`, and the date `max` attributes |
 | Resume extra car payments | `carWalk` — add to `CAR_PMT` for the relevant dates |
 | Change the reconcile unlock hour | `RECONCILE_UNLOCK_HOUR` env var (client syncs from `/api/state`) |
 | Change closing costs | the `slices` / `credits` arrays near the top of the script |
@@ -545,6 +588,10 @@ confirm the table's last balance matches the Dec 31 tile.
   allowance, no landlord-policy premium increase, no maintenance reserve, and no security
   deposit in or out. Enter a net figure if you want those covered
 - Renting is assumed not to change the relo deadline itself, only whether you can meet it
+- A 3% gross raise is applied as a 3% *net* raise; bracket drift is ignored
+- Capital gains beyond depreciation recapture are not modelled, nor is the Sec.121 clock that
+  renting eventually breaks (you must have lived there 2 of the last 5 years)
+- 2028-2030 have no statement backing at all — they are the 2027 shapes grown at 3%
 - Your own rent is modelled without a security deposit, application fees, renter's insurance,
   or a lease-break penalty if a purchase lets you leave early
 - A later purchase reuses the current deal's figures as defaults ($104,463 cash, $3,181/mo).
