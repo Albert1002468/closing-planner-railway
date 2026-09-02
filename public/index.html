@@ -362,7 +362,7 @@
     </details>
 
     <details class="foot"><summary>Assumptions &amp; sources</summary>
-      <p>Projection from your statements + stated plans; Closing Disclosure and actual payoff quote govern. Assumes relo covers commissions/seller costs (net = price − payoff), proceeds land on the sale date, loss credit 14 days later, AutoFortiva settled in full 8/20/26, the Vivint contract bought out 7 days before the sale at 50% of the months remaining on the 6/21/25 60-month term (drafts stop after that), Midland utilities end at sale with one final trailing bill, and the 6-mo car insurance renewal ($940) recurs each March and September. Car payoff uses simple interest at 6.74% actual/365 from the $40,862.63 principal standing after the 8/16/26 payment, with no further $500 extra payments. The new-home payment steps from $2,691.97 to $3,180.72 on Jan 1, 2027 (escrow re-set for $6,000/yr property tax, no shortage spread). The March bonus is shown net at 65.60% of gross (22% federal supplemental + 6.2% + 1.45% + 4.75% Oklahoma) and repeats each year with the $5,000 IRS payment. 2026 and 2027 are modelled from statements; from 2028 pay rises 3%/yr and costs inflate 3%/yr (not the mortgage P&amp;I or car payment, which are fixed). Depreciation recapture on a rented-then-sold home is straight line over 27.5 years at 29.75% (25% federal + 4.75% Oklahoma, which applies because you are an OK resident even though the house is in Texas). Utilities and the $6,000 tax figure are estimates.</p>
+      <p>Projection from your statements + stated plans; Closing Disclosure and actual payoff quote govern. Assumes relo covers commissions/seller costs (net = price − payoff), proceeds land on the sale date, loss credit 14 days later, AutoFortiva settled in full 8/20/26, the Vivint contract bought out 7 days before the sale at 50% of the months remaining on the 6/21/25 60-month term (drafts stop after that), Midland utilities end at sale with one final trailing bill, and the 6-mo car insurance renewal ($940) recurs each March and September. Car payoff uses simple interest at 6.74% actual/365 from the $40,862.63 principal standing after the 8/16/26 payment, with no further $500 extra payments. The new-home payment steps from $2,691.97 to $3,180.72 on Jan 1, 2027 (escrow re-set for $6,000/yr property tax, no shortage spread). The Midland escrow was set at the mid-May 2025 closing against a bare-lot assessment, so it funds insurance ($1,329/yr) and land-only tax ($567.84/yr) plus $28.75 PMI; the first assessment including the house is billed Jan 31, 2027, and PennyMac's annual analysis resets the payment from June 2027 with the shortage spread over 12 months. The March bonus is shown net at 65.60% of gross (22% federal supplemental + 6.2% + 1.45% + 4.75% Oklahoma) and repeats each year with the $5,000 IRS payment. 2026 and 2027 are modelled from statements; from 2028 pay rises 3%/yr and costs inflate 3%/yr (not the mortgage P&amp;I or car payment, which are fixed). Depreciation recapture on a rented-then-sold home is straight line over 27.5 years at 29.75% (25% federal + 4.75% Oklahoma, which applies because you are an OK resident even though the house is in Texas). Utilities and the $6,000 tax figure are estimates.</p>
     </details>
   </div>
 
@@ -716,6 +716,22 @@ const MID_TAX_NONHS   = 5874.36;      // 1.30x ESTIMATE — confirm with Midland
 const HOMESTEAD_LAST_YEAR = 2026;
 let MID_APPREC        = 0.03;         // appraised value tracks the market; set from the UI
 
+/* --- PennyMac escrow. The house was built and bought mid-May 2025, so the escrow was set
+       against a Jan 1 2025 assessment of BARE LAND. That is the whole reason $186.82/mo looks
+       impossibly small: it funds insurance plus land-only tax, and nothing else.
+         186.82 = 28.75 PMI + 110.75 insurance (1,329/yr) + 47.32 land tax (567.84/yr)
+       Deposits of 158.07/mo against disbursements of 158.07/mo — exact equilibrium today.
+       The first assessment including the house is Jan 1 2026, billed Jan 31 2027. That single
+       disbursement blows the account open, and the annual analysis resets the payment from the
+       following June with the shortage spread over 12 months. --- */
+const MID_INS        = 1329.00;       // annual homeowners premium
+const MID_PMI        = 28.75;         // monthly PMI — removable, >20% equity already
+const MID_PMI_OFF    = '2026-11-01';  // first payment without it; needs a written request
+const MID_LAND_TAX   = 567.84;        // 2025 land-only assessment
+const MID_ESC_START  = 316.14;        // ESTIMATE of the escrow balance at T0 (2 months' cushion)
+const ESC_CUSHION_MO = 2;
+const ESC_ANALYSIS_M = 6;             // new payment effective with the June draft
+
 /* --- what the house is worth and what it cost, so a gain can be computed at all --- */
 const MID_BASIS   = 425000;           // what you paid
 let MID_VALUE_TODAY   = 420000;
@@ -793,6 +809,37 @@ function seasonal(days, amts, fromY, toY){
     out.push([d, +(amts[m]*inflAt(d)).toFixed(2)]);
   }
   return out;
+}
+
+const midTaxForYear = y => +((y<=HOMESTEAD_LAST_YEAR? MID_TAX_HS : MID_TAX_NONHS)
+                             *Math.pow(1+MID_APPREC, y-2026)).toFixed(2);
+
+/* Walk the escrow account month by month and return the actual payment due on each PennyMac
+   draft. Deposits go in, insurance leaves each May and the tax bill each January, and every
+   June the servicer re-analyses: new monthly = next 12 months of disbursements / 12, plus any
+   shortage against a 2-month cushion, spread over the following 12 payments. */
+function midEscrowPlan(){
+  const plan={}, notes={};
+  let bal=MID_ESC_START, base=+(MID_INS/12 + MID_LAND_TAX/12).toFixed(2);
+  let shortMo=0, shortLeft=0;
+  mortgageSchedule().forEach(r=>{
+    const y=YR(r.draft), m=+r.draft.slice(5,7);
+    if(m===ESC_ANALYSIS_M){                       // annual analysis
+      const need=+((MID_INS + midTaxForYear(y))/12).toFixed(2);
+      const short=Math.max(0, need*ESC_CUSHION_MO - bal);
+      base=need; shortMo=+(short/12).toFixed(2); shortLeft = short>0? 12 : 0;
+    }
+    const pmi = lt(r.draft, MID_PMI_OFF)? MID_PMI : 0;
+    const esc = +(base + (shortLeft>0? shortMo : 0)).toFixed(2);
+    plan[r.draft]=+(MTG_PI + pmi + esc).toFixed(2);
+    notes[r.draft]={esc, pmi, short:shortLeft>0? shortMo:0};
+    bal+=esc;
+    if(shortLeft>0) shortLeft--;
+    if(m===5) bal-=MID_INS;                       // insurance renews with the closing anniversary
+    if(m===1) bal-=midTaxForYear(y-1);            // prior year's bill, due Jan 31
+    notes[r.draft].bal=+bal.toFixed(2);
+  });
+  return {plan, notes};
 }
 
 /* Rent runs on the 1st of the month: the first 1st on or after the start date, then one a
@@ -903,11 +950,15 @@ function buildEvents(sale, price, rent, home){
 
   // ---- sale-dependent ----
   const sched = mortgageSchedule();
+  const ESC = midEscrowPlan();
   let reimbCount=0;
   sched.forEach(r=>{
     const active = !sale || lt(r.draft, sale);
     if(active){
-      E(r.draft,-MTG_PMT,`PennyMac mortgage (interest ${fmt(r.int)})`);
+      const pl=ESC.notes[r.draft];
+      E(r.draft,-ESC.plan[r.draft],
+        `PennyMac mortgage (P&I ${fmt(MTG_PI)} + escrow ${fmt(pl.esc)}`
+        +`${pl.pmi? ' + PMI '+fmt(pl.pmi):''}${pl.short? ', incl. shortage '+fmt(pl.short):''})`);
       // Only while carrying both mortgages, capped at 2, and only inside the relo window.
       if(owning && r.draft>='2026-10-01' && reimbCount<2 && addD(r.draft,1)<=RELO_DEADLINE){
         E(addD(r.draft,1), r.int, 'Relo interest reimbursement');
@@ -941,11 +992,18 @@ function buildEvents(sale, price, rent, home){
     const annual=(y<=HOMESTEAD_LAST_YEAR? MID_TAX_HS : MID_TAX_NONHS)*Math.pow(1+MID_APPREC, y-2026);
     const bill=+(annual*frac).toFixed(2);
     const soldThisYear = sale && sale.slice(0,4)===String(y);
-    // E() silently drops anything past T1, so the 2030 bill (due Jan 31 2031) never posts
-    E(bumpWk(soldThisYear? sale : `${y+1}-01-31`), -bill, soldThisYear
-      ? `Midland property tax — ${y} prorated at closing`
-      : `Midland property tax (${y} bill)`);
+    // PennyMac pays the annual bill out of escrow, so it lives inside the monthly payment, not
+    // as a separate cheque. Only a sale is a cash event: the seller's prorated share at closing.
+    if(soldThisYear) E(bumpWk(sale), -bill, `Midland property tax — ${y} prorated at closing`);
   }
+  // Escrow is closed at payoff and any credit balance refunded, typically within 30 days.
+  if(sale){
+    const before=Object.entries(ESC.notes).filter(([d])=>lt(d,sale));
+    const escBal = before.length? before[before.length-1][1].bal : MID_ESC_START;
+    if(escBal>0) E(addD(sale,30), escBal, 'PennyMac escrow refund (account closed)');
+  }
+  const escVals=Object.values(ESC.notes);
+  const midEscEnd = sale? 0 : (escVals.length? escVals[escVals.length-1].bal : MID_ESC_START);
   // AutoFortiva: paid off in full 8/20/2026 — no further monthly drafts.
   E(AF_PAYOFF_DATE,-AF_PAYOFF_AMT,'AutoFortiva payoff (paid in full)');
 
@@ -1044,13 +1102,14 @@ function buildEvents(sale, price, rent, home){
   return {ev, payoff, proceeds, loss, vivFee, vivMonthsLeft, carPayoff, carPayoffDate,
           sellerCost, reloOK, rentEnd, rentTotal:rentDates.length*(rent? rent.amt:0),
           myRentTotal, myEnd, buyDate, buyCC, recapDep, recapTax, cgTax,
-          carNaturalDate:carNatural.d, carNaturalAmt:carNatural.amt, carOwedAtEnd};
+          carNaturalDate:carNatural.d, carNaturalAmt:carNatural.amt, carOwedAtEnd, midEscEnd};
 }
 
 function buildSeries(sale, price, rent, home, apy){
   const {ev,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,
-         recapDep,recapTax,cgTax,carNaturalDate,carNaturalAmt,carOwedAtEnd}=buildEvents(sale,price,rent,home);
+         recapDep,recapTax,cgTax,carNaturalDate,carNaturalAmt,carOwedAtEnd,
+         midEscEnd}=buildEvents(sale,price,rent,home);
   const map={};
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
   const series=[]; let bal=START_BAL, cur=T0;
@@ -1072,7 +1131,7 @@ function buildSeries(sale, price, rent, home, apy){
   }
   return {series,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
           sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,recapDep,recapTax,cgTax,
-          carNaturalDate,carNaturalAmt,carOwedAtEnd};
+          carNaturalDate,carNaturalAmt,carOwedAtEnd,midEscEnd};
 }
 
 /* Net worth, not just cash. The bank balance alone ranks scenarios by how long you avoided
@@ -1106,7 +1165,9 @@ function netWorth(res, sale, rent, home){
   if(!sale){
     const endValue = priceOn(T1);
     mid = endValue*(1-SELL_COST) - payoffOn(T1);
-    midTaxOwed = MID_TAX_NONHS*Math.pow(1+MID_APPREC, YR(T1)-2026);   // 2030 bill, due Jan 31 2031
+    // The 2030 bill is due Jan 31 2031, outside T1 — but the escrow has been saving for it,
+    // so only the gap between the bill and the escrow balance is a real liability.
+    midTaxOwed = Math.max(0, midTaxForYear(YR(T1)) - (res.midEscEnd||0));
     // Valuing it net of selling costs implies a sale — so charge the tax that sale triggers.
     const monthsRented = rent? rent.months : 0;
     const dep  = rent? rent.basis/DEPREC_YEARS/12*monthsRented : 0;
@@ -1219,7 +1280,7 @@ function render(){
   const apy = (+document.getElementById('cashapy').value||0)/100;
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentTotal,myRentTotal,buyDate,buyCC,
-         recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd}=buildSeries(sale,price,rent,home,apy);
+         recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,midEscEnd}=buildSeries(sale,price,rent,home,apy);
   // the chart draws only the selected window; the tiles and the running balance stay whole-series
   const VD = VIEW==='all'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
   const svg=document.getElementById('tl');
@@ -1374,7 +1435,7 @@ function render(){
   document.getElementById('t_thind').textContent = thinDays
     ? `from ${nice(firstThin.d)} · ${DATA.filter(d=>d.b<5000).length} under ${fmt0(5000)}`
     : `never below ${fmt0(CUSHION)}`;
-  const NW = netWorth({series:DATA,buyDate,carPayoffDate,carPayoff,carOwedAtEnd}, sale, rent, home);
+  const NW = netWorth({series:DATA,buyDate,carPayoffDate,carPayoff,carOwedAtEnd,midEscEnd}, sale, rent, home);
   set('t_nw', fmt(NW.nw), NW.nw<0?'neg':'posv');
   document.getElementById('t_nwd').textContent =
     `cash ${fmt0(NW.cash)}${NW.okc?' · OKC equity '+fmt0(NW.okc):''}`

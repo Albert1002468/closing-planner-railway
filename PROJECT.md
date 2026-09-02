@@ -119,6 +119,9 @@ RELO_DEADLINE = '2027-07-20', SELLER_COST_PCT = 0.075
 RENT_DEFAULT = {start:'2026-11-01', months:9, amt:3600}
 RAISE_PCT = 0.03, INFL_PCT = 0.03          // both apply from 2028 only
 DEPREC_YEARS = 27.5, RECAP_DEFAULT = {basis:340000, rate:29.75}
+MID_INS = 1329.00, MID_PMI = 28.75, MID_PMI_OFF = '2026-11-01'
+MID_LAND_TAX = 567.84, MID_ESC_START = 316.14   // start balance is an ESTIMATE
+ESC_CUSHION_MO = 2, ESC_ANALYSIS_M = 6          // analysis effective with the June draft
 MYRENT_DEFAULT = {start:'2026-09-18', months:12, amt:2200, util:120}
 BUY_DEFAULT = {cash:104462.90, pmt:3180.72, cc:8000}, BUY_LEAD_MONTHS = 2
 ```
@@ -199,6 +202,35 @@ is **insurance only**, so four years of Texas property tax sat in no balance any
 Texas bills the **calendar year**, due **Jan 31 of the following year**, prorated and settled at
 closing on a sale. The homestead exemption keys off occupancy on **Jan 1**, so it survives the
 2026 bill and is lost from the **2027** tax year once the house is a rental.
+
+**PennyMac escrows the tax — it is inside the monthly payment, not a separate cheque.** The
+escrow looks impossibly small only because the house was **built and bought mid-May 2025**, so
+it was set against a **Jan 1 2025 assessment of bare land**:
+
+```
+$186.82/mo = $28.75 PMI + $110.75 insurance ($1,329/yr) + $47.32 land tax ($567.84/yr)
+```
+
+Deposits of $158.07/mo against disbursements of $158.07/mo — **exact equilibrium**, which is
+what confirms the split. The first assessment including the house is **Jan 1 2026, billed Jan
+31 2027**; that one disbursement blows the account open.
+
+`midEscrowPlan()` walks the account month by month: deposits in, insurance out each May, the
+tax bill out each January, and an annual analysis every June that resets the monthly escrow to
+the next 12 months of disbursements over 12 and spreads any shortage against a 2-month cushion
+over the following year. The resulting payment steps:
+
+| From | Payment | Why |
+|---|---|---|
+| today | $2,318.72 | |
+| Nov 2026 | $2,289.97 | PMI drops off (>20% equity — **needs a written request**) |
+| **Jun 2027** | **$3,191.78** | first full-house tax bill, +$901.81, incl. $444.91/mo shortage |
+| Jun 2028 | $2,764.50 | shortage cleared |
+| Jun 2029 | $2,780.17 | appraisal drift |
+| Jun 2030 | $2,796.30 | |
+
+Only a **sale** produces a cash tax event — the seller's prorated share at closing — plus the
+escrow balance refunded ~30 days after payoff.
 
 **The bill is charged for the whole calendar year you owned it, not from `T0`.** The projection
 starting 2026-08-14 does not change the fact that the full 2026 bill arrives on Feb 1, 2027 —
@@ -599,25 +631,18 @@ tax (rule 13) and deriving the price from the date (rule 16) both change the def
 |---|---|---|---|
 | Sept 17, 2026 | $100,194.85 | **unchanged** | nothing new lands before the closing |
 | Oct 1, 2026 low | −$3,114.63 | **unchanged** | ditto |
-| Dec 31, 2026 | $34,641.71 | **$29,378.55** | −$3,751.17 tax prorated at closing, −$1,511.99 net price effect |
-| Dec 31, 2027 | $96,709.57 | **$91,446.41** | same $5,263.16, carried forward — the house is sold, so no further bills |
-| Dec 31, 2030 | $289,886.76 | **$284,623.60** | same $5,263.16 |
+| Dec 31, 2026 | $34,641.71 | **$30,010.83** | −$3,751.17 tax prorated at closing, −$1,511.99 net price effect, +$632.28 escrow refund |
+| Dec 31, 2027 | $96,709.57 | **$92,078.69** | same, carried forward — the house is sold, so no further bills |
+| Dec 31, 2030 | $289,886.76 | **$285,255.88** | same |
 | Vivint buyout | $1,289.79 | unchanged | |
 | Car payoff | $38,563.57 | unchanged | |
 
-Net worth on that scenario is **$443,995.98** (cash $284,624 + OKC equity $159,372). The account
+Net worth on that scenario is **$444,628.26** (cash $285,256 + OKC equity $159,372). The account
 runs under $15,000 for **42 days**, all of them under $5,000.
 
-Never-sold, for contrast: cash **$72,860.80**, net worth **$359,077.46** — 52 PennyMac drafts and
-four property-tax bills is what holding the house actually costs.
-
-⚠️ **The Midland escrow does not cover property tax and cannot.** `MTG_PMT - MTG_PI = $186.82/mo
-= $2,241.84/yr`, while the tax alone is **$4,518.74/yr**. Escrowing the tax would need $376.56/mo
-before a cent of insurance. So either the loan escrows insurance only and you pay Midland CAD
-directly each January (what the model assumes), or `MTG_PMT` is stale and an escrow analysis has
-since raised it — a full escrow would put the payment near **$2,695**. Confirm against a PennyMac
-statement; if it is escrowed, the January bills come out and the monthly payment goes up instead,
-rising again in 2027 when the homestead exemption is lost.
+Never-sold, for contrast: cash **$71,576.02**, net worth **$363,734.74** — 52 PennyMac drafts
+totalling **$145,078.73** is what holding the house actually costs, with $5,942.06 sitting in
+escrow at the end.
 
 
 
@@ -703,6 +728,11 @@ confirm the table's last balance matches the Dec 31 tile.
 - Capital gains beyond depreciation recapture are not modelled, nor is the Sec.121 clock that
   renting eventually breaks (you must have lived there 2 of the last 5 years)
 - 2028-2030 have no statement backing at all — they are the 2027 shapes grown at 3%
+- **`MID_ESC_START` = $316.14 is an estimate** of the escrow balance at T0 — the real figure is
+  on a PennyMac statement and shifts the June 2027 shortage roughly dollar for dollar
+- **PMI removal is assumed effective Nov 1, 2026.** It needs a written request and PennyMac may
+  want a BPO or appraisal (~$500). If the house becomes a rental the threshold can rise to 30%
+  equity, which would block it
 - **`MID_TAX_NONHS` = $5,874.36 is a 1.30x guess** and the single most valuable number left to
   confirm with Midland CAD — at 0% appreciation the ranking flips at 1.31x
 - No landlord costs: management fee, vacancy, maintenance, landlord-policy premium. Enter a net
