@@ -773,8 +773,10 @@ const monthly=(day,fromYM,toYM)=>monthDays(day,fromYM,toYM).map(bumpWk);
 const priceOn = d => +(MID_VALUE_TODAY*Math.pow(1+MID_APPREC, nDays(MID_VALUE_DATE,d)/365.25)).toFixed(2);
 
 function mortgageSchedule(){
+  // Must run to T1. payoffOn() walks these rows, so a short schedule does not merely drop
+  // payments — it stops amortising and then piles per-diem interest on a stale balance.
   let bal = MTG_BAL_AFTER_AUG;
-  return monthDays(1,'2026-09','2027-12').map(due=>{
+  return monthDays(1,'2026-09',T1.slice(0,7)).map(due=>{
     const int = bal*MI, prin = MTG_PI-int;
     const row={draft:bumpWk(due), due, int:+int.toFixed(2), prin:+prin.toFixed(2), balAfter:+(bal-prin).toFixed(2)};
     bal -= prin;

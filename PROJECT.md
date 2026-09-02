@@ -356,7 +356,7 @@ From two paystubs differing only in overtime:
 
 | Thing | Rule |
 |---|---|
-| PennyMac payments | drafted only while unsold; exact amortization at 5.375% from $336,756.31 |
+| PennyMac payments | drafted only while unsold; exact amortization at 5.375% from $336,756.31. **`mortgageSchedule()` must run to `T1`** — `payoffOn()` walks the same rows, so a short schedule does not merely drop drafts, it stops amortising and then piles per-diem interest on a stale balance. Truncated at 2027-12 it lost 36 drafts ($83,474) and overstated a Dec 2030 payoff by **$78,901** |
 | Loan payoff | remaining principal + per-diem interest since the last payment |
 | Proceeds | `price − payoff`, landing **on** the sale date (relo covers commissions/seller costs) |
 | Relo interest reimbursement | day after each payment, **max 2 payments** |
@@ -607,6 +607,17 @@ tax (rule 13) and deriving the price from the date (rule 16) both change the def
 
 Net worth on that scenario is **$443,995.98** (cash $284,624 + OKC equity $159,372). The account
 runs under $15,000 for **42 days**, all of them under $5,000.
+
+Never-sold, for contrast: cash **$72,860.80**, net worth **$359,077.46** — 52 PennyMac drafts and
+four property-tax bills is what holding the house actually costs.
+
+⚠️ **The Midland escrow does not cover property tax and cannot.** `MTG_PMT - MTG_PI = $186.82/mo
+= $2,241.84/yr`, while the tax alone is **$4,518.74/yr**. Escrowing the tax would need $376.56/mo
+before a cent of insurance. So either the loan escrows insurance only and you pay Midland CAD
+directly each January (what the model assumes), or `MTG_PMT` is stale and an escrow analysis has
+since raised it — a full escrow would put the payment near **$2,695**. Confirm against a PennyMac
+statement; if it is escrowed, the January bills come out and the monthly payment goes up instead,
+rising again in 2027 when the homestead exemption is lost.
 
 
 
