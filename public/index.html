@@ -131,8 +131,8 @@
   .warn{font-size:11.5px;line-height:1.45;color:var(--crit);margin:2px 0 0}
   .warn.ok{color:var(--muted)}
   .warn[hidden]{display:none}
-  #rentfields{display:flex;flex-direction:column;gap:14px;margin-top:2px}
-  #rentfields[hidden]{display:none}
+  #rentfields,#hfields,#hbuyfields{display:flex;flex-direction:column;gap:14px;margin-top:2px}
+  #rentfields[hidden],#hfields[hidden],#hbuyfields[hidden]{display:none}
   .moneyfld{display:inline-flex;align-items:center;background:var(--surface-1);
             border:1px solid var(--axis);border-radius:8px;padding:0 10px;width:max-content}
   .moneyfld span{color:var(--muted);font-size:14px;padding-right:1px}
@@ -290,6 +290,7 @@
         <div class="tile"><div class="lab">Car payoff (sale + 2 mo)</div><div class="val" id="t_car">—</div><div class="sm" id="t_card"></div></div>
         <div class="tile"><div class="lab">Rent collected</div><div class="val" id="t_rent">—</div><div class="sm" id="t_rentd"></div></div>
         <div class="tile"><div class="lab">Relo closing costs</div><div class="val" id="t_relo">—</div><div class="sm" id="t_relod"></div></div>
+        <div class="tile"><div class="lab">Your housing</div><div class="val" id="t_house">—</div><div class="sm" id="t_housed"></div></div>
         <div class="tile"><div class="lab">Dec 31, 2027 balance</div><div class="val" id="t_end">—</div><div class="sm">after every rule above</div></div>
       </div>
       <button type="button" class="tnav tprev" id="tprev" aria-label="Scroll cards left">&lsaquo;</button>
@@ -360,7 +361,8 @@
   <details class="card acc" id="closingcard">
     <summary>
       <div class="acchead">
-        <div><h2>Where the closing money goes</h2></div>
+        <div><h2>Where the closing money goes</h2>
+          <span class="rends" id="closingnote"></span></div>
         <span class="accchev" aria-hidden="true">&#9660;</span>
       </div>
       <div class="accsum" id="accsum"></div>
@@ -414,16 +416,81 @@
             </div>
             <div class="ctl">
               <label for="rentterm">Term (months)</label>
-              <input type="number" id="rentterm" min="1" max="36" step="1" value="12">
+              <input type="number" id="rentterm" min="1" max="36" step="1" value="9">
             </div>
             <div class="ctl">
               <label for="rentamt">Monthly rent — paid the 1st</label>
               <div class="moneyfld"><span>$</span>
-                <input type="text" id="rentamt" inputmode="numeric" autocomplete="off" value="2,400"
+                <input type="text" id="rentamt" inputmode="numeric" autocomplete="off" value="3,600"
                        aria-label="Monthly rent in dollars">
               </div>
             </div>
             <p class="warn" id="rentwarn"></p>
+          </div>
+        </div>
+        <hr class="ctlsep">
+        <div class="ctl">
+          <label id="hlab">Your own housing</label>
+          <label class="switch" for="hown">
+            <input type="checkbox" id="hown" aria-labelledby="hlab howntxt">
+            <span class="track"></span><span id="howntxt">Rent instead of closing Sept 18</span>
+          </label>
+          <div id="hfields" hidden>
+            <div class="ctl">
+              <label for="hstart">Lease starts</label>
+              <input type="date" id="hstart" min="2026-09-01" max="2027-12-01" value="2026-09-18">
+            </div>
+            <div class="ctl">
+              <label for="hterm">Term (months)</label>
+              <input type="number" id="hterm" min="1" max="36" step="1" value="12">
+            </div>
+            <div class="ctl">
+              <label for="hamt">Monthly rent — paid the 1st</label>
+              <div class="moneyfld"><span>$</span>
+                <input type="text" id="hamt" inputmode="numeric" autocomplete="off" value="2,200"
+                       aria-label="Your monthly rent in dollars">
+              </div>
+            </div>
+            <div class="ctl">
+              <label for="hutil">Utilities while renting</label>
+              <div class="moneyfld"><span>$</span>
+                <input type="text" id="hutil" inputmode="numeric" autocomplete="off" value="120"
+                       aria-label="Monthly utilities while renting">
+              </div>
+            </div>
+            <label class="switch" for="hbuy">
+              <input type="checkbox" id="hbuy">
+              <span class="track"></span><span>Buy a home later</span>
+            </label>
+            <div id="hbuyfields" hidden>
+              <div class="ctl">
+                <label for="hbuydate">Purchase closes</label>
+                <input type="date" id="hbuydate" max="2027-12-31" value="2027-08-01">
+                <span class="rends" id="hbuyday">&nbsp;</span>
+              </div>
+              <div class="ctl">
+                <label for="hbuycash">Cash to close</label>
+                <div class="moneyfld"><span>$</span>
+                  <input type="text" id="hbuycash" inputmode="numeric" autocomplete="off" value="104,463"
+                         aria-label="Cash needed at the later closing">
+                </div>
+              </div>
+              <div class="ctl">
+                <label for="hbuypmt">Monthly payment (P&amp;I + escrow)</label>
+                <div class="moneyfld"><span>$</span>
+                  <input type="text" id="hbuypmt" inputmode="numeric" autocomplete="off" value="3,181"
+                         aria-label="Monthly payment on the later purchase">
+                </div>
+              </div>
+              <div class="ctl">
+                <label for="hbuycc">Closing costs — charged only after Jul 20, 2027</label>
+                <div class="moneyfld"><span>$</span>
+                  <input type="text" id="hbuycc" inputmode="numeric" autocomplete="off" value="8,000"
+                         aria-label="Buyer closing costs if relo does not cover them">
+                </div>
+              </div>
+            </div>
+            <p class="warn" id="hwarn"></p>
           </div>
         </div>
       </div>
@@ -588,7 +655,13 @@ const RELO_DEADLINE='2027-07-20';
 const SELLER_COST_PCT=0.075;                // 6% commission + ~1.5% title/escrow/misc
 
 /* --- renting the Midland home out --- */
-const RENT_DEFAULT={start:'2026-11-01', months:12, amt:2400};
+const RENT_DEFAULT={start:'2026-11-01', months:9, amt:3600};
+
+/* --- renting somewhere yourself instead of closing on Sept 18 --- */
+const MYRENT_DEFAULT={start:'2026-09-18', months:12, amt:2200, util:120};
+// A later purchase: relo absorbs the buyer closing costs only inside the window.
+const BUY_DEFAULT={cash:104462.90, pmt:3180.72, cc:8000};
+const BUY_LEAD_MONTHS=2;      // you may close a purchase this long before the lease ends
 function vivintMonthsLeft(onDate){          // payments still owed after the last one due on/before onDate
   const s=dd(VIVINT_START), t=dd(onDate);
   let made=0;
@@ -670,11 +743,19 @@ function payoffOn(dateS){
   return +(bal + bal*MTG_RATE/365*days).toFixed(2);
 }
 
-function buildEvents(sale, price, rent){
+function buildEvents(sale, price, rent, home){
   const ev=[];
   const E=(d,a,l)=>{ if(d>=T0 && d<=T1) ev.push({d,a:+a.toFixed(2),l}); };
   const {dates:rentDates, end:rentEnd}=rentSchedule(rent);
-  const rented = d => !!rent && d>=rentDates[0] && lt(d,rentEnd);   // tenant in the house
+  const rented = d => !!rent && d>=rentDates[0] && lt(d,rentEnd);   // tenant in the Midland house
+
+  // Your own housing: either the Sept 18 purchase, or a lease with an optional purchase later.
+  const owning = home.own;
+  const my = owning? null : rentSchedule(home);
+  const myEnd = my? my.end : null;
+  const buy = (!owning && home.buy)? home.buy : null;
+  const buyDate = buy? buy.date : null;
+  const ownedFrom = owning? '2026-09-18' : buyDate;   // null while renting with no purchase
 
   E('2026-08-21',3429.67,'Paycheck (4 straight-time extra hrs)');
   E('2026-09-04',PAY10,'Paycheck (10 OT hrs)');
@@ -682,11 +763,17 @@ function buildEvents(sale, price, rent){
   ['2026-10-02','2026-10-16','2026-10-30','2026-11-13','2026-11-27','2026-12-11','2026-12-25']
     .forEach(d=>E(d,PAY5,'Paycheck (5 OT hrs)'));
   for(let d=addD('2026-12-25',14); d<=T1; d=addD(d,14)) E(d,PAY5,'Paycheck (5 OT hrs)');  // 26 checks in 2027
-  E('2026-09-18',-104462.90,'CLOSING — cash to close (lender 2)');
+  if(owning) E('2026-09-18',-104462.90,'CLOSING — cash to close (lender 2)');
   E('2026-09-19',234.00,'Airbnb refund — day refund');
   E('2026-09-19',750.00,'Airbnb refund — pet deposit');
-  ['2026-11-02','2026-12-01'].forEach(d=>E(d,-NH_PMT_26,'NEW home mortgage (P&I + escrow)'));
-  monthly(1,'2027-01','2027-12').forEach(d=>E(d,-NH_PMT_27,'NEW home mortgage (escrow up — $6k/yr tax)'));
+  if(owning){
+    ['2026-11-02','2026-12-01'].forEach(d=>E(d,-NH_PMT_26,'NEW home mortgage (P&I + escrow)'));
+    monthly(1,'2027-01','2027-12').forEach(d=>E(d,-NH_PMT_27,'NEW home mortgage (escrow up — $6k/yr tax)'));
+  } else if(buyDate){
+    // First payment skips a month, the same way the Sept 18 deal pays first on Nov 1.
+    const first=addM(buyDate.slice(0,8)+'01',2);
+    monthly(1,first.slice(0,7),'2027-12').forEach(d=>E(d,-buy.pmt,'NEW home mortgage (P&I + escrow)'));
+  }
   E('2026-08-17',-CAR_PMT,'Car payment (base)');
   ['2026-09-02','2026-10-02','2026-11-02','2026-12-02'].forEach(d=>E(d,-80.65,'AT&T'));
   ['2026-09-01','2026-10-01','2026-11-02','2026-12-01'].forEach(d=>E(d,-50.00,'Credit-card autopays'));
@@ -704,14 +791,13 @@ function buildEvents(sale, price, rent){
   monthly(18,'2027-01','2027-12').forEach(d=>E(d,-20.56,'Spotify'));
   E('2026-09-25',-940.00,'Car insurance (6-mo, switched)');
   [bumpWk('2027-03-25'),bumpWk('2027-09-25')].forEach(d=>E(d,-940.00,'Car insurance (6-mo renewal)'));
-  E('2026-10-26',-150.00,'New-home first utility bills');
-  E('2026-11-23',-250.00,'New-home utilities');
-  E('2026-12-22',-300.00,'New-home utilities (winter)');
-  // OG&E + ONG + OKC water/trash, seasonal estimates (gas peak in winter, AC peak in summer)
-  [['2027-01-25',330],['2027-02-22',315],['2027-03-22',255],['2027-04-26',205],
+  // OG&E + ONG + OKC water/trash, seasonal estimates (gas peak in winter, AC peak in summer).
+  // Only charged for months you actually own the place.
+  [['2026-10-26',150],['2026-11-23',250],['2026-12-22',300],
+   ['2027-01-25',330],['2027-02-22',315],['2027-03-22',255],['2027-04-26',205],
    ['2027-05-24',195],['2027-06-22',250],['2027-07-26',310],['2027-08-23',330],
    ['2027-09-22',270],['2027-10-25',200],['2027-11-22',250],['2027-12-22',300]]
-    .forEach(([d,a])=>E(d,-a,'New-home utilities (est.)'));
+    .forEach(([d,a])=>{ if(ownedFrom && d>=ownedFrom) E(d,-a,'New-home utilities (est.)'); });
 
   // ---- rules 3 & 4: the March 2027 bonus and the IRS payment ----
   E(BONUS_DATE, BONUS_NET, `Annual bonus — ${fmt0(BONUS_GROSS)} gross, net of fed/OASDI/Medicare/OK`);
@@ -725,7 +811,7 @@ function buildEvents(sale, price, rent){
     if(active){
       E(r.draft,-MTG_PMT,`PennyMac mortgage (interest ${fmt(r.int)})`);
       // Only while carrying both mortgages, capped at 2, and only inside the relo window.
-      if(r.draft>='2026-10-01' && reimbCount<2 && addD(r.draft,1)<=RELO_DEADLINE){
+      if(owning && r.draft>='2026-10-01' && reimbCount<2 && addD(r.draft,1)<=RELO_DEADLINE){
         E(addD(r.draft,1), r.int, 'Relo interest reimbursement');
         reimbCount++;
       }
@@ -759,6 +845,31 @@ function buildEvents(sale, price, rent){
   }
   rentDates.forEach((d,i)=>E(bumpWk(d), rent.amt, `Rent — Midland home (${i+1} of ${rent.months})`));
 
+  let myRentTotal=0;
+  if(my){
+    // Moving in mid-month means a prorated first cheque before the monthly cycle starts.
+    if(home.start.slice(8)!=='01'){
+      const sd=dd(home.start), dim=new Date(sd.getFullYear(), sd.getMonth()+1, 0).getDate();
+      const part=+(home.amt*(dim-sd.getDate()+1)/dim).toFixed(2);
+      E(home.start, -part, 'Rent — prorated first month');
+      myRentTotal+=part;
+    }
+    my.dates.forEach((d,i)=>E(bumpWk(d), -home.amt, `Rent — housing (${i+1} of ${home.months})`));
+    myRentTotal+=my.dates.length*home.amt;
+    // Renter utilities run until you move into a purchase, or to the end of the lease.
+    const utilStop = (buyDate && lt(buyDate,myEnd))? buyDate : myEnd;
+    monthDays(25,home.start.slice(0,7),'2027-12').forEach(d=>{
+      if(d>=home.start && lt(d,utilStop)) E(d,-home.util,'Utilities (rental)');
+    });
+  }
+  let buyCC=0;
+  if(buyDate){
+    buyCC = buyDate>RELO_DEADLINE? buy.cc : 0;
+    E(buyDate, -(buy.cash+buyCC), buyCC
+      ? `NEW home purchase — cash to close + ${fmt(buyCC)} closing costs (relo expired)`
+      : 'NEW home purchase — cash to close (relo covers closing costs)');
+  }
+
   let payoff=null, proceeds=null, loss=0, sellerCost=0, reloOK=true;
   if(sale){
     reloOK = sale<=RELO_DEADLINE;
@@ -788,12 +899,13 @@ function buildEvents(sale, price, rent){
   }
 
   return {ev, payoff, proceeds, loss, vivFee, vivMonthsLeft, carPayoff, carPayoffDate,
-          sellerCost, reloOK, rentEnd, rentTotal:rentDates.length*(rent? rent.amt:0)};
+          sellerCost, reloOK, rentEnd, rentTotal:rentDates.length*(rent? rent.amt:0),
+          myRentTotal, myEnd, buyDate, buyCC};
 }
 
-function buildSeries(sale, price, rent){
+function buildSeries(sale, price, rent, home){
   const {ev,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
-         sellerCost,reloOK,rentEnd,rentTotal}=buildEvents(sale,price,rent);
+         sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC}=buildEvents(sale,price,rent,home);
   const map={};
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
   const series=[]; let bal=START_BAL, cur=T0;
@@ -812,7 +924,7 @@ function buildSeries(sale, price, rent){
     cur=addD(cur,1);
   }
   return {series,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
-          sellerCost,reloOK,rentEnd,rentTotal};
+          sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC};
 }
 
 /* ---------- render ---------- */
@@ -838,23 +950,59 @@ function readRent(){
           months: digits('rentterm',1,36,RENT_DEFAULT.months),
           amt:    digits('rentamt',1,20000,RENT_DEFAULT.amt)};
 }
+function readHome(){
+  if(!document.getElementById('hown').checked) return {own:true};
+  const h={own:false,
+    start: document.getElementById('hstart').value || MYRENT_DEFAULT.start,
+    months: digits('hterm',1,36,MYRENT_DEFAULT.months),
+    amt:    digits('hamt',1,20000,MYRENT_DEFAULT.amt),
+    util:   digits('hutil',0,3000,MYRENT_DEFAULT.util),
+    buy:    null};
+  if(document.getElementById('hbuy').checked)
+    h.buy={date: document.getElementById('hbuydate').value,
+           cash: digits('hbuycash',0,1000000,BUY_DEFAULT.cash),
+           pmt:  digits('hbuypmt',0,20000,BUY_DEFAULT.pmt),
+           cc:   digits('hbuycc',0,100000,BUY_DEFAULT.cc)};
+  return h;
+}
 const SALE_FLOOR='2026-09-15';
-let LAST_SALE_MIN=null;   // so a sale date parked on the rent floor can follow it
+let LAST_SALE_MIN=null;      // so a sale date parked on the rent floor can follow it
+let SALE_BEFORE_RENT=null;   // the date renting pushed off, to put back when the floor lifts
 const nice = d => dd(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 
 function render(){
   const rent = readRent();
+  const home = readHome();
   const rentEndDate = rent? rentSchedule(rent).end : null;
+  // You may close a purchase up to BUY_LEAD_MONTHS before the lease is up, not before.
+  const myEndDate = home.own? null : rentSchedule(home).end;
+  const $bd=document.getElementById('hbuydate');
+  if(!home.own){
+    const buyMin=addM(myEndDate,-BUY_LEAD_MONTHS);
+    $bd.min=buyMin;
+    if($bd.value && $bd.value<buyMin) $bd.value=buyMin;
+    if(home.buy) home.buy.date=$bd.value;
+  }
   // The house cannot be sold out from under a tenant: the sale can only close once the term is up.
   const saleMin = (rentEndDate && rentEndDate>SALE_FLOOR)? rentEndDate : SALE_FLOOR;
   const $sd=document.getElementById('saledate');
   const noSalePossible = saleMin>T1;
   $sd.min=saleMin;
-  // A date sitting exactly on a rent-derived floor is "riding" it — shorten the term and it
-  // should come back down with it. Turning renting off must NOT drag it to 2026 though, so
-  // this only applies while both the old and new floors come from a tenancy.
-  const riding = rent && LAST_SALE_MIN && LAST_SALE_MIN!==SALE_FLOOR && $sd.value===LAST_SALE_MIN;
-  if(!noSalePossible && $sd.value && ($sd.value<saleMin || riding)) $sd.value=saleMin;
+  // A date sitting exactly on a rent-derived floor is "riding" it: it follows the floor up and
+  // down as the term changes, and when renting is switched off entirely it goes back to
+  // whatever it was before renting first pushed it. A date the reader typed is never moved.
+  const riding = LAST_SALE_MIN && LAST_SALE_MIN!==SALE_FLOOR && $sd.value===LAST_SALE_MIN;
+  if(!noSalePossible && $sd.value){
+    if(saleMin>SALE_FLOOR){
+      if($sd.value<saleMin){
+        if(!SALE_BEFORE_RENT) SALE_BEFORE_RENT=$sd.value;
+        $sd.value=saleMin;
+      } else if(riding) $sd.value=saleMin;
+    } else {
+      if(riding && SALE_BEFORE_RENT) $sd.value=SALE_BEFORE_RENT;
+      SALE_BEFORE_RENT=null;
+    }
+  }
   LAST_SALE_MIN=saleMin;
   const notsold=document.getElementById('notsold').checked;
   $sd.disabled = notsold || noSalePossible;
@@ -862,7 +1010,7 @@ function render(){
   if(sale && sale>T1) sale=null;
   const price = priceVal();
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
-         sellerCost,reloOK,rentTotal}=buildSeries(sale,price,rent);
+         sellerCost,reloOK,rentTotal,myRentTotal,buyDate,buyCC}=buildSeries(sale,price,rent,home);
   // the chart draws only the selected window; the tiles and the running balance stay whole-series
   const VD = VIEW==='all'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
   const svg=document.getElementById('tl');
@@ -1034,6 +1182,31 @@ function render(){
     : (reloOK? 'covered — window ends Jul 20, 2027'
              : `${(SELLER_COST_PCT*100).toFixed(1)}% of price — window expired`);
 
+  set('t_house', home.own? 'Bought' : fmt(myRentTotal), home.own?'':'neg');
+  document.getElementById('t_housed').textContent = home.own
+    ? 'closed Sept 18, 2026'
+    : `rent ${home.months} mo${buyDate? ' · bought '+nice(buyDate) : ' · no purchase'}`;
+  document.getElementById('closingnote').textContent =
+    home.own? '' : 'not applicable — renting instead';
+  if(!home.own) document.getElementById('hbuyday').textContent =
+    buyDate? dd(buyDate).toLocaleDateString('en-US',{weekday:'long'}) : '';
+
+  const hw=document.getElementById('hwarn');
+  if(home.own){ hw.textContent=''; }
+  else {
+    const earliest=addM(myEndDate,-BUY_LEAD_MONTHS);
+    const lateBuy = earliest>RELO_DEADLINE;
+    hw.className = (lateBuy || buyCC)? 'warn':'warn ok';
+    hw.textContent = buyCC
+      ? `Purchase closes ${nice(buyDate)}, after Jul 20, 2027 — ${fmt(buyCC)} of buyer closing costs `
+        +`come out of pocket because relo will not cover them.`
+      : lateBuy
+        ? `Lease runs to ${nice(myEndDate)}, so the earliest you could close is ${nice(earliest)} — `
+          +`past Jul 20, 2027. Any purchase then costs you the buyer closing costs.`
+        : `Lease runs to ${nice(myEndDate)}; you could close a purchase from ${nice(earliest)}, `
+          +`still inside the relo window.`;
+  }
+
   // Warnings. These are the whole point of the two features colliding, so say it plainly.
   const rw=document.getElementById('rentwarn');
   if(rent){
@@ -1167,7 +1340,20 @@ document.getElementById('notsold').addEventListener('change',render);
 document.getElementById('renton').addEventListener('change',e=>{
   document.getElementById('rentfields').hidden = !e.target.checked; render();
 });
-['rentstart','rentterm'].forEach(id=>document.getElementById(id).addEventListener('input',render));
+['rentstart','rentterm','hstart','hterm','hbuydate'].forEach(id=>
+  document.getElementById(id).addEventListener('input',render));
+document.getElementById('hown').addEventListener('change',e=>{
+  document.getElementById('hfields').hidden = !e.target.checked; render();
+});
+document.getElementById('hbuy').addEventListener('change',e=>{
+  document.getElementById('hbuyfields').hidden = !e.target.checked; render();
+});
+['hamt','hutil','hbuycash','hbuypmt','hbuycc'].forEach(id=>{
+  const el=document.getElementById(id), max=id==='hbuycash'?1000000:100000;
+  el.addEventListener('input',render);
+  el.addEventListener('blur',()=>{el.value=digits(id,0,max,0).toLocaleString('en-US');render();});
+  el.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();el.blur();} });
+});
 const $ra=document.getElementById('rentamt');
 $ra.addEventListener('input',render);
 $ra.addEventListener('blur',()=>{$ra.value=digits('rentamt',1,20000,RENT_DEFAULT.amt).toLocaleString('en-US');render();});

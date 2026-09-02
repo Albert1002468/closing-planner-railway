@@ -116,8 +116,39 @@ WARRANTY_REFUND = 2300.00, FIANCEE_REPAY = 27000.00
 BONUS_DATE = '2027-03-01', BONUS_GROSS = 30000.00, BONUS_NET = 19680.00
 IRS_DATE = '2027-03-19', IRS_AMT = 5000.00
 RELO_DEADLINE = '2027-07-20', SELLER_COST_PCT = 0.075
-RENT_DEFAULT = {start:'2026-11-01', months:12, amt:2400}
+RENT_DEFAULT = {start:'2026-11-01', months:9, amt:3600}
+MYRENT_DEFAULT = {start:'2026-09-18', months:12, amt:2200, util:120}
+BUY_DEFAULT = {cash:104462.90, pmt:3180.72, cc:8000}, BUY_LEAD_MONTHS = 2
 ```
+
+### Your own housing: buy or rent (rule 9)
+
+`home` is `{own:true}` or a lease `{own:false, start, months, amt, util, buy}`. **In rent mode
+the Sept 18 purchase does not happen at all**, so `buildEvents` drops the $104,462.90 wire, the
+new-home mortgage, the escrow step-up, the new-home utilities, and the **relo interest
+reimbursement** (it exists to offset carrying two mortgages). It adds a prorated first month if
+the lease starts mid-month, monthly rent on the 1st, and flat `util` while renting.
+
+The **earnest money is treated as forfeited** — it left the account on 8/12, before `START_BAL`,
+so rent mode records nothing new. If it is actually refunded you are $5,299 better off than shown.
+
+`ownedFrom` is the single switch for "do I own a house here": `2026-09-18` when buying, the
+purchase date in rent-and-then-buy, `null` while renting. New-home utilities key off it.
+
+**A later purchase may close at most `BUY_LEAD_MONTHS` (2) before the lease ends** — that is the
+floor on `#hbuydate`, mirroring how the Midland sale is floored by the tenancy. Its first
+mortgage payment skips a month (`addM(buyDate, 2)`), the same way the Sept 18 deal first pays
+Nov 1. Renter utilities stop at the purchase; the rent itself runs to the end of the term,
+because the lease is still owed.
+
+**Buyer closing costs (`buy.cc`, default $8,000) are charged only when the purchase closes after
+`RELO_DEADLINE`** — inside the window relo absorbs them, which is why they never appear in the
+donut. They are an input because they vary.
+
+**The lease length decides whether a purchase can beat the deadline.** From a 9/18/2026 start,
+**11 months is the longest lease** that still allows a closing inside the window: it ends
+9/1/2027, so the earliest purchase is 7/1/2027. Twelve months ends 10/1/2027 and forces an
+8/1/2027 purchase — two weeks late, $8,000.
 
 ### The relocation window (rule 8)
 
@@ -149,9 +180,11 @@ against it. The Vivint *contract buyout* still fires 7 days before the sale; onl
 $8.58 pauses.
 
 **A sale cannot close before the tenancy ends.** `saleMin` is the rent end date, applied to
-`#saledate.min`. A date parked exactly on that floor **rides it** when the term changes
-(`LAST_SALE_MIN`), but a date the reader chose themselves is left alone, and turning renting
-off never drags the date back to 2026. If the tenancy runs past `T1` the sale input is
+`#saledate.min`. A date parked exactly on that floor **rides it**: it follows the floor as the
+term changes, and when renting is switched off it is restored to whatever it was before renting
+first pushed it (`SALE_BEFORE_RENT`). A date the reader typed is never moved — that distinction
+is the whole point, and without the restore, toggling renting off left the sale stranded in
+2027 and silently cost $50k in the projection. If the tenancy runs past `T1` the sale input is
 disabled and the scenario becomes "never sold".
 
 ### The two rules collide, and the app says so
@@ -470,7 +503,8 @@ September (−$4,736, the insurance renewal).
 | Move the escrow step-up date | the `d<'2027-01-01'` test and the `monthly(1,…)` split in `buildEvents` |
 | Change the bonus | `BONUS_GROSS`; `BONUS_NET` re-derives at 65.60% |
 | Change the relo deadline or seller-cost % | `RELO_DEADLINE` / `SELLER_COST_PCT` |
-| Change rent defaults | `RENT_DEFAULT` and the `value` attributes on `#rentstart`/`#rentterm`/`#rentamt` |
+| Change rent defaults | `RENT_DEFAULT` / `MYRENT_DEFAULT` / `BUY_DEFAULT` **and** the matching `value` attributes in the markup |
+| Change the purchase lead time | `BUY_LEAD_MONTHS` |
 | Resume extra car payments | `carWalk` — add to `CAR_PMT` for the relevant dates |
 | Change the reconcile unlock hour | `RECONCILE_UNLOCK_HOUR` env var (client syncs from `/api/state`) |
 | Change closing costs | the `slices` / `credits` arrays near the top of the script |
@@ -511,6 +545,12 @@ confirm the table's last balance matches the Dec 31 tile.
   allowance, no landlord-policy premium increase, no maintenance reserve, and no security
   deposit in or out. Enter a net figure if you want those covered
 - Renting is assumed not to change the relo deadline itself, only whether you can meet it
+- Your own rent is modelled without a security deposit, application fees, renter's insurance,
+  or a lease-break penalty if a purchase lets you leave early
+- A later purchase reuses the current deal's figures as defaults ($104,463 cash, $3,181/mo).
+  A 2027 purchase would have its own price and rate — they are inputs for that reason
+- In rent-then-buy, the relo interest reimbursement is never paid, per your instruction, even
+  though buying in 2027 while still owning Midland would briefly double up the mortgages
 - The $2,300 warranty/gap refund is assumed to arrive as cash one month after payoff — some
   lenders instead apply it straight to the loan, which would reduce the payoff rather than
   pay you back
