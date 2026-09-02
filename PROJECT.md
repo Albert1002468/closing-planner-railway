@@ -191,6 +191,79 @@ property, so it does not help either. Both basis and rate are inputs — confirm
 Capital gain beyond the recapture is **not** modelled: the loss-on-sale credit implies the home
 is worth less than was paid, and Sec.121 would cover a modest gain anyway.
 
+### Midland property tax (rule 13)
+
+Absent from the model until 2026-09-02 — the PennyMac escrow (`MTG_PMT - MTG_PI = $186.82/mo`)
+is **insurance only**, so four years of Texas property tax sat in no balance anywhere.
+
+Texas bills the **calendar year**, due **Jan 31 of the following year**, prorated and settled at
+closing on a sale. The homestead exemption keys off occupancy on **Jan 1**, so it survives the
+2026 bill and is lost from the **2027** tax year once the house is a rental.
+
+**The bill is charged for the whole calendar year you owned it, not from `T0`.** The projection
+starting 2026-08-14 does not change the fact that the full 2026 bill arrives on Feb 1, 2027 —
+prorating to the window start would drop $2,785.52 of tax that is genuinely paid inside it. On a
+sale it prorates Jan 1 -> closing. The year divisor is `nDays(ys,ye)+1`, not a hardcoded 365,
+or 2028 is overcharged $17 for being a leap year.
+
+Hold-forever posts four bills totalling **$23,220.51**. The **2030 bill is due Jan 31, 2031 and
+falls outside `T1`**, so `E()` drops it — correct for a cash projection, but it leaves a
+**$6,611.64** unpaid liability that the net-worth tile subtracts.
+
+### Gain, recapture and capital gains (rules 14-15)
+
+**Ordering matters.** The gain calculation needs `sellerCost`, which is not known until the
+`if(sale){…}` block, so recapture is computed *there* and only declared above it.
+
+```
+realized = price - sellerCost
+gain     = realized - (MID_BASIS - recapDep)      // depreciation LOWERS your basis
+recapTax = min(recapDep, max(0, gain)) x rate     // capped at the actual gain
+cgTax    = max(0, gain - recapDep) x 19.75%       // only once Sec.121 has expired
+```
+
+**Recapture is capped at the gain**, so a sale at a loss owes none — previously a $330k sale
+still billed $11,035 while $82,659 underwater.
+
+Note the counter-intuitive part: because depreciation cuts the adjusted basis, a sale can show
+an *economic* loss and a *taxable* gain at once. Selling at $420,000 against a $425,000 cost is
+a $5,000 loss, but after 6 months' depreciation the basis is $418,818, so $1,182 is taxable —
+**$351.59**, not zero. The break-even is `MID_BASIS - recapDep`.
+
+`SEC121_LAST = '2029-08-01'` (move-out Aug 1 2026 + 3 years). Sec.121 **never shelters
+recapture**, only the excess above it — worth about $3,700 at 3%/yr appreciation. Do not let it
+drive timing.
+
+### Price follows the date (rule 16)
+
+Price and timing are not independent — the price *is* the date. `priceOn(d)` grows
+`MID_VALUE_TODAY` at `MID_APPREC` from `MID_VALUE_DATE`; both are inputs. A manual override
+behind `#priceover` remains for pricing a real offer. With no sale set, the house is valued at
+`priceOn(T1)`.
+
+This is what makes the relocation cliff legible: with the price pinned to the date you can see
+that selling Nov 2027 needs **16.17%/yr** appreciation to beat selling May 2027.
+
+### Interest on the balance (rule 17)
+
+`buildSeries` takes an `apy` and credits `bal*rate/365` **before** the day's events, guarded on
+`bal>0` so an overdraft never pays you. Shipped at **0**, which reproduces the old behaviour
+exactly; 4% is worth ~$28,000 over the window. It is not neutral — it favours whichever
+scenario holds cash longest, so leaving it out quietly biased the model *against* renting.
+
+### Net worth, not just cash (rule 18)
+
+Cash alone ranks scenarios by how long you avoided owning anything: a mortgage payment leaves
+the account and the equity it buys never comes back in. `netWorth()` adds OKC equity (amortised
+at 5.99%, appreciated 3%/yr, net of 7% selling costs) and Midland equity when unsold, then
+subtracts three things the balance never sees:
+
+- **the car loan** — $5,058 still owed on Dec 31 2030 when no sale ever pays it off
+- **the unpaid 2030 property tax** — the hole rule 13 leaves
+- **`deferred`** — the subtle one. Valuing an unsold house *net of selling costs* implies a
+  sale, so you must also charge the recapture and capital gains that sale would trigger. Omit
+  it and never-sell scenarios are overstated.
+
 ### The relocation window (rule 8)
 
 7/20/2026 + one year. The sale must **close** on or before `RELO_DEADLINE` — not merely be
@@ -517,7 +590,25 @@ a live result box showing projected balance → variance → **new balance**.
 
 ---
 
-## 8. Current headline numbers (Oct 30 sale @ $425k, no reconciles)
+## 8. Current headline numbers (Oct 30 sale, price derived, no reconciles)
+
+**Two guards moved on 2026-09-02 and the move is correct, not a bug.** Adding Midland property
+tax (rule 13) and deriving the price from the date (rule 16) both change the default scenario:
+
+| Guard | Before | Now | Why |
+|---|---|---|---|
+| Sept 17, 2026 | $100,194.85 | **unchanged** | nothing new lands before the closing |
+| Oct 1, 2026 low | −$3,114.63 | **unchanged** | ditto |
+| Dec 31, 2026 | $34,641.71 | **$29,378.55** | −$3,751.17 tax prorated at closing, −$1,511.99 net price effect |
+| Dec 31, 2027 | $96,709.57 | **$91,446.41** | same $5,263.16, carried forward — the house is sold, so no further bills |
+| Dec 31, 2030 | $289,886.76 | **$284,623.60** | same $5,263.16 |
+| Vivint buyout | $1,289.79 | unchanged | |
+| Car payoff | $38,563.57 | unchanged | |
+
+Net worth on that scenario is **$443,995.98** (cash $284,624 + OKC equity $159,372). The account
+runs under $15,000 for **42 days**, all of them under $5,000.
+
+
 
 - Sept 18 morning balance: **$104,025.13** vs a **$104,462.90** wire → **~$438 short**
   (~8 OT hours, or fold into the bridge)
@@ -601,6 +692,12 @@ confirm the table's last balance matches the Dec 31 tile.
 - Capital gains beyond depreciation recapture are not modelled, nor is the Sec.121 clock that
   renting eventually breaks (you must have lived there 2 of the last 5 years)
 - 2028-2030 have no statement backing at all — they are the 2027 shapes grown at 3%
+- **`MID_TAX_NONHS` = $5,874.36 is a 1.30x guess** and the single most valuable number left to
+  confirm with Midland CAD — at 0% appreciation the ranking flips at 1.31x
+- No landlord costs: management fee, vacancy, maintenance, landlord-policy premium. Enter a net
+  rent figure (~$2,321.67 for a $3,000 gross at 8% / 1 month vacancy / $2,500 maintenance)
+- Rental income tax and passive-loss suspension are ignored — under $1,000/yr either way
+- Net worth assumes OKC appreciates 3%/yr and sells at 7% cost; neither is modelled as an input
 - Your own rent is modelled without a security deposit, application fees, renter's insurance,
   or a lease-break penalty if a purchase lets you leave early
 - A later purchase reuses the current deal's figures as defaults ($104,463 cash, $3,181/mo).
