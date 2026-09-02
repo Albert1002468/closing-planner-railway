@@ -466,6 +466,10 @@
               <label for="rentrate">Recapture tax rate %</label>
               <input type="number" id="rentrate" min="0" max="60" step="0.05" value="29.75">
             </div>
+            <div class="ctl">
+              <label for="renttax">Rental income tax rate %</label>
+              <input type="number" id="renttax" min="0" max="60" step="0.05" value="28.75">
+            </div>
             <p class="warn" id="rentwarn"></p>
           </div>
         </div>
@@ -704,6 +708,9 @@ const YEARS_AHEAD=['2027','2028','2029','2030'];
    even though the house is in Texas, and Texas levies nothing to credit against. */
 const DEPREC_YEARS=27.5;
 const RECAP_DEFAULT={basis:340000, rate:29.75};
+// Rental profit is ordinary income. 24% federal + 4.75% Oklahoma for a single filer at this
+// income; drop to 26.75% if you file jointly and land in the 22% bracket.
+const RENT_TAX_DEFAULT=28.75;
 
 /* --- relocation benefit window: 7/20/2026 + one year. The sale must CLOSE on or before
        this date. After it every relo benefit is gone: seller closing costs come out of
@@ -1027,6 +1034,34 @@ function buildEvents(sale, price, rent, home){
   }
   rentDates.forEach((d,i)=>E(bumpWk(d), rent.amt, `Rent — Midland home (${i+1} of ${rent.months})`));
 
+  // ---- Rental income tax (Schedule E). Rent, less mortgage interest, property tax, insurance
+  //      and depreciation. At $3,600/mo this is a PROFIT — a lower rent would run the paper
+  //      loss people assume. Losses are NOT carried: passive losses are suspended above ~$150k
+  //      MAGI and released at sale, so only profitable years are taxed here. ----
+  let rentNetIncome=0, rentIncTax=0;
+  if(rent && rentDates.length){
+    const yrs={};
+    const add=(y,k,v)=>{ (yrs[y]=yrs[y]||{rent:0,int:0,tax:0,ins:0,dep:0})[k]+=v; };
+    rentDates.forEach(d=>{
+      const y=YR(d);
+      add(y,'rent',rent.amt);
+      add(y,'tax',midTaxForYear(y)/12);
+      add(y,'ins',MID_INS/12);
+      add(y,'dep',rent.basis/DEPREC_YEARS/12);
+    });
+    sched.forEach(r=>{ if(rented(r.draft)) add(YR(r.draft),'int',r.int); });
+    Object.keys(yrs).sort().forEach(y=>{
+      const a=yrs[y], net=+(a.rent-a.int-a.tax-a.ins-a.dep).toFixed(2);
+      rentNetIncome+=net;
+      if(net>0){
+        const t=+(net*rent.taxRate/100).toFixed(2);
+        rentIncTax+=t;
+        E(bumpWk((+y+1)+'-04-15'), -t,
+          `Rental income tax — ${y} (${fmt(net)} net @ ${rent.taxRate}%)`);
+      }
+    });
+  }
+
   let myRentTotal=0;
   if(my){
     // Moving in mid-month means a prorated first cheque before the monthly cycle starts.
@@ -1108,14 +1143,15 @@ function buildEvents(sale, price, rent, home){
   return {ev, payoff, proceeds, loss, vivFee, vivMonthsLeft, carPayoff, carPayoffDate,
           sellerCost, reloOK, rentEnd, rentTotal:rentDates.length*(rent? rent.amt:0),
           myRentTotal, myEnd, buyDate, buyCC, recapDep, recapTax, cgTax,
-          carNaturalDate:carNatural.d, carNaturalAmt:carNatural.amt, carOwedAtEnd, midEscEnd};
+          carNaturalDate:carNatural.d, carNaturalAmt:carNatural.amt, carOwedAtEnd, midEscEnd,
+          rentNetIncome:+rentNetIncome.toFixed(2), rentIncTax:+rentIncTax.toFixed(2)};
 }
 
 function buildSeries(sale, price, rent, home, apy){
   const {ev,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,
          recapDep,recapTax,cgTax,carNaturalDate,carNaturalAmt,carOwedAtEnd,
-         midEscEnd}=buildEvents(sale,price,rent,home);
+         midEscEnd,rentNetIncome,rentIncTax}=buildEvents(sale,price,rent,home);
   const map={};
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
   const series=[]; let bal=START_BAL, cur=T0;
@@ -1137,7 +1173,7 @@ function buildSeries(sale, price, rent, home, apy){
   }
   return {series,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
           sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,recapDep,recapTax,cgTax,
-          carNaturalDate,carNaturalAmt,carOwedAtEnd,midEscEnd};
+          carNaturalDate,carNaturalAmt,carOwedAtEnd,midEscEnd,rentNetIncome,rentIncTax};
 }
 
 /* Net worth, not just cash. The bank balance alone ranks scenarios by how long you avoided
@@ -1203,6 +1239,11 @@ var TODAY_ISO=(function(){
   return `${g('year')}-${g('month')}-${g('day')}`;
 })();
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// `+value || fallback` swallows a deliberate 0, which is a legitimate rate. Check emptiness.
+function numOr(id,fallback){
+  const el=document.getElementById(id), v=+el.value;
+  return el.value!=='' && isFinite(v)? v : fallback;
+}
 function digits(id,min,max,fallback){
   const n=+String(document.getElementById(id).value).replace(/[^0-9]/g,'');
   return (!isFinite(n)||!n)? fallback : Math.min(max,Math.max(min,n));
@@ -1213,7 +1254,8 @@ function readRent(){
           months: digits('rentterm',1,60,RENT_DEFAULT.months),
           amt:    digits('rentamt',1,20000,RENT_DEFAULT.amt),
           basis:  digits('rentbasis',0,2000000,RECAP_DEFAULT.basis),
-          rate:   +document.getElementById('rentrate').value || RECAP_DEFAULT.rate};
+          rate:   numOr('rentrate',RECAP_DEFAULT.rate),
+          taxRate:numOr('renttax',RENT_TAX_DEFAULT)};
 }
 function readHome(){
   if(!document.getElementById('hown').checked) return {own:true};
@@ -1275,7 +1317,7 @@ function render(){
   if(sale && sale>T1) sale=null;
   // Price follows the sale date unless the reader is pricing a specific offer.
   MID_VALUE_TODAY = digits('midvalue',50000,2000000,420000);
-  MID_APPREC = (+document.getElementById('apprec').value||0)/100;
+  MID_APPREC = numOr('apprec',3)/100;
   const override = document.getElementById('priceover').checked;
   const priceDate = sale || T1;                 // unsold: value it at the end of the window
   const derived = priceOn(priceDate);
@@ -1283,10 +1325,11 @@ function render(){
   document.getElementById('pricederived').innerHTML =
     fmt0(derived)+`<span>${sale? 'implied by '+nice(sale) : 'value on Dec 31, 2030 — no sale set'}`
     +` · ${MID_VALUE_TODAY.toLocaleString('en-US')} today at ${(MID_APPREC*100).toFixed(2)}%/yr</span>`;
-  const apy = (+document.getElementById('cashapy').value||0)/100;
+  const apy = numOr('cashapy',0)/100;
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentTotal,myRentTotal,buyDate,buyCC,
-         recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,midEscEnd}=buildSeries(sale,price,rent,home,apy);
+         recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,midEscEnd,
+         rentNetIncome,rentIncTax}=buildSeries(sale,price,rent,home,apy);
   // the chart draws only the selected window; the tiles and the running balance stay whole-series
   const VD = VIEW==='all'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
   const svg=document.getElementById('tl');
@@ -1467,7 +1510,9 @@ function render(){
   set('t_end', fmt(endB), endB<0?'neg':'posv');
   set('t_rent', rent? fmt(rentTotal):'—', rent?'posv':'');
   document.getElementById('t_rentd').textContent = rent
-    ? `${rent.months} × ${fmt0(rent.amt)} · frees the house ${nice(rentEndDate)}`
+    ? `${rent.months} × ${fmt0(rent.amt)}`
+      + (rentIncTax? ` · less ${fmt0(rentIncTax)} income tax` : ' · no taxable profit')
+      + ` · free ${nice(rentEndDate)}`
     : 'not renting';
   set('t_recap', recapTax? fmt(-recapTax) : (rent?'$0.00':'—'), recapTax?'neg':'');
   document.getElementById('t_recapd').textContent = recapTax
@@ -1646,7 +1691,7 @@ document.getElementById('hown').addEventListener('change',e=>{
 document.getElementById('hbuy').addEventListener('change',e=>{
   document.getElementById('hbuyfields').hidden = !e.target.checked; render();
 });
-['rentrate','apprec','cashapy'].forEach(id=>document.getElementById(id).addEventListener('input',render));
+['rentrate','renttax','apprec','cashapy'].forEach(id=>document.getElementById(id).addEventListener('input',render));
 document.getElementById('priceover').addEventListener('change',e=>{
   document.getElementById('pricefields').hidden = !e.target.checked; render();
 });

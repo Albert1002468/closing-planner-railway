@@ -280,6 +280,39 @@ a $5,000 loss, but after 6 months' depreciation the basis is $418,818, so $1,182
 recapture**, only the excess above it — worth about $3,700 at 3%/yr appreciation. Do not let it
 drive timing.
 
+### Rental income tax (rule 19)
+
+**Property tax during a tenancy is already paid — it is inside the PennyMac escrow**, which is
+why no separate tax cheque appears while the house is rented. That is correct, not a gap.
+
+What *was* missing is tax on the rental **profit**. Schedule E:
+
+```
+rent − mortgage interest − property tax − insurance − depreciation
+```
+
+At **$3,600/mo this is a profit, not the paper loss** a lower rent produces — the earlier
+assumption that it "runs a small loss worth under $1,000/yr" was simply wrong at this rent:
+
+| Term | Gross rent | Net income | Tax @ 28.75% |
+|---|---|---|---|
+| 9 mo | $32,400 | $4,425.30 | **$1,272** |
+| 18 mo | $64,800 | $8,771.35 | $2,522 |
+| 30 mo | $108,000 | $14,789 | **$4,252** |
+| 36 mo | $129,600 | $17,905.41 | $5,148 |
+
+Computed and posted **per calendar year**, due the following April 15. Only profitable years
+are taxed: passive losses are suspended above ~$150k MAGI and released at sale, so carrying a
+loss forward would overstate the benefit.
+
+The depreciation deducted here is the **same figure recaptured at sale** — deduct it annually,
+pay it back on the way out. `RENT_TAX_DEFAULT = 28.75` (24% federal + 4.75% Oklahoma, single
+filer at this income); use 26.75 if filing jointly puts you in the 22% bracket.
+
+⚠️ **`+value || fallback` swallows a deliberate `0`.** Both tax-rate inputs had this: typing 0
+silently reapplied the default. Use `numOr(id, fallback)`, which checks for an empty string
+rather than falsiness. Any future rate input must do the same.
+
 ### Price follows the date (rule 16)
 
 Price and timing are not independent — the price *is* the date. `priceOn(d)` grows
@@ -752,7 +785,10 @@ confirm the table's last balance matches the Dec 31 tile.
   confirm with Midland CAD — at 0% appreciation the ranking flips at 1.31x
 - No landlord costs: management fee, vacancy, maintenance, landlord-policy premium. Enter a net
   rent figure (~$2,321.67 for a $3,000 gross at 8% / 1 month vacancy / $2,500 maintenance)
-- Rental income tax and passive-loss suspension are ignored — under $1,000/yr either way
+- Rental **expenses** are still not deducted because they are not modelled: no management fee,
+  vacancy, maintenance or landlord-policy premium. Adding them would lower the taxable profit
+  as well as the cash, so the income tax above is if anything an overestimate
+- Suspended passive losses are not released at sale, only ignored
 - Net worth assumes OKC appreciates 3%/yr and sells at 7% cost; neither is modelled as an input
 - Your own rent is modelled without a security deposit, application fees, renter's insurance,
   or a lease-break penalty if a purchase lets you leave early
