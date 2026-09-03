@@ -232,6 +232,24 @@ Deposits of $158.07/mo against disbursements of $158.07/mo — **exact equilibri
 what confirms the split. The first assessment including the house is **Jan 1 2026, billed Jan
 31 2027**; that one disbursement blows the account open.
 
+**Both homes run on one engine, `escrowPlan(cfg)`.** The OKC escrow has the identical defect —
+set at closing against an unimproved lot ($135/yr), funded with $560.50, collecting $153.08/mo —
+so modelling Midland properly and leaving OKC as a clean Jan-2027 step was an inconsistency, not
+a simplification. `midEscrowPlan()` and `nhEscrowPlan()` are now two configs of the same walk.
+
+The analysis **projects the next twelve months and targets the LOW point**, rather than
+comparing against today's balance. That distinction is the whole point: at OKC's Dec 2027
+analysis the account is still +$713, and only a forward projection sees the $6,000 bill about to
+land. It also raised Midland's June 2027 step from $3,136.69 to $3,230.92, because the Jan 2028
+bill is inside its projection window.
+
+| From | Midland | | OKC |
+|---|---|---|---|
+| today | $2,318.72 | Nov 2026 | $2,691.97 |
+| Nov 2026 | $2,289.97 | | |
+| Jun 2027 | **$3,230.92** | Dec 2027 | **$3,674.74** |
+| Jun 2028 | $2,769.55 | Dec 2028 | $3,211.98 |
+
 `midEscrowPlan()` walks the account month by month: deposits in, insurance out each May, the
 tax bill out each January, and an annual analysis every June that resets the monthly escrow to
 the next 12 months of disbursements over 12 and spreads any shortage against a 2-month cushion
@@ -868,12 +886,12 @@ tax (rule 13) and deriving the price from the date (rule 16) both change the def
 | Sept 17, 2026 | $100,194.85 | **unchanged** | nothing new lands before the closing |
 | Oct 1, 2026 low | −$3,114.63 | **unchanged** | ditto |
 | Dec 31, 2026 | $34,641.71 | **$30,010.83** | −$3,751.17 tax prorated at closing, −$1,511.99 net price effect, +$632.28 escrow refund |
-| Dec 31, 2027 | $96,709.57 | **$92,078.69** | same, carried forward — the house is sold, so no further bills |
-| Dec 31, 2030 | $289,886.76 | **$285,255.88** | same |
+| Dec 31, 2027 | $96,709.57 | **$97,622.04** | ⬆ the old model stepped OKC up in Jan 2027, eleven months too early |
+| Dec 31, 2030 | $289,886.76 | **$285,774.20** | modelling both escrows properly is nearly a wash over the window (−$143) — the old figure had the right total and the wrong timing |
 | Vivint buyout | $1,289.79 | unchanged | |
 | Car payoff | $38,563.57 | unchanged | |
 
-Net worth on that scenario is **$444,628.26** (cash $285,256 + OKC equity $159,372). The account
+Net worth on that scenario is **$445,146.58**. The account
 runs under $15,000 for **42 days**, all of them under $5,000.
 
 Never-sold, for contrast: cash **$71,576.02**, net worth **$363,734.74** — 52 PennyMac drafts

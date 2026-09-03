@@ -740,9 +740,17 @@ const VIVINT_START='2025-06-21', VIVINT_TERM=60;
 
 /* --- new-home payment: escrow steps up Jan 1 2027 for the reassessed property tax --- */
 const NH_PMT_26 = 2691.97;                  // P&I 2538.89 + escrow 153.08 (ins 141.83 + tax 11.25)
-const NH_PI = 2538.89, NH_ESC_27 = 641.83;  // escrow = ins 141.83 + tax 500.00 @ $6,000/yr
-const NH_PMT_27 = +(NH_PI+NH_ESC_27).toFixed(2);          // 3180.72; escrow then inflates
-const nhPmtAt = d => +(NH_PI + NH_ESC_27*inflAt(d)).toFixed(2);
+const NH_PI = 2538.89;
+/* The OKC escrow has the SAME defect as Midland: it was set at closing against an
+   UNIMPROVED LOT. The Closing Disclosure funds it with 3 months' insurance ($425.50) and
+   12 months' lot tax ($135.00), and collects $153.08/mo — insurance plus lot tax only. The
+   first full-house bill lands Dec 2027 and blows the account open exactly as Midland's does. */
+const NH_INS = 1702.00;               // annual homeowners premium
+const NH_LOT_TAX = 135.00;            // the unimproved-lot assessment
+const NH_TAX_FULL = 6000.00;          // assumed reassessed annual tax
+const NH_ESC_START = 560.50;          // 425.50 + 135.00 escrowed at closing
+const nhTaxForYear = y => y<=2026 ? NH_LOT_TAX
+  : +(NH_TAX_FULL*Math.pow(1+INFL_PCT, Math.max(0,y-2027))).toFixed(2);
 
 /* --- car loan: simple interest, actual/365. Anchored on the 8/27/26 statement, which
        splits the payment 587.47 principal / 237.29 interest. Working back:
@@ -888,33 +896,60 @@ function seasonal(days, amts, fromY, toY){
 const midTaxForYear = y => +((y<=HOMESTEAD_LAST_YEAR? MID_TAX_HS : MID_TAX_NONHS)
                              *Math.pow(1+MID_APPREC, y-2026)).toFixed(2);
 
+/* ONE escrow engine, used by both homes. Walk the account month by month: deposits in,
+   insurance and tax out. At each annual analysis, project the next twelve months at the new
+   monthly figure, find the LOW point, and spread whatever it takes to lift that low to the
+   cushion. Projecting forward matters — comparing against today's balance alone misses a big
+   disbursement that has not landed yet, which is precisely the OKC case. */
+function escrowPlan(cfg){
+  const plan={}, notes={};
+  let bal=cfg.start, base=cfg.baseStart, shortMo=0, shortLeft=0;
+  const disb=(y,m)=>(m===cfg.insMonth? cfg.ins : 0)
+                   +(m===cfg.taxMonth? cfg.taxForYear(y+cfg.taxYearOffset) : 0);
+  cfg.dates.forEach(d=>{
+    const y=YR(d), m=+d.slice(5,7);
+    if(m===cfg.analysisMonth && !lt(d,cfg.firstAnalysis)){
+      let need=0;
+      for(let k=0;k<12;k++){ const t=addM(d,k); need+=disb(YR(t),+t.slice(5,7)); }
+      need=+(need/12).toFixed(2);
+      let probe=bal, low=Infinity;
+      for(let k=0;k<12;k++){ const t=addM(d,k);
+        probe+=need; probe-=disb(YR(t),+t.slice(5,7)); low=Math.min(low,probe); }
+      const short=Math.max(0, need*cfg.cushion - low);
+      base=need; shortMo=+(short/cfg.spread).toFixed(2); shortLeft = short>0? cfg.spread : 0;
+    }
+    const pmi = cfg.pmiUntil && lt(d,cfg.pmiUntil)? cfg.pmi : 0;
+    const esc = +(base + (shortLeft>0? shortMo : 0)).toFixed(2);
+    plan[d]=+(cfg.pi + pmi + esc).toFixed(2);
+    notes[d]={esc, pmi, short: shortLeft>0? shortMo : 0};
+    bal+=esc;
+    if(shortLeft>0) shortLeft--;
+    bal-=disb(y,m);
+    notes[d].bal=+bal.toFixed(2);
+  });
+  return {plan, notes};
+}
+
+const NH_DATES = ['2026-11-02','2026-12-01'].concat(monthly(1,'2027-01','2030-12'));
+const nhEscrowPlan = () => escrowPlan({
+  dates:NH_DATES, start:NH_ESC_START, pi:NH_PI,
+  baseStart:+((NH_INS+NH_LOT_TAX)/12).toFixed(2),
+  ins:NH_INS, insMonth:9,                 // policy renews on the closing anniversary
+  taxForYear:nhTaxForYear, taxMonth:12, taxYearOffset:0,   // Oklahoma bills Nov, due Dec 31
+  analysisMonth:12, firstAnalysis:'2027-12-01', cushion:2, spread:12 });
+
 /* Walk the escrow account month by month and return the actual payment due on each PennyMac
    draft. Deposits go in, insurance leaves each May and the tax bill each January, and every
    June the servicer re-analyses: new monthly = next 12 months of disbursements / 12, plus any
    shortage against a 2-month cushion, spread over the following 12 payments. */
-function midEscrowPlan(){
-  const plan={}, notes={};
-  let bal=MID_ESC_START, base=+(MID_INS/12 + MID_LAND_TAX/12).toFixed(2);
-  let shortMo=0, shortLeft=0;
-  mortgageSchedule().forEach(r=>{
-    const y=YR(r.draft), m=+r.draft.slice(5,7);
-    if(m===ESC_ANALYSIS_M){                       // annual analysis
-      const need=+((MID_INS + midTaxForYear(y))/12).toFixed(2);
-      const short=Math.max(0, need*ESC_CUSHION_MO - bal);
-      base=need; shortMo=+(short/12).toFixed(2); shortLeft = short>0? 12 : 0;
-    }
-    const pmi = lt(r.draft, MID_PMI_OFF)? MID_PMI : 0;
-    const esc = +(base + (shortLeft>0? shortMo : 0)).toFixed(2);
-    plan[r.draft]=+(MTG_PI + pmi + esc).toFixed(2);
-    notes[r.draft]={esc, pmi, short:shortLeft>0? shortMo:0};
-    bal+=esc;
-    if(shortLeft>0) shortLeft--;
-    if(m===5) bal-=MID_INS;                       // insurance renews with the closing anniversary
-    if(m===1) bal-=midTaxForYear(y-1);            // prior year's bill, due Jan 31
-    notes[r.draft].bal=+bal.toFixed(2);
-  });
-  return {plan, notes};
-}
+const midEscrowPlan = () => escrowPlan({
+  dates:mortgageSchedule().map(r=>r.draft), start:MID_ESC_START, pi:MTG_PI,
+  baseStart:+((MID_INS+MID_LAND_TAX)/12).toFixed(2),
+  pmi:MID_PMI, pmiUntil:MID_PMI_OFF,
+  ins:MID_INS, insMonth:5,                // renews with the mid-May closing anniversary
+  taxForYear:midTaxForYear, taxMonth:1, taxYearOffset:-1,  // Texas bills Jan 31 for the PRIOR year
+  analysisMonth:ESC_ANALYSIS_M, firstAnalysis:'2027-01-01',
+  cushion:ESC_CUSHION_MO, spread:12 });
 
 /* Rent runs on the 1st of the month: the first 1st on or after the start date, then one a
    month for the term. `end` is the day the tenancy is up — the earliest a sale can close. */
@@ -988,8 +1023,12 @@ function buildEvents(sale, price, rent, home){
   E('2026-09-19',234.00,'Airbnb refund — day refund');
   E('2026-09-19',750.00,'Airbnb refund — pet deposit');
   if(owning){
-    ['2026-11-02','2026-12-01'].forEach(d=>E(d,-NH_PMT_26,'NEW home mortgage (P&I + escrow)'));
-    monthly(1,'2027-01','2030-12').forEach(d=>E(d,-nhPmtAt(d),'NEW home mortgage (P&I + escrow)'));
+    const NHE=nhEscrowPlan();
+    NH_DATES.forEach(d=>{
+      const pl=NHE.notes[d];
+      E(d,-NHE.plan[d], `NEW home mortgage (P&I ${fmt(NH_PI)} + escrow ${fmt(pl.esc)}`
+        +`${pl.short? ', incl. shortage '+fmt(pl.short):''})`);
+    });
   } else if(buyDate){
     // First payment skips a month, the same way the Sept 18 deal pays first on Nov 1.
     const first=addM(buyDate.slice(0,8)+'01',2);
