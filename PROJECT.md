@@ -135,6 +135,18 @@ new-home mortgage, the escrow step-up, the new-home utilities, and the **relo in
 reimbursement** (it exists to offset carrying two mortgages). It adds a prorated first month if
 the lease starts mid-month, monthly rent on the 1st, and flat `util` while renting.
 
+Your own rent **steps up on each lease anniversary** (`#hescal`, default 3%) on the same
+`Math.floor(i/12)` rule as the Midland tenancy, and renter utilities **inflate through
+`inflAt`** like every other cost — 3%/yr from 2028.
+
+⚠️ **The renter-utilities end month must be `T1.slice(0,7)`.** It was hardcoded `'2027-12'`
+from the old horizon, so any lease running past 2027 silently stopped paying utilities while
+still paying rent. Grep for other hardcoded `'2027-12'` / `'2030-12'` month bounds whenever the
+horizon moves — `mortgageSchedule` had the same disease.
+
+`#hterm` allows **60 months**, matching `#rentterm`; the 36 cap could not express a lease
+covering the window.
+
 The **earnest money is treated as forfeited** — it left the account on 8/12, before `START_BAL`,
 so rent mode records nothing new. If it is actually refunded you are $5,299 better off than shown.
 

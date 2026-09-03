@@ -540,7 +540,7 @@
             </div>
             <div class="ctl">
               <label for="hterm">Term (months)</label>
-              <input type="number" id="hterm" min="1" max="36" step="1" value="12">
+              <input type="number" id="hterm" min="1" max="60" step="1" value="12">
             </div>
             <div class="ctl">
               <label for="hamt">Monthly rent — paid the 1st</label>
@@ -548,6 +548,10 @@
                 <input type="text" id="hamt" inputmode="numeric" autocomplete="off" value="2,200"
                        aria-label="Your monthly rent in dollars">
               </div>
+            </div>
+            <div class="ctl">
+              <label for="hescal">Rent increase %/yr — on each lease anniversary</label>
+              <input type="number" id="hescal" min="0" max="20" step="0.25" value="3">
             </div>
             <div class="ctl">
               <label for="hutil">Utilities while renting</label>
@@ -1164,12 +1168,19 @@ function buildEvents(sale, price, rent, home){
       E(home.start, -part, 'Rent — prorated first month');
       myRentTotal+=part;
     }
-    my.dates.forEach((d,i)=>E(bumpWk(d), -home.amt, `Rent — housing (${i+1} of ${home.months})`));
-    myRentTotal+=my.dates.length*home.amt;
-    // Renter utilities run until you move into a purchase, or to the end of the lease.
+    // Your rent steps up on each lease anniversary, same rule as the Midland tenancy.
+    my.dates.forEach((d,i)=>{
+      const amt=+(home.amt*Math.pow(1+home.escal/100, Math.floor(i/12))).toFixed(2);
+      E(bumpWk(d), -amt, `Rent — housing (${i+1} of ${home.months})`
+        + (amt!==home.amt? ` · escalated ${home.escal}%/yr` : ''));
+      myRentTotal+=amt;
+    });
+    // Renter utilities run until you move into a purchase, or to the end of the lease, and
+    // inflate like every other cost. The end month must be T1 — hardcoding '2027-12' here cut
+    // them off at the old horizon, so any lease past 2027 silently stopped paying utilities.
     const utilStop = (buyDate && lt(buyDate,myEnd))? buyDate : myEnd;
-    monthDays(25,home.start.slice(0,7),'2027-12').forEach(d=>{
-      if(d>=home.start && lt(d,utilStop)) E(d,-home.util,'Utilities (rental)');
+    monthDays(25,home.start.slice(0,7),T1.slice(0,7)).forEach(d=>{
+      if(d>=home.start && lt(d,utilStop)) E(d,-home.util*inflAt(d),'Utilities (rental)');
     });
   }
   // Recapture and capital gains are computed inside the sale block below — they need
@@ -1383,8 +1394,9 @@ function readHome(){
   if(!document.getElementById('hown').checked) return {own:true};
   const h={own:false,
     start: document.getElementById('hstart').value || MYRENT_DEFAULT.start,
-    months: digits('hterm',1,36,MYRENT_DEFAULT.months),
+    months: digits('hterm',1,60,MYRENT_DEFAULT.months),
     amt:    digits('hamt',1,20000,MYRENT_DEFAULT.amt),
+    escal:  numOr('hescal',RENT_ESCAL_DEFAULT),
     util:   digits('hutil',0,3000,MYRENT_DEFAULT.util),
     buy:    null};
   if(document.getElementById('hbuy').checked)
@@ -1890,7 +1902,7 @@ document.getElementById('hown').addEventListener('change',e=>{
 document.getElementById('hbuy').addEventListener('change',e=>{
   document.getElementById('hbuyfields').hidden = !e.target.checked; render();
 });
-['rentrate','renttax','rentmgmt','rentvac','rentescal','apprec','cashapy']
+['rentrate','renttax','rentmgmt','rentvac','rentescal','hescal','apprec','cashapy']
   .forEach(id=>document.getElementById(id).addEventListener('input',render));
 document.getElementById('priceover').addEventListener('change',e=>{
   document.getElementById('pricefields').hidden = !e.target.checked; render();
