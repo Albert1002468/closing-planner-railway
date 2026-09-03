@@ -777,7 +777,18 @@ a live result box showing projected balance → variance → **new balance**.
   strip had this right (`.tilewrap` hosts, `.tiles` scrolls); the chart did not.
   **Desktop keeps `width:100%`** and scales the fixed 940 viewBox — pinning real pixels there
   stopped it filling wide screens.
-- ⚠️ **`touch-action` on `#tl` must stay `pan-y`, never `pan-x`.** Scrubbing the balance readout
+- ⚠️ **`touch-action` on `#tl` is set per window in `render()`, and the two values are not
+  interchangeable.** Not pannable → **`pan-y`**: horizontal drags reach us so the scrub works,
+  vertical ones still scroll the page. This is why single-year views were never affected.
+  Pannable → **`none`**: the chart sits in a live scroll container *and* the edge auto-pan
+  writes `scrollLeft` mid-gesture. Leave the browser any scroll behaviour to fall back on and
+  it claims the sequence and fires **`pointercancel`**, which ends the scrub mid-drag — the
+  reported "dragging suddenly stops". Taking the gesture outright is the only reliable fix; the
+  cost is that you cannot scroll the page by dragging on the chart in that one window.
+  A raw **`touchmove` fallback** re-arms tracking if a cancel slips through anyway.
+  Note this class of bug is **invisible to synthetic tests**: dispatching `PointerEvent`
+  bypasses the gesture recogniser entirely, so a scripted drag passes while a real finger fails.
+- ⚠️ **`touch-action` on `#tl` must never be `pan-x`.** Scrubbing the balance readout
   and panning the chart are *both* horizontal drags on the same pixels, so they cannot be
   disambiguated by direction. Declaring `pan-x` hands the gesture to the browser and the readout
   silently stops working on touch. Panning therefore gets its own control: **`.tlbar`**, a real

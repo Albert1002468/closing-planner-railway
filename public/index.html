@@ -278,7 +278,7 @@
   /* pan-y ONLY. `pan-x` here hands horizontal drags to the browser for scrolling, which is
      exactly the gesture used to scrub the balance readout — the two cannot share it. Panning
      gets its own control below instead. */
-  #tl{height:auto;display:block;touch-action:pan-y}
+  #tl{height:auto;display:block;touch-action:pan-y}   /* overridden per-window in render() */
   .tlbar{margin:7px 2px 0;padding:8px 0;cursor:grab;touch-action:none}
   .tlbar[hidden]{display:none}
   .tlbar:active{cursor:grabbing}
@@ -1478,6 +1478,16 @@ function render(){
         H=mobile?300:380;
   // Desktop keeps scaling the fixed 940 viewBox to the container; only mobile pins real pixels.
   svg.style.width = mobile? W+'px' : '100%';
+  /* touch-action, and why it differs by window:
+       not pannable -> 'pan-y'. Horizontal drags reach us (scrub works) and vertical ones still
+         scroll the page. This is why single-year views were never affected.
+       pannable     -> 'none'. The chart sits in a live scroll container AND the edge auto-pan
+         writes scrollLeft mid-gesture; with any scroll behaviour left on the table the browser
+         claims the sequence and fires pointercancel, which ends the scrub mid-drag. Taking the
+         gesture outright is the only way to guarantee it survives. Cost: you cannot scroll the
+         page by dragging on the chart in this one view — the pan bar and the rest of the page
+         still work. */
+  svg.style.touchAction = canPan? 'none' : 'pan-y';
   const m=mobile?{l:48,r:8,t:14,b:28}:{l:70,r:16,t:14,b:34};
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
   svg.setAttribute('width',W); svg.setAttribute('height',H);
@@ -1635,6 +1645,17 @@ function render(){
                       try{ hit.releasePointerCapture(e.pointerId); }catch(_){} } };
   hit.addEventListener('pointerup',endTouch);
   hit.addEventListener('pointercancel',endTouch);
+  // If the browser cancels anyway, a raw touchmove still arrives — keep the readout following
+  // the finger rather than freezing it. preventDefault is safe: touch-action is already none
+  // whenever this path can be reached.
+  hit.addEventListener('touchmove',e=>{
+    if(!canPan || !e.touches.length) return;
+    e.preventDefault();
+    if(!tracking){ tracking=true; clearTimeout(hideT); }
+    const t=e.touches[0];
+    showAt(t.clientX, t.clientY, true); edgeScroll(t.clientX);
+  },{passive:false});
+  hit.addEventListener('touchend',()=>{ tracking=false; stopEdge(); holdOpen(); });
   hit.addEventListener('pointerleave',e=>{ if(!isTouchLike(e)) hide(); });
   document.addEventListener('pointerdown',e=>{ if(isTouchLike(e) && !svg.contains(e.target)) hide(); },{passive:true});
 
