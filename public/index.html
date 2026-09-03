@@ -208,8 +208,17 @@
     :root:where(:not([data-theme="light"])) .modal{background:rgba(0,0,0,.66)}
   }
   .sheet{box-sizing:border-box;background:var(--surface-1);color:var(--ink);border:1px solid var(--ring);border-radius:14px;
-         width:min(440px,100%);max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);
-         overflow-y:auto;-webkit-overflow-scrolling:touch;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.32)}
+         width:min(440px,100%);max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);}
+  /* The scenario sheet carries ~20 fields. One column is fine on a phone and absurd on a
+     desktop, so it widens and splits into two there; group containers span both columns. */
+  @media (min-width:760px){
+    #setmodal .sheet{width:min(840px,100%)}
+    #setmodal .controls,#rentfields,#hfields,#hbuyfields{
+      display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px 26px;align-items:start}
+    #setmodal .ctlsep,.ctl-wide,#rentfields>.warn,#hfields>.warn,
+    #hfields>label.switch,#hbuyfields{grid-column:1/-1}
+  }
+  .sheet{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.32)}
   .sheet h3{margin:0 0 3px;font-size:15px}
   .sheet .hint{font-size:11.5px;color:var(--muted);margin:0 0 13px;line-height:1.45}
   .fld{margin-bottom:11px}
@@ -241,10 +250,8 @@
   tr.recrowT td{color:var(--s7)}
   #evtable td.pos{color:var(--goodtext)}
   tr.mrule td{border-top:1px solid var(--axis)}
-  .viewrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-  .vbtn{background:var(--page);color:var(--ink-2);border:1px solid var(--axis);border-radius:7px;
-        padding:5px 12px;font-size:12px;font-family:inherit;cursor:pointer;font-weight:600}
-  .vbtn.on{background:var(--s1);border-color:var(--s1);color:#fff}
+  .viewrow{margin:0}
+  .viewrow select{min-width:120px;font-weight:600}
   .pager{display:flex;gap:8px;align-items:center;margin:8px 0 6px;flex-wrap:wrap}
   .pager button{background:var(--page);color:var(--ink-2);border:1px solid var(--axis);border-radius:7px;
                 padding:4px 11px;font-size:14px;font-family:inherit;cursor:pointer;font-weight:600;line-height:1.15}
@@ -253,7 +260,18 @@
                 padding:5px 8px;font-size:12.5px;font-family:inherit;max-width:200px}
   .pginfo{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
   /* responsive */
-  #tl{width:100%;height:auto;touch-action:pan-y;display:block}
+  /* 53 months in 340px is unreadable, so on a phone the chart gets a floor of ~30px per month
+     and scrolls sideways instead of compressing. Same hidden-scrollbar + fade idiom as the
+     tile strip. touch-action allows the horizontal pan while keeping the readout on tap. */
+  .tlwrap{position:relative;overflow-x:auto;overscroll-behavior-x:contain;
+          -webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
+  .tlwrap::-webkit-scrollbar{display:none}
+  .tlwrap::before,.tlwrap::after{content:'';position:absolute;top:0;bottom:0;width:34px;
+    pointer-events:none;opacity:0;transition:opacity .18s;z-index:1}
+  .tlwrap::before{left:0;background:linear-gradient(to left,transparent,var(--surface-1))}
+  .tlwrap::after{right:0;background:linear-gradient(to right,transparent,var(--surface-1))}
+  .tlwrap.more-l::before,.tlwrap.more-r::after{opacity:1}
+  #tl{height:auto;display:block;touch-action:pan-x pan-y}
   #donut{max-width:290px;width:72vw;height:auto;display:block;margin:0 auto}
   .donut-wrap{justify-content:center}
   @media (max-width:640px){
@@ -303,13 +321,10 @@
     </div>
 
     <div class="actionbar">
-      <div class="viewrow" role="group" aria-label="Timeline window">
-        <button type="button" class="vbtn" data-view="all" aria-pressed="false">All</button>
-        <button type="button" class="vbtn on" data-view="2026" aria-pressed="true">2026</button>
-        <button type="button" class="vbtn" data-view="2027" aria-pressed="false">2027</button>
-        <button type="button" class="vbtn" data-view="2028" aria-pressed="false">2028</button>
-        <button type="button" class="vbtn" data-view="2029" aria-pressed="false">2029</button>
-        <button type="button" class="vbtn" data-view="2030" aria-pressed="false">2030</button>
+      <div class="pager viewrow">
+        <button type="button" id="vwprev" aria-label="Previous window">&lsaquo;</button>
+        <select id="viewsel" aria-label="Timeline window"></select>
+        <button type="button" id="vwnext" aria-label="Next window">&rsaquo;</button>
       </div>
       <div class="acts">
         <button type="button" class="abtn accent iconbtn" id="setbtn" aria-haspopup="dialog"
@@ -329,7 +344,9 @@
       </div>
     </div>
 
-    <svg id="tl" viewBox="0 0 940 380" width="940" height="380" role="img" aria-label="Projected bank balance timeline"></svg>
+    <div class="tlwrap" id="tlwrap">
+      <svg id="tl" viewBox="0 0 940 380" width="940" height="380" role="img" aria-label="Projected bank balance timeline"></svg>
+    </div>
     <div class="tip" id="ttip"></div>
     <div class="keyrow">
       <span><i style="color:var(--goodtext)">&#9650;</i> in &ge;$800</span>
@@ -433,7 +450,7 @@
           </label>
         </div>
         <hr class="ctlsep">
-        <div class="ctl">
+        <div class="ctl ctl-wide">
           <label id="rentlab">Rent out the Midland home</label>
           <label class="switch" for="renton">
             <input type="checkbox" id="renton" aria-labelledby="rentlab rentontxt">
@@ -493,7 +510,7 @@
           </div>
         </div>
         <hr class="ctlsep">
-        <div class="ctl">
+        <div class="ctl ctl-wide">
           <label id="hlab">Your own housing</label>
           <label class="switch" for="hown">
             <input type="checkbox" id="hown" aria-labelledby="hlab howntxt">
@@ -1423,7 +1440,11 @@ function render(){
   const svg=document.getElementById('tl');
   while(svg.firstChild) svg.removeChild(svg.firstChild);
   const cw=svg.parentNode.clientWidth||940, mobile=cw<640;
-  const W=mobile?Math.max(300,Math.round(cw)):940, H=mobile?300:380;
+  const nMonths=Math.max(1, VD.filter(d=>d.d.slice(8)==='01').length);
+  // On a phone a long window scrolls rather than compresses; a single year still fits exactly.
+  const W=mobile? Math.max(300,Math.round(cw),nMonths*30) : 940, H=mobile?300:380;
+  // Desktop keeps scaling the fixed 940 viewBox to the container; only mobile pins real pixels.
+  svg.style.width = mobile? W+'px' : '100%';
   const m=mobile?{l:48,r:8,t:14,b:28}:{l:70,r:16,t:14,b:34};
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
   svg.setAttribute('width',W); svg.setAttribute('height',H);
@@ -1444,10 +1465,10 @@ function render(){
     t.style.fontVariantNumeric='tabular-nums'; t.textContent=fmt0(v/1000)+'k';
   }
   add('line',{x1:m.l,x2:W-m.r,y1:Y(0),y2:Y(0),stroke:'var(--axis)','stroke-width':1.5});
-  // With up to 17 months in view the axis has to thin its labels out, or they collide.
-  const nMon=VD.filter(d=>d.d.slice(8)==='01').length;
-  const mStep=mobile? (nMon>30?12:(nMon>10?3:(nMon>5?2:1)))
-                    : (nMon>36?6:(nMon>24?3:(nMon>12?2:1)));
+  // Thin the axis by the space actually available per month, not by a month-count guess —
+  // the mobile chart is now wider than its container, so a count-based rule read it wrong.
+  const nMon=nMonths;
+  const mStep=Math.max(1, Math.ceil(55/((W-m.l-m.r)/nMon)));
   let mSeen=-1, mLast=-99;               // January is always labelled; spacing resyncs from it
   VD.forEach((d,i)=>{ if(d.d.slice(8)==='01'||i===0){
     add('line',{x1:X(i),x2:X(i),y1:m.t,y2:H-m.b,stroke:'var(--grid)','stroke-width':1,'stroke-dasharray':'2 3'});
@@ -1527,7 +1548,7 @@ function render(){
     }else{
       tip.classList.remove('docked');
       tip.style.bottom='auto'; tip.style.maxHeight='';
-      const prect=svg.parentNode.getBoundingClientRect();
+      const prect=(svg.closest('.card')||svg.parentNode).getBoundingClientRect();
       const tx=cx2-prect.left, flip=tx>prect.width-310;
       tip.style.left=Math.max(4,(flip? tx-300 : tx+16))+'px';
       tip.style.top=(cy2-prect.top+8)+'px';
@@ -1714,7 +1735,7 @@ function render(){
     (mEnd? ` · month-end ${fmt(mEnd.b)}`:'')+
     ` · page ${pi+1} of ${PMONTHS.length}`;
   LAST_DATA=DATA;
-  tileFades();
+  tileFades(); tlFades();
 }
 
 /* The tile row scrolls horizontally with no visible scrollbar, so the only affordance is a
@@ -1727,6 +1748,15 @@ function tileFades(){
   $tilewrap.classList.toggle('more-r', x<max-2);
 }
 $tiles.addEventListener('scroll',tileFades,{passive:true});
+
+const $tlwrap=document.getElementById('tlwrap');
+function tlFades(){
+  const max=$tlwrap.scrollWidth-$tlwrap.clientWidth, x=$tlwrap.scrollLeft;
+  $tlwrap.classList.toggle('more-l', x>2);
+  $tlwrap.classList.toggle('more-r', x<max-2);
+}
+$tlwrap.addEventListener('scroll',tlFades,{passive:true});
+window.addEventListener('resize',tlFades);
 
 // Edge arrows: jump most of a screenful, so a couple of clicks crosses the whole strip.
 const tileNudge=dir=>$tiles.scrollBy({left:dir*Math.max(160,$tiles.clientWidth*0.8),behavior:'smooth'});
@@ -1799,14 +1829,24 @@ const $ra=document.getElementById('rentamt');
 $ra.addEventListener('input',render);
 $ra.addEventListener('blur',()=>{$ra.value=digits('rentamt',1,20000,RENT_DEFAULT.amt).toLocaleString('en-US');render();});
 $ra.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();$ra.blur();} });
-document.querySelectorAll('.vbtn').forEach(b=>b.addEventListener('click',()=>{
-  VIEW=b.dataset.view;
-  document.querySelectorAll('.vbtn').forEach(x=>{
-    const on = x===b;
-    x.classList.toggle('on',on); x.setAttribute('aria-pressed',String(on));
-  });
+/* Six buttons did not survive adding years. One select plus steppers scales to any horizon
+   and matches the transactions pager, so both controls read the same way. */
+const VIEWS=['all']; for(let y=YR(T0); y<=YR(T1); y++) VIEWS.push(String(y));
+const $vw=document.getElementById('viewsel');
+$vw.innerHTML=VIEWS.map(v=>
+  `<option value="${v}"${v===VIEW?' selected':''}>${v==='all'?'All years':v}</option>`).join('');
+function setView(v){
+  if(!VIEWS.includes(v)) return;
+  VIEW=v; $vw.value=v;
+  const i=VIEWS.indexOf(v);
+  document.getElementById('vwprev').disabled = i<=0;
+  document.getElementById('vwnext').disabled = i>=VIEWS.length-1;
   render();
-}));
+}
+$vw.addEventListener('change',e=>setView(e.target.value));
+document.getElementById('vwprev').addEventListener('click',()=>setView(VIEWS[VIEWS.indexOf(VIEW)-1]));
+document.getElementById('vwnext').addEventListener('click',()=>setView(VIEWS[VIEWS.indexOf(VIEW)+1]));
+setView(VIEW);
 /* the scenario controls live in a sheet; edits apply live, so "Done" only closes it */
 const $set=document.getElementById('setmodal');
 const openSet =()=>{$set.hidden=false; document.body.style.overflow='hidden';};

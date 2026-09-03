@@ -750,13 +750,27 @@ a live result box showing projected balance → variance → **new balance**.
   or bottom edge — whichever is opposite the finger — instead of hiding under it, and stays
   6 seconds after lift. Mixing touch and mouse handlers breaks this: browsers fire synthetic
   mouse events after a tap that un-dock the readout.
-- **Window control** (`.vbtn`, `VIEW` = `all` | `2026` | `2027`) slices the series for the
-  chart only. Tiles stay whole-series — "Lowest point" is a bridge-sizing number and must not
+- **Window control** is a select plus steppers (`#viewsel`, `#vwprev`/`#vwnext`), built from
+  `T0`..`T1` at load, so a longer horizon needs no markup change. Six buttons did not survive
+  going to five years; this also matches the transactions pager, so both read the same way.
+  `VIEW` slices the series for the chart only. Tiles stay whole-series — "Lowest point" is a bridge-sizing number and must not
   change when you page to 2027. `ti`/`si` are indices into the *windowed* array, so the
   today-balance tile computes its own index (`tdi`) into the full array.
-- **Axis label thinning**: 17 months will not fit. `mStep` is 1–3 by width, January is always
-  labelled and carries the year (`Jan '27`), and the spacing counter **resyncs from January**
-  so you never get Dec/Jan/Feb in a row.
+- **The chart scrolls sideways on a phone.** 53 months in 340px is unreadable, so mobile gives
+  it a floor of **30px per month** (`W = max(cw, nMonths*30)`) inside `.tlwrap`, an
+  overflow-x container with the same hidden-scrollbar and edge-fade idiom as the tile strip.
+  A single year still fits exactly, so only the long windows scroll. **Desktop keeps
+  `width:100%`** and scales the fixed 940 viewBox — pinning real pixels there stopped it
+  filling wide screens.
+- Because the SVG can now be wider than its container, **axis thinning is computed from actual
+  pixels per month** (`ceil(55 / (iw/nMon))`), not a month-count guess, which read it wrong.
+  January is always labelled and carries the year (`Jan '27`), and the spacing counter
+  **resyncs from January** so you never get Dec/Jan/Feb in a row.
+- The readout is positioned against **`.card`**, not `svg.parentNode` — the SVG's parent is now
+  the scrolling wrapper, and measuring from it would misplace the tooltip once scrolled.
+- **The scenario sheet is two columns above 760px** and widens to 840px. `.ctl-wide` and the
+  nested `#rentfields`/`#hfields`/`#hbuyfields` grids span both columns. ~20 fields in one
+  column is fine on a phone and absurd on a desktop.
 - **Transactions** is styled as a real section rather than a bare triangle: `.secsum` is a
   bordered, full-width header row (icon, title, live count from `#tblmeta`, chevron) whose
   bottom corners square off when open to meet `.secbody`. Assumptions stays a plain small
