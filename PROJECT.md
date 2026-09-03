@@ -759,6 +759,10 @@ a live result box showing projected balance → variance → **new balance**.
 - **The chart scrolls sideways on a phone.** 53 months in 340px is unreadable, so mobile gives
   it a floor of **30px per month** (`W = max(cw, nMonths*30)`) inside `.tlwrap`, an
   overflow-x container with the same hidden-scrollbar and edge-fade idiom as the tile strip.
+  ⚠️ **The fades belong on `.tlouter`, which does not scroll — never on `.tlwrap` itself.** An
+  absolutely-positioned pseudo-element inside a scroll container is part of the *scrollable
+  content*, so it travels with the chart and reads as a dark band welded to the graph. The tile
+  strip had this right (`.tilewrap` hosts, `.tiles` scrolls); the chart did not.
   **Desktop keeps `width:100%`** and scales the fixed 940 viewBox — pinning real pixels there
   stopped it filling wide screens.
 - ⚠️ **`touch-action` on `#tl` must stay `pan-y`, never `pan-x`.** Scrubbing the balance readout
@@ -770,6 +774,13 @@ a live result box showing projected balance → variance → **new balance**.
   affordance as well as the control.
 - **Only `VIEW==='all'` may overflow** (`canPan`). A single year is pinned to the container, so
   it never scrolls and the gesture is never ambiguous even in principle.
+- **Edge auto-pan during a scrub.** On the multi-year window only ~29% of the chart is on
+  screen, so a drag runs out of *screen* long before it runs out of *timeline*. Holding within
+  46px of either edge pans the chart at 13px per frame and re-runs `showAt` from the stored
+  `liveTouch`, so one continuous drag walks the whole span with the readout live. The hit rect
+  takes a **pointer capture**, so the scrub survives the finger leaving the SVG as it moves
+  underneath. `stopEdge()` fires on lift, cancel and `hide()` — a stray interval would keep
+  scrolling after the finger is gone.
 - Because the SVG can now be wider than its container, **axis thinning is computed from actual
   pixels per month** (`ceil(55 / (iw/nMon))`), not a month-count guess, which read it wrong.
   January is always labelled and carries the year (`Jan '27`), and the spacing counter

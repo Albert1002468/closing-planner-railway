@@ -263,14 +263,18 @@
   /* 53 months in 340px is unreadable, so on a phone the chart gets a floor of ~30px per month
      and scrolls sideways instead of compressing. Same hidden-scrollbar + fade idiom as the
      tile strip. touch-action allows the horizontal pan while keeping the readout on tap. */
-  .tlwrap{position:relative;overflow-x:auto;overscroll-behavior-x:contain;
+  /* The fades MUST sit on a non-scrolling parent. As pseudo-elements of the scroller itself
+     they are part of the scrollable content and slide along with the chart, which reads as a
+     dark band welded to the graph. Same split as .tilewrap / .tiles. */
+  .tlouter{position:relative}
+  .tlwrap{overflow-x:auto;overscroll-behavior-x:contain;
           -webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none}
   .tlwrap::-webkit-scrollbar{display:none}
-  .tlwrap::before,.tlwrap::after{content:'';position:absolute;top:0;bottom:0;width:34px;
+  .tlouter::before,.tlouter::after{content:'';position:absolute;top:0;bottom:0;width:34px;
     pointer-events:none;opacity:0;transition:opacity .18s;z-index:1}
-  .tlwrap::before{left:0;background:linear-gradient(to left,transparent,var(--surface-1))}
-  .tlwrap::after{right:0;background:linear-gradient(to right,transparent,var(--surface-1))}
-  .tlwrap.more-l::before,.tlwrap.more-r::after{opacity:1}
+  .tlouter::before{left:0;background:linear-gradient(to left,transparent,var(--surface-1))}
+  .tlouter::after{right:0;background:linear-gradient(to right,transparent,var(--surface-1))}
+  .tlouter.more-l::before,.tlouter.more-r::after{opacity:1}
   /* pan-y ONLY. `pan-x` here hands horizontal drags to the browser for scrolling, which is
      exactly the gesture used to scrub the balance readout — the two cannot share it. Panning
      gets its own control below instead. */
@@ -354,8 +358,10 @@
       </div>
     </div>
 
-    <div class="tlwrap" id="tlwrap">
-      <svg id="tl" viewBox="0 0 940 380" width="940" height="380" role="img" aria-label="Projected bank balance timeline"></svg>
+    <div class="tlouter" id="tlouter">
+      <div class="tlwrap" id="tlwrap">
+        <svg id="tl" viewBox="0 0 940 380" width="940" height="380" role="img" aria-label="Projected bank balance timeline"></svg>
+      </div>
     </div>
     <div class="tlbar" id="tlbar" hidden><span class="tlthumb" id="tlthumb"></span></div>
     <div class="tip" id="ttip"></div>
@@ -1526,6 +1532,7 @@ function render(){
   const dot=add('circle',{r:4.5,fill:'var(--s1)',stroke:'var(--surface-1)','stroke-width':2,visibility:'hidden'});
   const tip=document.getElementById('ttip');
   const hit=add('rect',{x:m.l,y:m.t-8,width:iw,height:ih+16,fill:'transparent'});
+  const tlBox=document.getElementById('tlwrap');
   function showAt(cx2,cy2,isTouch){
     const rect=svg.getBoundingClientRect();
     const px=(cx2-rect.left)*(W/rect.width);
@@ -1544,6 +1551,7 @@ function render(){
     }
     tip.innerHTML=h; tip.style.display='block';
     if(isTouch){
+      liveTouch={x:cx2,y:cy2};
       // Dock to the edge of the screen furthest from the finger, so it is never covered.
       // Measure against the *visual* viewport: on iOS the layout viewport runs under the
       // browser toolbar, so a plain `bottom:12px` puts the last rows out of sight.
@@ -1569,7 +1577,28 @@ function render(){
       tip.style.top=(cy2-prect.top+8)+'px';
     }
   }
-  const hide=()=>{tip.style.display='none';tip.classList.remove('docked');
+  /* On the multi-year window only ~29% of the chart is on screen, so a scrub runs out of
+     screen long before it runs out of timeline. Holding near either edge pans the chart under
+     the finger and keeps the readout live, so one continuous drag can walk the whole span. */
+  const EDGE=46, EDGE_PX=13;
+  let edgeTimer=null, liveTouch=null;
+  const stopEdge=()=>{ if(edgeTimer){clearInterval(edgeTimer); edgeTimer=null;} };
+  function edgeScroll(cx2){
+    stopEdge();
+    const box=tlBox.getBoundingClientRect();
+    const max=tlBox.scrollWidth-tlBox.clientWidth;
+    if(max<=2) return;
+    const dir = cx2 < box.left+EDGE ? -1 : cx2 > box.right-EDGE ? 1 : 0;
+    if(!dir) return;
+    edgeTimer=setInterval(()=>{
+      const before=tlBox.scrollLeft;
+      tlBox.scrollLeft = Math.max(0, Math.min(max, before + dir*EDGE_PX));
+      if(tlBox.scrollLeft===before) stopEdge();          // hit the end
+      else if(liveTouch) showAt(liveTouch.x, liveTouch.y, true);
+    },16);
+  }
+  const hide=()=>{stopEdge(); liveTouch=null;
+                  tip.style.display='none';tip.classList.remove('docked');
                   cross.setAttribute('visibility','hidden');dot.setAttribute('visibility','hidden');};
   let hideT=null;
   const holdOpen=()=>{ clearTimeout(hideT); hideT=setTimeout(hide,6000); };
@@ -1579,14 +1608,21 @@ function render(){
   const isTouchLike=e=>e.pointerType==='touch'||e.pointerType==='pen';
   let tracking=false;
   hit.addEventListener('pointerdown',e=>{
-    if(isTouchLike(e)){ tracking=true; clearTimeout(hideT); showAt(e.clientX,e.clientY,true); }
+    if(isTouchLike(e)){
+      tracking=true; clearTimeout(hideT);
+      // capture, so the scrub survives the finger leaving the svg while the chart pans
+      try{ hit.setPointerCapture(e.pointerId); }catch(_){}
+      showAt(e.clientX,e.clientY,true);
+    }
   });
   hit.addEventListener('pointermove',e=>{
-    if(isTouchLike(e)){ if(tracking){ clearTimeout(hideT); showAt(e.clientX,e.clientY,true); } }
+    if(isTouchLike(e)){ if(tracking){ clearTimeout(hideT); showAt(e.clientX,e.clientY,true); edgeScroll(e.clientX); } }
     else showAt(e.clientX,e.clientY,false);
   });
-  hit.addEventListener('pointerup',e=>{ if(isTouchLike(e)){ tracking=false; holdOpen(); } });
-  hit.addEventListener('pointercancel',e=>{ if(isTouchLike(e)){ tracking=false; holdOpen(); } });
+  const endTouch=e=>{ if(isTouchLike(e)){ tracking=false; stopEdge(); holdOpen();
+                      try{ hit.releasePointerCapture(e.pointerId); }catch(_){} } };
+  hit.addEventListener('pointerup',endTouch);
+  hit.addEventListener('pointercancel',endTouch);
   hit.addEventListener('pointerleave',e=>{ if(!isTouchLike(e)) hide(); });
   document.addEventListener('pointerdown',e=>{ if(isTouchLike(e) && !svg.contains(e.target)) hide(); },{passive:true});
 
@@ -1764,12 +1800,12 @@ function tileFades(){
 }
 $tiles.addEventListener('scroll',tileFades,{passive:true});
 
-const $tlwrap=document.getElementById('tlwrap');
+const $tlwrap=document.getElementById('tlwrap'), $tlouter=document.getElementById('tlouter');
 const $tlbar=document.getElementById('tlbar'), $tlthumb=document.getElementById('tlthumb');
 function tlFades(){
   const max=$tlwrap.scrollWidth-$tlwrap.clientWidth, x=$tlwrap.scrollLeft;
-  $tlwrap.classList.toggle('more-l', x>2);
-  $tlwrap.classList.toggle('more-r', x<max-2);
+  $tlouter.classList.toggle('more-l', x>2);
+  $tlouter.classList.toggle('more-r', x<max-2);
   // The bar is both the affordance and the control: it only exists when there is travel.
   $tlbar.hidden = max<=2;
   if(!$tlbar.hidden){
