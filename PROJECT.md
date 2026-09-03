@@ -634,10 +634,17 @@ scroll, on resize and at the end of `render()`. Both fades show mid-strip; neith
 everything fits. If you ever change the card background, change the gradient stop with it or
 the fade will show as a grey smear.
 
-Tiles are `205px` wide (231 incl. padding) on desktop and **`180px` on mobile** — that is the
-narrowest basis at which every tile label still fits on **one line**. At ~165px they wrap and
-the whole row jumps from 59px tall back to 71px, so do not shrink it further to fit more
-tiles on screen; you get a taller strip, not a denser one.
+**Tile order is deliberate: the three that matter are the three you see without scrolling** —
+Today, Net worth, Ending balance — then the cash-crunch pair, then sale outcomes, then the
+long tail. Reordering the markup is all it takes; nothing in `render()` depends on position.
+
+Tiles are **231px** on desktop and **`calc((100% - 14px)/3)` on mobile**, which puts exactly
+three on screen. ⚠️ `.tile` needs **`box-sizing:border-box`** for that to hold: `flex-basis`
+sizes the *content* box, so padding and border were adding 18px per tile and only 2.76 fitted.
+The desktop basis went 205 → 231 at the same time to keep its rendered width unchanged.
+
+Labels are short on purpose (`Today`, `Net worth`, `Payoff at sale`) so they hold one line at
+129px of content width; the detail lives in the `.sm` line underneath.
 
 **Touch swipes the strip natively, a mouse cannot** — with the scrollbar hidden there is
 nothing to grab, and a vertical wheel scrolls the page. Desktop therefore gets two additions,
@@ -795,6 +802,9 @@ a live result box showing projected balance → variance → **new balance**.
   scrollbar under the chart with `touch-action:none`, dragged at `scrollWidth/clientWidth` so one
   sweep covers the whole span. It appears only when there is travel, which makes it the
   affordance as well as the control.
+- **The ending-balance tile follows the window**, not the series: it reads `VD[VD.length-1]`,
+  so selecting 2027 shows Dec 31 2027. Net worth deliberately does **not** follow — it is
+  anchored to `T1` throughout (`payoffOn(T1)`, `priceOn(T1)`), so its `.sm` line says so.
 - **Only `VIEW==='all'` may overflow** (`canPan`). A single year is pinned to the container, so
   it never scrolls and the gesture is never ambiguous even in principle.
 - **Edge auto-pan during a scrub.** On the multi-year window only ~29% of the chart is on
