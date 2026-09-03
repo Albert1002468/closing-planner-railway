@@ -182,7 +182,8 @@
     .tilewrap.can-scroll .tiles.dragging{cursor:grabbing}
   }
   .tiles.dragging{user-select:none;-webkit-user-select:none}
-  .tile{flex:0 0 205px;background:var(--page);border:1px solid var(--ring);border-radius:10px;padding:10px 12px}
+  .tile{box-sizing:border-box;flex:0 0 231px;background:var(--page);border:1px solid var(--ring);
+        border-radius:10px;padding:10px 12px}
   .tile .lab{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
   .tile .val{font-size:17px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
   .tile .val.neg{color:var(--crit)} .tile .val.posv{color:var(--goodtext)}
@@ -293,11 +294,12 @@
     .card{padding:12px 12px;border-radius:10px}
     h1{font-size:17px}
     .sub{font-size:12px}
-    .tiles{gap:8px}
-    .tile{flex:0 0 180px;padding:7px 10px;border-radius:9px}
-    .tile .lab{font-size:9.5px;letter-spacing:.04em;line-height:1.2;margin-bottom:1px}
-    .tile .val{font-size:15px;line-height:1.2}
-    .tile .sm{font-size:9.5px;line-height:1.25;margin-top:1px}
+    /* Three across, exactly: 3 basis + 2 gaps = 100% of the strip. */
+    .tiles{gap:7px}
+    .tile{flex:0 0 calc((100% - 14px)/3);padding:7px 8px;border-radius:9px}
+    .tile .lab{font-size:9px;letter-spacing:.02em;line-height:1.2;margin-bottom:1px}
+    .tile .val{font-size:14px;line-height:1.2;letter-spacing:-0.02em}
+    .tile .sm{font-size:9px;line-height:1.25;margin-top:1px}
     .ctl input[type=range]{width:100%;min-width:0}
     .accchips{justify-content:flex-start;gap:10px 20px}
     .accbig .v{font-size:19px}
@@ -315,20 +317,20 @@
   <div class="card pos">
     <div class="tilewrap">
       <div class="tiles" id="tiles">
-        <div class="tile"><div class="lab">Today's balance</div><div class="val" id="t_today">—</div><div class="sm" id="t_todayd"></div></div>
-        <div class="tile"><div class="lab">Loan payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm" id="t_payoffsm"></div></div>
-          <div class="tile"><div class="lab">Net proceeds (price − payoff)</div><div class="val" id="t_proceeds">—</div><div class="sm" id="t_proceedsm"></div></div>
-        <div class="tile"><div class="lab">Loss credit (+2 wks)</div><div class="val" id="t_loss">—</div><div class="sm">half of loss below $425k, max $25k</div></div>
-        <div class="tile"><div class="lab">Sept 18 before wire</div><div class="val" id="t_morn">—</div><div class="sm">incl. that morning's paycheck</div></div>
+        <div class="tile"><div class="lab">Today</div><div class="val" id="t_today">—</div><div class="sm" id="t_todayd"></div></div>
+        <div class="tile"><div class="lab">Net worth</div><div class="val" id="t_nw">—</div><div class="sm" id="t_nwd"></div></div>
+        <div class="tile"><div class="lab" id="t_endlab">Ending balance</div><div class="val" id="t_end">—</div><div class="sm" id="t_endd"></div></div>
         <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
         <div class="tile"><div class="lab">Days under $15k</div><div class="val" id="t_thin">—</div><div class="sm" id="t_thind"></div></div>
-        <div class="tile"><div class="lab">Net worth Dec 31, 2030</div><div class="val" id="t_nw">—</div><div class="sm" id="t_nwd"></div></div>
+        <div class="tile"><div class="lab">Before the wire</div><div class="val" id="t_morn">—</div><div class="sm">Sept 18, incl. that paycheck</div></div>
+        <div class="tile"><div class="lab">Net proceeds</div><div class="val" id="t_proceeds">—</div><div class="sm" id="t_proceedsm"></div></div>
+        <div class="tile"><div class="lab">Payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm" id="t_payoffsm"></div></div>
+        <div class="tile"><div class="lab">Loss credit</div><div class="val" id="t_loss">—</div><div class="sm">half of loss under $425k, max $25k</div></div>
+        <div class="tile"><div class="lab">Relo costs</div><div class="val" id="t_relo">—</div><div class="sm" id="t_relod"></div></div>
         <div class="tile"><div class="lab">Car loan</div><div class="val" id="t_car">—</div><div class="sm" id="t_card"></div></div>
-        <div class="tile"><div class="lab">Rent collected</div><div class="val" id="t_rent">—</div><div class="sm" id="t_rentd"></div></div>
-        <div class="tile"><div class="lab">Recapture tax</div><div class="val" id="t_recap">—</div><div class="sm" id="t_recapd"></div></div>
-        <div class="tile"><div class="lab">Relo closing costs</div><div class="val" id="t_relo">—</div><div class="sm" id="t_relod"></div></div>
-        <div class="tile"><div class="lab">Your housing</div><div class="val" id="t_house">—</div><div class="sm" id="t_housed"></div></div>
-        <div class="tile"><div class="lab">Dec 31, 2030 balance</div><div class="val" id="t_end">—</div><div class="sm">after every rule above</div></div>
+        <div class="tile"><div class="lab">Recapture</div><div class="val" id="t_recap">—</div><div class="sm" id="t_recapd"></div></div>
+        <div class="tile"><div class="lab">Rent, net</div><div class="val" id="t_rent">—</div><div class="sm" id="t_rentd"></div></div>
+        <div class="tile"><div class="lab">Housing</div><div class="val" id="t_house">—</div><div class="sm" id="t_housed"></div></div>
       </div>
       <button type="button" class="tnav tprev" id="tprev" aria-label="Scroll cards left">&lsaquo;</button>
       <button type="button" class="tnav tnext" id="tnext" aria-label="Scroll cards right">&rsaquo;</button>
@@ -1681,7 +1683,7 @@ function render(){
                        suspendedLoss}, sale, rent, home);
   set('t_nw', fmt(NW.nw), NW.nw<0?'neg':'posv');
   document.getElementById('t_nwd').textContent =
-    `cash ${fmt0(NW.cash)}${NW.okc?' · OKC equity '+fmt0(NW.okc):''}`
+    `Dec 31, 2030 · cash ${fmt0(NW.cash)}${NW.okc?' · OKC equity '+fmt0(NW.okc):''}`
     +`${NW.mid?' · Midland '+fmt0(NW.mid):''}${NW.car?' − car '+fmt0(NW.car):''}`
     +`${NW.deferred?' − deferred tax '+fmt0(NW.deferred):''}`;
   document.getElementById('t_lowd').textContent = dd(mnD.d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
@@ -1700,8 +1702,11 @@ function render(){
     : carPayoffDate
       ? `payoff ${nice(carPayoffDate)} is past the window — ${fmt0(carOwedAtEnd)} owed Dec 31, 2030`
       : `still owed Dec 31, 2030 · clears ${nice(carNaturalDate)} if never sold`;
-  const endB=DATA[DATA.length-1].b;
-  set('t_end', fmt(endB), endB<0?'neg':'posv');
+  // Ending balance follows the WINDOW, not the whole series — on "2027" this is Dec 31 2027.
+  const endDay=VD[VD.length-1] || DATA[DATA.length-1];
+  set('t_end', fmt(endDay.b), endDay.b<0?'neg':'posv');
+  document.getElementById('t_endd').textContent =
+    nice(endDay.d) + (VIEW==='all'? ' · whole window' : '');
   const rentNetCash = rent? +(rentTotal - rentCostTotal - rentIncTax).toFixed(2) : 0;
   set('t_rent', rent? fmt(rentNetCash):'—', rent?'posv':'');
   document.getElementById('t_rentd').textContent = rent
