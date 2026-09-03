@@ -271,7 +271,17 @@
   .tlwrap::before{left:0;background:linear-gradient(to left,transparent,var(--surface-1))}
   .tlwrap::after{right:0;background:linear-gradient(to right,transparent,var(--surface-1))}
   .tlwrap.more-l::before,.tlwrap.more-r::after{opacity:1}
-  #tl{height:auto;display:block;touch-action:pan-x pan-y}
+  /* pan-y ONLY. `pan-x` here hands horizontal drags to the browser for scrolling, which is
+     exactly the gesture used to scrub the balance readout — the two cannot share it. Panning
+     gets its own control below instead. */
+  #tl{height:auto;display:block;touch-action:pan-y}
+  .tlbar{margin:7px 2px 0;padding:8px 0;cursor:grab;touch-action:none}
+  .tlbar[hidden]{display:none}
+  .tlbar:active{cursor:grabbing}
+  .tlbar>span{display:block;height:6px;border-radius:3px;background:var(--grid);position:relative}
+  .tlthumb::after{content:'';position:absolute;top:0;height:6px;border-radius:3px;
+                  background:var(--axis);left:var(--tl-l,0%);width:var(--tl-w,100%)}
+  .tlbar:hover .tlthumb::after{background:var(--ink-2)}
   #donut{max-width:290px;width:72vw;height:auto;display:block;margin:0 auto}
   .donut-wrap{justify-content:center}
   @media (max-width:640px){
@@ -347,6 +357,7 @@
     <div class="tlwrap" id="tlwrap">
       <svg id="tl" viewBox="0 0 940 380" width="940" height="380" role="img" aria-label="Projected bank balance timeline"></svg>
     </div>
+    <div class="tlbar" id="tlbar" hidden><span class="tlthumb" id="tlthumb"></span></div>
     <div class="tip" id="ttip"></div>
     <div class="keyrow">
       <span><i style="color:var(--goodtext)">&#9650;</i> in &ge;$800</span>
@@ -1441,8 +1452,12 @@ function render(){
   while(svg.firstChild) svg.removeChild(svg.firstChild);
   const cw=svg.parentNode.clientWidth||940, mobile=cw<640;
   const nMonths=Math.max(1, VD.filter(d=>d.d.slice(8)==='01').length);
-  // On a phone a long window scrolls rather than compresses; a single year still fits exactly.
-  const W=mobile? Math.max(300,Math.round(cw),nMonths*30) : 940, H=mobile?300:380;
+  // Only the multi-year window is ever allowed to overflow. A single year is pinned to the
+  // container, so it never scrolls and the scrub gesture is never ambiguous.
+  const canPan = mobile && VIEW==='all';
+  const W=mobile? (canPan? Math.max(300,Math.round(cw),nMonths*30) : Math.max(300,Math.round(cw)))
+                : 940,
+        H=mobile?300:380;
   // Desktop keeps scaling the fixed 940 viewBox to the container; only mobile pins real pixels.
   svg.style.width = mobile? W+'px' : '100%';
   const m=mobile?{l:48,r:8,t:14,b:28}:{l:70,r:16,t:14,b:34};
@@ -1750,13 +1765,38 @@ function tileFades(){
 $tiles.addEventListener('scroll',tileFades,{passive:true});
 
 const $tlwrap=document.getElementById('tlwrap');
+const $tlbar=document.getElementById('tlbar'), $tlthumb=document.getElementById('tlthumb');
 function tlFades(){
   const max=$tlwrap.scrollWidth-$tlwrap.clientWidth, x=$tlwrap.scrollLeft;
   $tlwrap.classList.toggle('more-l', x>2);
   $tlwrap.classList.toggle('more-r', x<max-2);
+  // The bar is both the affordance and the control: it only exists when there is travel.
+  $tlbar.hidden = max<=2;
+  if(!$tlbar.hidden){
+    const frac=$tlwrap.clientWidth/$tlwrap.scrollWidth;
+    $tlthumb.style.setProperty('--tl-w',(frac*100).toFixed(2)+'%');
+    $tlthumb.style.setProperty('--tl-l',((x/$tlwrap.scrollWidth)*100).toFixed(2)+'%');
+  }
 }
 $tlwrap.addEventListener('scroll',tlFades,{passive:true});
 window.addEventListener('resize',tlFades);
+
+// Drag the bar to pan. Scaled by scrollWidth/clientWidth so one full sweep covers the whole
+// chart, and touch-action:none on the bar keeps the browser out of it.
+let tlDown=false, tlX=0, tlLeft=0;
+$tlbar.addEventListener('pointerdown',e=>{
+  tlDown=true; tlX=e.clientX; tlLeft=$tlwrap.scrollLeft;
+  try{ $tlbar.setPointerCapture(e.pointerId); }catch(_){}
+});
+$tlbar.addEventListener('pointermove',e=>{
+  if(!tlDown) return;
+  const ratio=$tlwrap.scrollWidth/Math.max(1,$tlwrap.clientWidth);
+  $tlwrap.scrollLeft = tlLeft + (e.clientX-tlX)*ratio;
+});
+const tlUp=e=>{ if(!tlDown) return; tlDown=false;
+  try{ $tlbar.releasePointerCapture(e.pointerId); }catch(_){} };
+$tlbar.addEventListener('pointerup',tlUp);
+$tlbar.addEventListener('pointercancel',tlUp);
 
 // Edge arrows: jump most of a screenful, so a couple of clicks crosses the whole strip.
 const tileNudge=dir=>$tiles.scrollBy({left:dir*Math.max(160,$tiles.clientWidth*0.8),behavior:'smooth'});

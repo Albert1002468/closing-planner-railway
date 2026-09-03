@@ -759,9 +759,17 @@ a live result box showing projected balance → variance → **new balance**.
 - **The chart scrolls sideways on a phone.** 53 months in 340px is unreadable, so mobile gives
   it a floor of **30px per month** (`W = max(cw, nMonths*30)`) inside `.tlwrap`, an
   overflow-x container with the same hidden-scrollbar and edge-fade idiom as the tile strip.
-  A single year still fits exactly, so only the long windows scroll. **Desktop keeps
-  `width:100%`** and scales the fixed 940 viewBox — pinning real pixels there stopped it
-  filling wide screens.
+  **Desktop keeps `width:100%`** and scales the fixed 940 viewBox — pinning real pixels there
+  stopped it filling wide screens.
+- ⚠️ **`touch-action` on `#tl` must stay `pan-y`, never `pan-x`.** Scrubbing the balance readout
+  and panning the chart are *both* horizontal drags on the same pixels, so they cannot be
+  disambiguated by direction. Declaring `pan-x` hands the gesture to the browser and the readout
+  silently stops working on touch. Panning therefore gets its own control: **`.tlbar`**, a real
+  scrollbar under the chart with `touch-action:none`, dragged at `scrollWidth/clientWidth` so one
+  sweep covers the whole span. It appears only when there is travel, which makes it the
+  affordance as well as the control.
+- **Only `VIEW==='all'` may overflow** (`canPan`). A single year is pinned to the container, so
+  it never scrolls and the gesture is never ambiguous even in principle.
 - Because the SVG can now be wider than its container, **axis thinning is computed from actual
   pixels per month** (`ceil(55 / (iw/nMon))`), not a month-count guess, which read it wrong.
   January is always labelled and carries the year (`Jan '27`), and the spacing counter
@@ -929,6 +937,8 @@ confirm the table's last balance matches the Dec 31 tile.
   you deduct rental losses **currently** instead of at sale — better, and worth checking against
   a real return
 - Net worth assumes OKC appreciates 3%/yr and sells at 7% cost; neither is modelled as an input
+- The **y-axis scrolls away** with the chart in the panned mobile view, since the whole SVG
+  moves. Pinning it would mean splitting the axis into a second overlaid SVG
 - Your own rent is modelled without a security deposit, application fees, renter's insurance,
   or a lease-break penalty if a purchase lets you leave early
 - A later purchase reuses the current deal's figures as defaults ($104,463 cash, $3,181/mo).
