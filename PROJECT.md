@@ -591,7 +591,7 @@ From two paystubs differing only in overtime:
 | PennyMac payments | drafted only while unsold; exact amortization at 5.375% from $336,756.31. **`mortgageSchedule()` must run to `T1`** — `payoffOn()` walks the same rows, so a short schedule does not merely drop drafts, it stops amortising and then piles per-diem interest on a stale balance. Truncated at 2027-12 it lost 36 drafts ($83,474) and overstated a Dec 2030 payoff by **$78,901** |
 | Loan payoff | remaining principal + per-diem interest since the last payment |
 | Proceeds | `price − payoff`, landing **on** the sale date (relo covers commissions/seller costs) |
-| Relo interest reimbursement | day after each payment, **max 2 payments** |
+| Relo interest reimbursement | day after each payment, **max 2**, and only while **all** of: you are carrying two mortgages (not while renting a place yourself), the Midland house is **vacant** (a tenant disqualifies it — confirmed with relo), and the payment falls inside the relo window. The tenant test is **per payment, not retroactive**: months already reimbursed while the house sat empty are kept, so renting from Dec 2026 still collects the Oct and Nov payments |
 | Loss-on-sale credit | `min(25000, max(0, 425000 − price) × 0.5)`, **14 days after** sale |
 | Midland utilities | Cirro / Atmos / water stop at sale + one $150 trailing bill 10 days later |
 | Vivint | $8.58/mo until buyout; **7 days before sale** pay `monthsLeft × $59.99 × 0.5`; drafts stop |

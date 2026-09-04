@@ -1080,8 +1080,13 @@ function buildEvents(sale, price, rent, home){
       E(r.draft,-ESC.plan[r.draft],
         `PennyMac mortgage (P&I ${fmt(MTG_PI)} + escrow ${fmt(pl.esc)}`
         +`${pl.pmi? ' + PMI '+fmt(pl.pmi):''}${pl.short? ', incl. shortage '+fmt(pl.short):''})`);
-      // Only while carrying both mortgages, capped at 2, and only inside the relo window.
-      if(owning && r.draft>='2026-10-01' && reimbCount<2 && addD(r.draft,1)<=RELO_DEADLINE){
+      /* Reimbursement needs ALL of: you are carrying two mortgages (so not while renting a
+         place yourself), the Midland house is genuinely vacant and on the market (a tenant
+         disqualifies it), it is one of the first two payments, and it falls inside the relo
+         window. Months already reimbursed while the house sat empty are not clawed back —
+         the test is per payment, not retroactive. */
+      if(owning && !rented(r.draft) && r.draft>='2026-10-01'
+         && reimbCount<2 && addD(r.draft,1)<=RELO_DEADLINE){
         E(addD(r.draft,1), r.int, 'Relo interest reimbursement');
         reimbCount++;
       }
