@@ -673,11 +673,11 @@ const nhPrepaid = () => +(nhLoan()*NH_RATE/365*NH_PREPAID_DAYS).toFixed(2);
 
 const closingSlices = () => [
   {l:`Down payment (${DOWN_PCT}%)`, v:nhDown(), c:'var(--s1)'},
-  {l:'Discount points',    v:12000.00,  c:'var(--s2)'},
+  {l:'Discount points',    v:11742.48,  c:'var(--s2)'},
   {l:'Fence (your half)',  v:3615.00,   c:'var(--s3)'},
   {l:'Homeowners ins. (12 mo)', v:1702.00, c:'var(--s4)'},
   {l:`Prepaid interest (${NH_PREPAID_DAYS} days)`, v:nhPrepaid(), c:'var(--s5)'},
-  {l:'Escrow: 3 mo insurance', v:425.50, c:'var(--s6)'},
+  {l:'Escrow: 3 mo insurance', v:425.49, c:'var(--s6)'},
   {l:'Escrow: 12 mo property tax', v:135.00, c:'var(--s7)'},
 ];
 const credits = [
@@ -686,6 +686,8 @@ const credits = [
   // Still a real cost of the deal, so it stays in gross — credited because it left the account
   // early, the same way the earnest money is handled.
   {l:'Fence (wired Sept 10)', v:-3615.00},
+  // Seller's share of the lot tax, Jan 1 → Sept 18. Roughly $135/yr x 261/365.
+  {l:'County tax adjustment (Jan 1 – Sept 18)', v:-96.16},
 ];
 const FENCE_PAID='2026-09-10', FENCE_AMT=3615.00, FENCE_WIRE_FEE=30.00;
 const CREDIT_TOTAL = credits.reduce((a,c)=>a+c.v,0);
@@ -769,13 +771,13 @@ const VIVINT_START='2025-06-21', VIVINT_TERM=60;
 const NH_PMT_26 = 2691.97;                  // P&I 2538.89 + escrow 153.08 (ins 141.83 + tax 11.25)
 
 /* The OKC escrow has the SAME defect as Midland: it was set at closing against an
-   UNIMPROVED LOT. The Closing Disclosure funds it with 3 months' insurance ($425.50) and
+   UNIMPROVED LOT. The Closing Disclosure funds it with 3 months' insurance ($425.49) and
    12 months' lot tax ($135.00), and collects $153.08/mo — insurance plus lot tax only. The
    first full-house bill lands Dec 2027 and blows the account open exactly as Midland's does. */
 const NH_INS = 1702.00;               // annual homeowners premium
 const NH_LOT_TAX = 135.00;            // the unimproved-lot assessment
 const NH_TAX_FULL = 6000.00;          // assumed reassessed annual tax
-const NH_ESC_START = 560.50;          // 425.50 + 135.00 escrowed at closing
+const NH_ESC_START = 560.49;          // 425.49 + 135.00 escrowed at closing
 const nhTaxForYear = y => y<=2026 ? NH_LOT_TAX
   : +(NH_TAX_FULL*Math.pow(1+INFL_PCT, Math.max(0,y-2027))).toFixed(2);
 

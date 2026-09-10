@@ -719,6 +719,12 @@ The regression guard is that **`DOWN_PCT = 20` reproduces the original Closing D
 the cent** — $105,980.00 down, $423,920.00 loan, $2,538.89 P&I, $904.40 prepaid. Cash to close
 is $100,847.90 rather than $104,462.90 only because the fence has since been paid separately.
 
+Figures updated from the revised Closing Disclosure on 2026-09-10: **discount points
+$11,742.48** (was a round $12,000), **3-month insurance escrow $425.49**, and a **county tax
+adjustment of −$96.16** crediting the seller's share of the lot tax Jan 1 → Sept 18 (roughly
+$135/yr × 261/365). `NH_ESC_START` moved to $560.49 with the escrow line — it is
+`425.49 + 135.00`, so the two must always change together.
+
 **Items paid outside closing stay in gross costs and appear as a credit** — the earnest money
 (Aug 12) and now the **fence, wired Sept 10 2026** ($3,615 plus a $30 wire fee). They are real
 costs of the deal, so removing them from gross would misstate what the house cost; crediting
@@ -729,7 +735,8 @@ The check that this is right: moving the fence forward changed the Sept 18 short
 **exactly $30** — the wire fee, and nothing else. Same money, eight days earlier.
 
 `drawDonut()` is a function, not an IIFE, and **clears the SVG and the legend before redrawing**
-— it runs on every render. Points, fence, insurance and the escrows do not scale with the loan.
+— it runs on every render. Points, fence, insurance and the escrows do not scale with the loan — `$11,742.48` is the
+quoted figure at 22% down, so changing `DOWN_PCT` afterwards will not re-price it.
 `netWorth` amortises `nhLoan()`/`nhPI()`, not the old hardcoded $423,920.
 
 ⚠️ **At 22% the Sept 18 shortfall goes from $438 to $11,013.16** and the Oct 1 low from
@@ -930,9 +937,9 @@ escrow at the end.
 
 
 
-- Sept 18 morning balance: **$100,380.13** vs a **$111,423.29** wire at 22% down →
-  **$11,043.16 short**
-- Lowest point: **−$13,720.02 on Oct 1** at 22% down
+- Sept 18 morning balance: **$100,380.13** vs a **$111,069.60** wire at 22% down →
+  **$10,689.47 short**
+- Lowest point: **−$13,366.33 on Oct 1** at 22% down
 - **Underwater Sept 25 → Oct 1** — the $940 insurance draft on 9/25 tips it negative and it
   stays there until the Oct 2 paycheck → the **~$3,500 bridge must be in place by Sept 25**,
   not Sept 30
