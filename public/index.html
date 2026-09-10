@@ -313,6 +313,7 @@
 <div class="viz-root">
   <h1>Closing &amp; Home-Sale Planner</h1>
   <p class="sub">Closing Fri, Sept 18, 2026 &middot; daily balance projected through Dec 31, 2030</p>
+  <p class="sub" id="subcash" style="margin-top:-12px"></p>
 
   <div class="card pos">
     <div class="tilewrap">
@@ -456,6 +457,11 @@
         <div class="ctl">
           <label for="apprec">Appreciation %/yr</label>
           <input type="number" id="apprec" min="-10" max="20" step="0.25" value="3">
+        </div>
+        <div class="ctl">
+          <label for="downpct">Down payment % on the OKC home</label>
+          <input type="number" id="downpct" min="0" max="100" step="0.5" value="22">
+          <span class="rends" id="downsm">&nbsp;</span>
         </div>
         <div class="ctl">
           <label for="cashapy">Cash APY % on the bank balance</label>
@@ -653,12 +659,24 @@ const fmt = n => (n<0?'-':'') + '$' + Math.abs(n).toLocaleString('en-US',{minimu
 const fmt0 = n => (n<0?'-':'') + '$' + Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0});
 
 /* ---------- Donut ---------- */
-const slices = [
-  {l:'Down payment (20%)', v:105980.00, c:'var(--s1)'},
+/* Everything on the closing table that moves with the down payment. Raising the percentage
+   raises the cash AND shrinks the loan, which cuts the P&I and the prepaid interest — the
+   original 20% figures ($105,980 down, $423,920 loan, $2,538.89 P&I, $904.40 prepaid) all
+   fall straight out of these at DOWN_PCT = 20. */
+const NH_PRICE=529900, NH_RATE=0.0599, NH_TERM=360, NH_PREPAID_DAYS=13;
+let DOWN_PCT=22;                       // set from the input each render
+const nhDown  = () => +(NH_PRICE*DOWN_PCT/100).toFixed(2);
+const nhLoan  = () => +(NH_PRICE-nhDown()).toFixed(2);
+const nhPI    = () => { const i=NH_RATE/12, L=nhLoan();
+                        return +(L*i/(1-Math.pow(1+i,-NH_TERM))).toFixed(2); };
+const nhPrepaid = () => +(nhLoan()*NH_RATE/365*NH_PREPAID_DAYS).toFixed(2);
+
+const closingSlices = () => [
+  {l:`Down payment (${DOWN_PCT}%)`, v:nhDown(), c:'var(--s1)'},
   {l:'Discount points',    v:12000.00,  c:'var(--s2)'},
   {l:'Fence (your half)',  v:3615.00,   c:'var(--s3)'},
   {l:'Homeowners ins. (12 mo)', v:1702.00, c:'var(--s4)'},
-  {l:'Prepaid interest (13 days)', v:904.40, c:'var(--s5)'},
+  {l:`Prepaid interest (${NH_PREPAID_DAYS} days)`, v:nhPrepaid(), c:'var(--s5)'},
   {l:'Escrow: 3 mo insurance', v:425.50, c:'var(--s6)'},
   {l:'Escrow: 12 mo property tax', v:135.00, c:'var(--s7)'},
 ];
@@ -666,10 +684,15 @@ const credits = [
   {l:'Builder / seller credit', v:-15000.00},
   {l:'Earnest money (paid Aug 12)', v:-5299.00},
 ];
-(function(){
+const CREDIT_TOTAL = credits.reduce((a,c)=>a+c.v,0);
+const nhCashToClose = () =>
+  +(closingSlices().reduce((a,s)=>a+s.v,0) + CREDIT_TOTAL).toFixed(2);
+function drawDonut(){
+  const slices = closingSlices();
   const gross = slices.reduce((a,s)=>a+s.v,0);
   const net = gross + credits.reduce((a,c)=>a+c.v,0);
   const svg = document.getElementById('donut'), NS='http://www.w3.org/2000/svg';
+  while(svg.firstChild) svg.removeChild(svg.firstChild);      // redrawn on every change
   const cx=145, cy=145, r=112, w=34, gap=0.02;
   let a0=-Math.PI/2;
   const tip=document.getElementById('dtip');
@@ -701,7 +724,7 @@ const credits = [
   t2.setAttribute('fill','var(--ink)');t2.setAttribute('font-size','20');t2.setAttribute('font-weight','650');
   t2.textContent=fmt(net);
   svg.appendChild(t1);svg.appendChild(t2);
-  const tb=document.getElementById('dlegend');
+  const tb=document.getElementById('dlegend'); tb.innerHTML='';
   slices.forEach(s=>tb.insertAdjacentHTML('beforeend',
      `<tr><td><span class="sw" style="background:${s.c}"></span>${s.l}</td><td class="amt">${fmt(s.v)}</td><td class="pct">${(100*s.v/gross).toFixed(1)}%</td></tr>`));
   tb.insertAdjacentHTML('beforeend',`<tr><td style="color:var(--ink-2)">Gross costs</td><td class="amt">${fmt(gross)}</td><td class="pct">100%</td></tr>`);
@@ -719,7 +742,7 @@ const credits = [
       chip(slices[0].l, fmt(slices[0].v))+
       chip(slices[1].l, fmt(slices[1].v))+
     `</div>`;
-})();
+}
 
 /* ---------- Scenario engine ---------- */
 const RECON = {};                           // date -> {actual, note}; loaded from /api/state
@@ -740,7 +763,7 @@ const VIVINT_START='2025-06-21', VIVINT_TERM=60;
 
 /* --- new-home payment: escrow steps up Jan 1 2027 for the reassessed property tax --- */
 const NH_PMT_26 = 2691.97;                  // P&I 2538.89 + escrow 153.08 (ins 141.83 + tax 11.25)
-const NH_PI = 2538.89;
+
 /* The OKC escrow has the SAME defect as Midland: it was set at closing against an
    UNIMPROVED LOT. The Closing Disclosure funds it with 3 months' insurance ($425.50) and
    12 months' lot tax ($135.00), and collects $153.08/mo — insurance plus lot tax only. The
@@ -932,7 +955,7 @@ function escrowPlan(cfg){
 
 const NH_DATES = ['2026-11-02','2026-12-01'].concat(monthly(1,'2027-01','2030-12'));
 const nhEscrowPlan = () => escrowPlan({
-  dates:NH_DATES, start:NH_ESC_START, pi:NH_PI,
+  dates:NH_DATES, start:NH_ESC_START, pi:nhPI(),
   baseStart:+((NH_INS+NH_LOT_TAX)/12).toFixed(2),
   ins:NH_INS, insMonth:9,                 // policy renews on the closing anniversary
   taxForYear:nhTaxForYear, taxMonth:12, taxYearOffset:0,   // Oklahoma bills Nov, due Dec 31
@@ -1019,14 +1042,15 @@ function buildEvents(sale, price, rent, home){
     .forEach(d=>E(d,PAY5,'Paycheck (5 OT hrs)'));
   // biweekly from the last 2026 cheque; 3%/yr raise lands on the first cheque of each year
   for(let d=addD('2026-12-25',14); d<=T1; d=addD(d,14)) E(d,payAt(d),'Paycheck (5 OT hrs)');
-  if(owning) E('2026-09-18',-104462.90,'CLOSING — cash to close (lender 2)');
+  if(owning) E('2026-09-18',-nhCashToClose(),
+    `CLOSING — cash to close (${DOWN_PCT}% down, loan ${fmt0(nhLoan())})`);
   E('2026-09-19',234.00,'Airbnb refund — day refund');
   E('2026-09-19',750.00,'Airbnb refund — pet deposit');
   if(owning){
     const NHE=nhEscrowPlan();
     NH_DATES.forEach(d=>{
       const pl=NHE.notes[d];
-      E(d,-NHE.plan[d], `NEW home mortgage (P&I ${fmt(NH_PI)} + escrow ${fmt(pl.esc)}`
+      E(d,-NHE.plan[d], `NEW home mortgage (P&I ${fmt(nhPI())} + escrow ${fmt(pl.esc)}`
         +`${pl.short? ', incl. shortage '+fmt(pl.short):''})`);
     });
   } else if(buyDate){
@@ -1347,7 +1371,6 @@ function buildSeries(sale, price, rent, home, apy){
 /* Net worth, not just cash. The bank balance alone ranks scenarios by how long you avoided
    owning anything, because a mortgage payment leaves the account and the equity it buys never
    comes back in. */
-const NH_PRICE=529900, NH_LOAN=423920, NH_BUY_RATE=0.0599, NH_PI_BUY=2538.89;
 const OKC_APPREC=0.03, SELL_COST=0.07;
 const yrsBetween=(a,b)=>nDays(a,b)/365.25;
 
@@ -1367,7 +1390,7 @@ function netWorth(res, sale, rent, home){
   let okc=0;
   if(buyDate){
     const first = buyDate==='2026-09-18'? '2026-11-01' : addM(buyDate.slice(0,8)+'01',2);
-    const bal = loanBalAfter(NH_LOAN, NH_BUY_RATE, NH_PI_BUY, paymentsThrough(first));
+    const bal = loanBalAfter(nhLoan(), NH_RATE, nhPI(), paymentsThrough(first));
     okc = NH_PRICE*Math.pow(1+OKC_APPREC, yrsBetween(buyDate,T1))*(1-SELL_COST) - bal;
   }
   // 2. the Midland house, only if you still own it, valued at its Dec 31 2030 worth
@@ -1506,6 +1529,14 @@ function render(){
     fmt0(derived)+`<span>${sale? 'implied by '+nice(sale) : 'value on Dec 31, 2030 — no sale set'}`
     +` · ${MID_VALUE_TODAY.toLocaleString('en-US')} today at ${(MID_APPREC*100).toFixed(2)}%/yr</span>`;
   const apy = numOr('cashapy',0)/100;
+  // Down payment drives the cash wire, the loan, the P&I and the prepaid interest, so it has
+  // to be set before buildSeries runs and the donut has to be redrawn from the same figures.
+  DOWN_PCT = numOr('downpct',22);
+  drawDonut();
+  document.getElementById('downsm').textContent =
+    `${fmt0(nhDown())} down · loan ${fmt0(nhLoan())} · P&I ${fmt(nhPI())}`;
+  document.getElementById('subcash').textContent =
+    `${DOWN_PCT}% down on ${fmt0(NH_PRICE)} · ${fmt(nhCashToClose())} due at closing`;
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentTotal,myRentTotal,buyDate,buyCC,
          recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,midEscEnd,
@@ -1972,7 +2003,7 @@ document.getElementById('hown').addEventListener('change',e=>{
 document.getElementById('hbuy').addEventListener('change',e=>{
   document.getElementById('hbuyfields').hidden = !e.target.checked; render();
 });
-['rentrate','renttax','rentmgmt','rentvac','rentescal','hescal','apprec','cashapy']
+['rentrate','renttax','rentmgmt','rentvac','rentescal','hescal','apprec','cashapy','downpct']
   .forEach(id=>document.getElementById(id).addEventListener('input',render));
 document.getElementById('priceover').addEventListener('change',e=>{
   document.getElementById('pricefields').hidden = !e.target.checked; render();

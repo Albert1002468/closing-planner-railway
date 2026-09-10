@@ -707,6 +707,27 @@ see it hidden — that is timing, not a bug.
 
 ## 5. Closing figures (the donut — collapsed, at the foot of the page)
 
+**Every figure here is derived from `DOWN_PCT`, an input defaulting to 22%.** Raising the
+percentage raises the cash *and* shrinks the loan, so four things move together:
+
+```
+down    = 529,900 x pct          loan    = 529,900 - down
+P&I     = loan amortised at 5.99% / 360   prepaid = loan x 5.99% / 365 x 13
+```
+
+The regression guard is that **`DOWN_PCT = 20` reproduces the original Closing Disclosure to
+the cent** — $105,980.00 down, $423,920.00 loan, $2,538.89 P&I, $904.40 prepaid, $104,462.90
+cash. If a refactor breaks that, it broke the derivation.
+
+`drawDonut()` is a function, not an IIFE, and **clears the SVG and the legend before redrawing**
+— it runs on every render. Points, fence, insurance and the escrows do not scale with the loan.
+`netWorth` amortises `nhLoan()`/`nhPI()`, not the old hardcoded $423,920.
+
+⚠️ **At 22% the Sept 18 shortfall goes from $438 to $11,013.16** and the Oct 1 low from
+−$3,114.63 to −$13,690.02. The bridge is no longer a rounding error.
+
+
+
 The card is a native `<details class="card acc">`, **closed on load**. The chevron is our own
 (`.accchev`, rotated 180° by `details.acc[open]`); the default marker is removed with
 `list-style:none` + `::-webkit-details-marker`.
@@ -900,9 +921,9 @@ escrow at the end.
 
 
 
-- Sept 18 morning balance: **$104,025.13** vs a **$104,462.90** wire → **~$438 short**
-  (~8 OT hours, or fold into the bridge)
-- Lowest point: **−$3,114.63 on Oct 1** (PennyMac lands before the Oct 2 paycheck)
+- Sept 18 morning balance: **$104,025.13** vs a **$115,038.29** wire at 22% down →
+  **$11,013.16 short**. At 20% it was $438
+- Lowest point: **−$13,690.02 on Oct 1** at 22% down (−$3,114.63 at 20%)
 - **Underwater Sept 25 → Oct 1** — the $940 insurance draft on 9/25 tips it negative and it
   stays there until the Oct 2 paycheck → the **~$3,500 bridge must be in place by Sept 25**,
   not Sept 30
