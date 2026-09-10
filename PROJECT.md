@@ -716,8 +716,17 @@ P&I     = loan amortised at 5.99% / 360   prepaid = loan x 5.99% / 365 x 13
 ```
 
 The regression guard is that **`DOWN_PCT = 20` reproduces the original Closing Disclosure to
-the cent** — $105,980.00 down, $423,920.00 loan, $2,538.89 P&I, $904.40 prepaid, $104,462.90
-cash. If a refactor breaks that, it broke the derivation.
+the cent** — $105,980.00 down, $423,920.00 loan, $2,538.89 P&I, $904.40 prepaid. Cash to close
+is $100,847.90 rather than $104,462.90 only because the fence has since been paid separately.
+
+**Items paid outside closing stay in gross costs and appear as a credit** — the earnest money
+(Aug 12) and now the **fence, wired Sept 10 2026** ($3,615 plus a $30 wire fee). They are real
+costs of the deal, so removing them from gross would misstate what the house cost; crediting
+them is what stops the cash figure double-counting. The matching cash events live in
+`buildEvents` at `FENCE_PAID`.
+
+The check that this is right: moving the fence forward changed the Sept 18 shortfall by
+**exactly $30** — the wire fee, and nothing else. Same money, eight days earlier.
 
 `drawDonut()` is a function, not an IIFE, and **clears the SVG and the legend before redrawing**
 — it runs on every render. Points, fence, insurance and the escrows do not scale with the loan.
@@ -921,9 +930,9 @@ escrow at the end.
 
 
 
-- Sept 18 morning balance: **$104,025.13** vs a **$115,038.29** wire at 22% down →
-  **$11,013.16 short**. At 20% it was $438
-- Lowest point: **−$13,690.02 on Oct 1** at 22% down (−$3,114.63 at 20%)
+- Sept 18 morning balance: **$100,380.13** vs a **$111,423.29** wire at 22% down →
+  **$11,043.16 short**
+- Lowest point: **−$13,720.02 on Oct 1** at 22% down
 - **Underwater Sept 25 → Oct 1** — the $940 insurance draft on 9/25 tips it negative and it
   stays there until the Oct 2 paycheck → the **~$3,500 bridge must be in place by Sept 25**,
   not Sept 30

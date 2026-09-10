@@ -683,7 +683,11 @@ const closingSlices = () => [
 const credits = [
   {l:'Builder / seller credit', v:-15000.00},
   {l:'Earnest money (paid Aug 12)', v:-5299.00},
+  // Still a real cost of the deal, so it stays in gross — credited because it left the account
+  // early, the same way the earnest money is handled.
+  {l:'Fence (wired Sept 10)', v:-3615.00},
 ];
+const FENCE_PAID='2026-09-10', FENCE_AMT=3615.00, FENCE_WIRE_FEE=30.00;
 const CREDIT_TOTAL = credits.reduce((a,c)=>a+c.v,0);
 const nhCashToClose = () =>
   +(closingSlices().reduce((a,s)=>a+s.v,0) + CREDIT_TOTAL).toFixed(2);
@@ -1044,6 +1048,8 @@ function buildEvents(sale, price, rent, home){
   for(let d=addD('2026-12-25',14); d<=T1; d=addD(d,14)) E(d,payAt(d),'Paycheck (5 OT hrs)');
   if(owning) E('2026-09-18',-nhCashToClose(),
     `CLOSING — cash to close (${DOWN_PCT}% down, loan ${fmt0(nhLoan())})`);
+  E(FENCE_PAID,-FENCE_AMT,'Fence — your half of $7,230 (wired, outside closing)');
+  E(FENCE_PAID,-FENCE_WIRE_FEE,'Wire fee');
   E('2026-09-19',234.00,'Airbnb refund — day refund');
   E('2026-09-19',750.00,'Airbnb refund — pet deposit');
   if(owning){
