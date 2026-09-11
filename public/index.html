@@ -675,10 +675,11 @@ const closingSlices = () => [
   {l:`Down payment (${DOWN_PCT}%)`, v:nhDown(), c:'var(--s1)'},
   {l:'Discount points',    v:11742.48,  c:'var(--s2)'},
   {l:'Fence (your half)',  v:3615.00,   c:'var(--s3)'},
-  {l:'Homeowners ins. (12 mo)', v:1702.00, c:'var(--s4)'},
+  // The 12-month premium is paid by your fiancée from her own account, so it never reaches
+  // your closing table. The lender still escrows for the RENEWAL, so the cushion stays.
   {l:`Prepaid interest (${NH_PREPAID_DAYS} days)`, v:nhPrepaid(), c:'var(--s5)'},
-  {l:'Escrow: 3 mo insurance', v:425.49, c:'var(--s6)'},
-  {l:'Escrow: 12 mo property tax', v:135.00, c:'var(--s7)'},
+  {l:'Escrow: 3 mo insurance', v:425.49, c:'var(--s4)'},
+  {l:'Escrow: 4 mo property tax', v:200.00, c:'var(--s7)'},
 ];
 const credits = [
   {l:'Builder / seller credit', v:-15000.00},
@@ -771,13 +772,16 @@ const VIVINT_START='2025-06-21', VIVINT_TERM=60;
 const NH_PMT_26 = 2691.97;                  // P&I 2538.89 + escrow 153.08 (ins 141.83 + tax 11.25)
 
 /* The OKC escrow has the SAME defect as Midland: it was set at closing against an
-   UNIMPROVED LOT. The Closing Disclosure funds it with 3 months' insurance ($425.49) and
-   12 months' lot tax ($135.00), and collects $153.08/mo — insurance plus lot tax only. The
-   first full-house bill lands Dec 2027 and blows the account open exactly as Midland's does. */
+   UNIMPROVED LOT. It is funded with 3 months' insurance ($425.49) and the lender's minimum
+   4 months of property tax ($50 x 4 = $200), and collects $191.83/mo — insurance plus that
+   same $50 minimum. Collecting $50 against a $135 lot bill banks a small surplus through
+   2026-27, but the first full-house bill lands Dec 2027 and blows the account open anyway,
+   exactly as Midland's does. */
 const NH_INS = 1702.00;               // annual homeowners premium
-const NH_LOT_TAX = 135.00;            // the unimproved-lot assessment
+const NH_LOT_TAX = 135.00;            // the unimproved-lot assessment actually billed
+const NH_TAX_ESC_MO = 50.00;          // the lender's minimum monthly tax collection
 const NH_TAX_FULL = 6000.00;          // assumed reassessed annual tax
-const NH_ESC_START = 560.49;          // 425.49 + 135.00 escrowed at closing
+const NH_ESC_START = 625.49;          // 425.49 insurance + 200.00 tax escrowed at closing
 const nhTaxForYear = y => y<=2026 ? NH_LOT_TAX
   : +(NH_TAX_FULL*Math.pow(1+INFL_PCT, Math.max(0,y-2027))).toFixed(2);
 
@@ -962,7 +966,7 @@ function escrowPlan(cfg){
 const NH_DATES = ['2026-11-02','2026-12-01'].concat(monthly(1,'2027-01','2030-12'));
 const nhEscrowPlan = () => escrowPlan({
   dates:NH_DATES, start:NH_ESC_START, pi:nhPI(),
-  baseStart:+((NH_INS+NH_LOT_TAX)/12).toFixed(2),
+  baseStart:+(NH_INS/12 + NH_TAX_ESC_MO).toFixed(2),   // collection, not the actual bill
   ins:NH_INS, insMonth:9,                 // policy renews on the closing anniversary
   taxForYear:nhTaxForYear, taxMonth:12, taxYearOffset:0,   // Oklahoma bills Nov, due Dec 31
   analysisMonth:12, firstAnalysis:'2027-12-01', cushion:2, spread:12 });

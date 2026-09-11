@@ -737,8 +737,16 @@ is $100,847.90 rather than $104,462.90 only because the fence has since been pai
 Figures updated from the revised Closing Disclosure on 2026-09-10: **discount points
 $11,742.48** (was a round $12,000), **3-month insurance escrow $425.49**, and a **county tax
 adjustment of −$96.16** crediting the seller's share of the lot tax Jan 1 → Sept 18 (roughly
-$135/yr × 261/365). `NH_ESC_START` moved to $560.49 with the escrow line — it is
-`425.49 + 135.00`, so the two must always change together.
+$135/yr × 261/365). Then on 2026-09-11: the lender's **minimum property-tax escrow is $50/mo**, so closing collects
+4 x $50 = **$200** (not 12 months of the $135 lot assessment) and the ongoing collection is
+$50/mo rather than $11.25. Separately, the **12-month insurance premium ($1,702) is paid by
+your fiancée** and never reaches your closing table — but the lender still escrows for the
+*renewal*, so the 3-month cushion stays and insurance stays in the monthly escrow.
+
+`NH_ESC_START` is `425.49 + 200.00 = $625.49`; it and the escrow slices must always move
+together. Note `NH_LOT_TAX` ($135) is what is actually **billed**, while `NH_TAX_ESC_MO` ($50)
+is what is **collected** — collecting more than the bill banks a surplus through 2026-27, which
+softens the Dec 2027 deficiency from −$4,150.62 to −$3,629.26.
 
 **Items paid outside closing stay in gross costs and appear as a credit** — the earnest money
 (Aug 12) and now the **fence, wired Sept 10 2026** ($3,615 plus a $30 wire fee). They are real
@@ -952,9 +960,9 @@ escrow at the end.
 
 
 
-- Sept 18 morning balance: **$100,380.13** vs a **$111,069.60** wire at 22% down →
-  **$10,689.47 short**
-- Lowest point: **−$13,366.33 on Oct 1** at 22% down
+- Sept 18 morning balance: **$101,204.89** vs a **$109,432.60** wire at 22% down →
+  **$8,227.71 short**
+- Lowest point: **−$11,729.33 on Oct 1** at 22% down
 - **Underwater Sept 25 → Oct 1** — the $940 insurance draft on 9/25 tips it negative and it
   stays there until the Oct 2 paycheck → the **~$3,500 bridge must be in place by Sept 25**,
   not Sept 30
