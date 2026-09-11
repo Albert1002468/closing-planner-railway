@@ -992,7 +992,13 @@ function rentSchedule(rent){
 
 /* Car loan. One walk drives both the payment events and the payoff quote, so the two
    can never disagree. Interest accrues per diem from the last posted payment. */
-const CAR_DATES = monthly(16,'2026-09','2032-12');
+/* Wells Fargo auto-pay moved from the 16th to the 1st on 2026-09-11, pushing the next payment
+   15 days out: the Sept 16 draft becomes Oct 1, and there is NO September payment. Past
+   payments are untouched — the Aug 17 draft is emitted separately. Because this is simple
+   interest accrued per diem, the 46-day gap sends more of that payment to interest and less to
+   principal, which is why the maturity date and the total interest both rise. The payment
+   itself does not change. */
+const CAR_DATES = monthly(1,'2026-10','2033-12');
 function carWalk(stopBefore){               // payments strictly before stopBefore (null = all)
   let bal=CAR_BAL_AFTER_ANCHOR, last=CAR_ANCHOR;
   const paid=[];

@@ -566,6 +566,21 @@ anchor and are *not* re-simulated. **No further extra payments are assumed.**
 principal; `carPayoffOn(date)` adds per-diem interest since the last posted payment. The
 same walk drives both the payment events and the payoff quote, so the two cannot disagree.
 
+**Auto-pay moved from the 16th to the 1st on 2026-09-11.** The Sept 16 draft became Oct 1 and
+there is **no September 2026 payment**; past drafts are untouched, since Aug 17 is emitted
+separately from `CAR_DATES`. Because interest accrues per diem, that one 46-day gap (vs 31)
+sends $347.10 of the payment to interest instead of $233.91:
+
+| | on the 16th | on the 1st |
+|---|---|---|
+| maturity | 2031-07-16 | **2031-08-01** |
+| interest from here | $7,171.92 | **$7,333.08** |
+| final payment | $198.47 | $359.63 |
+
+So the shift costs **$161.16** over the life — the payment is unchanged and the extra lands
+entirely in the final instalment. Near term it *helps*: skipping September frees a full $824.76
+in the tightest month of the plan.
+
 **Payments run until something stops them**, and only two things do: a sale (payoff two months
 later, remaining balance settled in full) or the loan amortising to zero. With no sale the
 drafts continue unbroken to **2030-12-16 — 53 payments, $43,712.28 paid, $5,057.52 still owed**
