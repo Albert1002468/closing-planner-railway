@@ -507,6 +507,14 @@ that item silently stops paying partway through the horizon while everything els
 the same failure `mortgageSchedule` and the renter utilities each had. `yearsAhead()`,
 `nhDates()`, `seasonal(...,YR(T1))` and every `monthly(...)` range now key off `T1`.
 
+⚠️ **Term caps must outrun the horizon.** `#rentterm` and `#hterm` were capped at 60 months,
+sized for a 5-year model. With a 30-year horizon that silently clamps a long tenancy back inside
+the window and the sale reappears — the input reads 400 and the model uses 60. Both are 600 now.
+
+The **view list is ordered widest-first** (`h30, h15, h5, 2026, …`) so stepping *back* from the
+default 2026 walks 5 years → 15 → 30, progressively zooming out, and the dropdown reads the same
+way top to bottom. `VIEW` defaults to `'2026'` with `HORIZON` at `h5`.
+
 ⚠️ **A loan must stop at its TERM, not at `T1`.** Running to the horizon billed the OKC mortgage
 **362 times** — two payments after it retires — and would have amortised Midland's past zero.
 Both now stop: OKC capped at `NH_TERM_PMTS = 360` (last draft 2056-10), Midland breaking when
