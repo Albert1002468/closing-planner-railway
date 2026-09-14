@@ -18,6 +18,7 @@
     --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,0.10);
     --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300; --s7:#4a3aa7;
     --good:#0ca30c; --crit:#d03b3b; --goodtext:#006300;
+    --vpos:#4f9e12; --vneg:#d9615c;      /* reconciled variance: over / short */
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])),
@@ -28,6 +29,7 @@
       --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
       --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9;
       --good:#0ca30c; --crit:#d03b3b; --goodtext:#0ca30c;
+      --vpos:#8fd43a; --vneg:#f08a86;    /* lime / light red, lifted for the dark ground */
     }
   }
   html{background:var(--page)}
@@ -248,7 +250,8 @@
   .reclist{margin-top:14px;font-size:12px;border-top:1px solid var(--grid);padding-top:10px}
   .reclist div{display:flex;justify-content:space-between;gap:12px;padding:2.5px 0;font-variant-numeric:tabular-nums}
   .reclist .n{color:var(--muted)}
-  tr.recrowT td{color:var(--s4)}          /* amber, so --s7 is purely buying power */
+  tr.recrowT.vp td{color:var(--vpos)}     /* came in over projection */
+  tr.recrowT.vn td{color:var(--vneg)}     /* came in short */
   #evtable td.pos{color:var(--goodtext)}
   tr.mrule td{border-top:1px solid var(--axis)}
   .viewrow{margin:0}
@@ -370,8 +373,8 @@
     <div class="tlbar" id="tlbar" hidden><span class="tlthumb" id="tlthumb"></span></div>
     <div class="tip" id="ttip"></div>
     <div class="keyrow">
-      <span><i style="color:var(--goodtext)">&#9650;</i> in &ge;$800</span>
-      <span><i style="color:var(--crit)">&#9660;</i> out &ge;$800</span>
+      <span><i style="color:var(--goodtext)">&#9650;</i> <span id="markin">in &ge;$800</span></span>
+      <span><i style="color:var(--crit)">&#9660;</i> <span id="markout">out &ge;$800</span></span>
       <span><span class="sw" style="background:var(--crit);opacity:.15;border-radius:2px"></span>below $0</span>
       <span><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale</span>
       <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
@@ -1662,17 +1665,32 @@ function render(){
   band+=`L${X(n-1)} ${RY(n-1)}`;
   for(let i=n-1;i>0;i--) band+=`L${X(i)} ${RY(i-1)}L${X(i-1)} ${RY(i-1)}`;
   band+='Z';
-  add('path',{d:band,fill:'var(--s7)',stroke:'none',opacity:.13});
+  add('path',{d:band,fill:'var(--s7)',stroke:'none',opacity:.08});
   add('path',{d:rpath,fill:'none',stroke:'var(--s7)','stroke-width':1.6,'stroke-linejoin':'round'});
   let path='';
   VD.forEach((d,i)=>{const x=X(i),y=Y(d.b); path+= i===0?`M${x} ${y}`:`L${x} ${Y(VD[i-1].b)} L${x} ${y}`;});
   add('path',{d:path,fill:'none',stroke:'var(--s1)','stroke-width':2,'stroke-linejoin':'round'});
+  /* At $800 a 53-month window draws hundreds of triangles and the line disappears behind them.
+     Raise the bar with the span so a wide view marks only the genuinely large moves — the
+     bonus, the closing wire, the sale, a tax settlement — not every paycheck and mortgage. */
+  const markFloor = nMon<=12? 800 : nMon<=30? 2500 : 6000;
+  /* A span floor alone still leaves ~80 triangles inside a single year, because the recurring
+     paychecks and mortgages all sit in the same band. So also cap the COUNT: take the (CAP+1)th
+     largest magnitude as the bar. Ties drop out together, which is what you want — a recurring
+     item should be all-or-nothing rather than marked in some months and not others. */
+  const mags=[];
+  VD.forEach(d=>d.ev.forEach(e=>{ if(Math.abs(e.a)>=markFloor) mags.push(Math.abs(e.a)); }));
+  mags.sort((a,b)=>b-a);
+  const CAP = mobile? 10 : 18;
+  const markMin = mags.length>CAP ? Math.max(markFloor, mags[CAP]) : markFloor;
   VD.forEach((d,i)=>{
     d.ev.forEach(e=>{
-      if(e.a>800) add('text',{x:X(i),y:Y(d.b)-9,'text-anchor':'middle',fill:'var(--goodtext)','font-size':10}).textContent='▲';
-      else if(e.a<-800) add('text',{x:X(i),y:Y(d.b)+16,'text-anchor':'middle',fill:'var(--crit)','font-size':10}).textContent='▼';
+      if(e.a>markMin) add('text',{x:X(i),y:Y(d.b)-9,'text-anchor':'middle',fill:'var(--goodtext)','font-size':10}).textContent='▲';
+      else if(e.a<-markMin) add('text',{x:X(i),y:Y(d.b)+16,'text-anchor':'middle',fill:'var(--crit)','font-size':10}).textContent='▼';
     });
   });
+  document.getElementById('markin').textContent='in \u2265'+fmt0(markMin);
+  document.getElementById('markout').textContent='out \u2265'+fmt0(markMin);
   drawMarkerLabels();
   const cross=add('line',{x1:0,x2:0,y1:m.t,y2:H-m.b,stroke:'var(--axis)','stroke-width':1,visibility:'hidden'});
   const dot=add('circle',{r:4.5,fill:'var(--s1)',stroke:'var(--surface-1)','stroke-width':2,visibility:'hidden'});
@@ -1694,7 +1712,8 @@ function render(){
     if(d.ev.length) h+='<ul>'+d.ev.map(e=>`<li><span>${e.l}</span><span>${fmt(e.a)}</span></li>`).join('')+'</ul>';
     if(d.rec && d.rec.delta!==0){
       h+=`<ul style="border-top:1px solid var(--grid);margin-top:5px;padding-top:4px">`+
-         `<li><span style="color:var(--s4)">Reconciled variance</span><span style="color:var(--s4)">${fmt(d.rec.delta)}</span></li></ul>`;
+         `<li><span style="color:var(${d.rec.delta>0?'--vpos':'--vneg'})">Reconciled variance</span>`+
+         `<span style="color:var(${d.rec.delta>0?'--vpos':'--vneg'})">${fmt(d.rec.delta)}</span></li></ul>`;
       if(d.rec.note) h+=`<div style="color:var(--muted);margin-top:3px">“${esc(d.rec.note)}”</div>`;
     }
     tip.innerHTML=h; tip.style.display='block';
@@ -1924,7 +1943,7 @@ function render(){
     if(d.rec && d.rec.delta!==0){
       const note = d.rec.note? ` — “${esc(d.rec.note)}”` : '';
       rows.push({ym,a:d.rec.delta,h:
-        `<tr class="recrowT"><td>${ds}</td><td>RECONCILED — actual ${fmt(d.rec.actual)} vs projected ${fmt(d.rec.projected)}${note}</td><td class="n${d.rec.delta>0?' pos':''}">${fmt(d.rec.delta)}</td><td class="n">${fmt(d.b)}</td></tr>`});
+        `<tr class="recrowT ${d.rec.delta>0?'vp':'vn'}"><td>${ds}</td><td>RECONCILED — actual ${fmt(d.rec.actual)} vs projected ${fmt(d.rec.projected)}${note}</td><td class="n">${fmt(d.rec.delta)}</td><td class="n">${fmt(d.b)}</td></tr>`});
     }
     run=d.b;                             // resync (also applies a reconcile rebase)
   });
@@ -2167,7 +2186,8 @@ function fillForm(){
   $('reclist').innerHTML = keys.length
     ? '<div class="n"><span>Recorded</span><span></span></div>'+keys.map(k=>{
         const p=projectedFor(k), delta=p==null?null:+(RECON[k].actual-p).toFixed(2);
-        return `<div><span>${dd(k).toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${fmt(RECON[k].actual)}${RECON[k].note?' · '+esc(RECON[k].note):''}</span><span>${delta==null?'':fmt(delta)}</span></div>`;
+        const col = delta==null||delta===0? '' : ` style="color:var(${delta>0?'--vpos':'--vneg'})"`;
+        return `<div><span>${dd(k).toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${fmt(RECON[k].actual)}${RECON[k].note?' · '+esc(RECON[k].note):''}</span><span${col}>${delta==null?'':fmt(delta)}</span></div>`;
       }).join('')
     : '<div class="n"><span>No reconciliations recorded yet.</span><span></span></div>';
   updatePreview();

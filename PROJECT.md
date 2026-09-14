@@ -513,8 +513,23 @@ both. The band runs forward along the nominal path then back along the real one 
 corners mirrored (`L x,RY(i-1)` then `L x-1,RY(i-1)`), closed with `Z` — get the mirroring wrong
 and the fill shears across the chart rather than hugging the two lines.
 
-⚠️ **`--s7` is reserved for buying power.** The reconciled-variance rows and tooltip moved to
-**`--s4`** (amber, which reads as an adjustment) so nothing else competes with the purple.
+⚠️ **`--s7` is reserved for buying power.** Reconciled variance uses its own pair instead —
+**`--vpos`** (lime) when the day came in over projection and **`--vneg`** (light red) when it
+came in short, applied in the table rows (`.vp`/`.vn`), the timeline tooltip and the modal's
+recorded list. Both are lifted in dark mode; a single colour could not show the sign.
+
+**Event markers thin out as the window widens.** A `$800` bar draws hundreds of triangles
+across 53 months and buries the line. Two limits now apply together:
+
+- a **span floor** — `$800` up to 12 months, `$2,500` to 30, `$6,000` beyond
+- a **count cap** — 18 markers on desktop, 10 on mobile, by taking the (CAP+1)th largest
+  magnitude as the bar
+
+The floor alone was not enough: a single year still drew ~80, because the paychecks, rent and
+mortgages all sit in the same band. The cap fixes that, and **ties drop out together** — the bar
+lands exactly on the paycheck amount, so all 26 disappear at once rather than being marked in
+some months and not others. Result: 2-17 markers per view instead of 27-81. The legend prints
+the live threshold, so it never lies about what is being shown.
 
 **Default scenario is now: rent the Midland home 36 months, then sell** (Oct 2029). Ranked on
 buying power at Dec 31 2030, in Aug 2026 dollars:
