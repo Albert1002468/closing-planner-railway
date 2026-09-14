@@ -743,6 +743,9 @@ Paychecks; the $104,462.90 closing wire on 9/18; Airbnb refunds on 9/19 (+$234 d
 through 2027**; the **$30,000 bonus on 3/1/27 (net $19,680)** and the **$5,000 IRS payment
 on 3/19/27**; car $824.76 on the 16th until payoff;
 AT&T $80.65; card autopays ~$50; NY Life $59.10; Apple Cash $112; Claude $21.65; iCloud+ $0.99;
+⚠️ **NY Life is the one recurring bill that is not inflated** — it is a level-premium life
+policy, fixed for the life of the contract, so `inflAt()` must not be applied to it. Every
+other subscription in that block carries `*inflAt(d)`; this one deliberately does not.
 Spotify $20.56; car insurance $940 on 9/25 and each 6 months after (3/25/27, 9/27/27);
 new-home utilities $150 / $250 / $300 Oct–Dec 2026, then a seasonal 2027 table
 ($195 in May up to $330 in Jan and Aug) — **estimates, not statements**.

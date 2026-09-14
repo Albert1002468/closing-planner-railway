@@ -1146,7 +1146,9 @@ function buildEvents(sale, price, rent, home){
   ['2026-08-18','2026-09-18','2026-10-19','2026-11-18','2026-12-18'].forEach(d=>E(d,-20.56,'Spotify'));
   monthly(2,'2027-01',TM()).forEach(d=>E(d,-80.65*inflAt(d),'AT&T'));
   monthly(1,'2027-01',TM()).forEach(d=>E(d,-50.00*inflAt(d),'Credit-card autopays'));
-  monthly(10,'2027-01',TM()).forEach(d=>E(d,-59.10*inflAt(d),'NY Life'));
+  // Level-premium life policy: the premium is fixed for the life of the contract, so this is
+  // the one recurring bill that must NOT be inflated. In real terms it gets cheaper every year.
+  monthly(10,'2027-01',TM()).forEach(d=>E(d,-59.10,'NY Life (level premium)'));
   monthly(12,'2027-01',TM()).forEach(d=>E(d,-112.00*inflAt(d),'Apple Cash'));
   monthDays(14,'2027-01',TM()).forEach(d=>E(d,-21.65*inflAt(d),'Claude subscription (Apple.com)'));
   monthDays(15,'2027-01',TM()).forEach(d=>E(d,-0.99*inflAt(d),'iCloud+ (Apple.com)'));
