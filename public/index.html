@@ -315,7 +315,7 @@
 <body>
 <div class="viz-root">
   <h1>Closing &amp; Home-Sale Planner</h1>
-  <p class="sub">Closing Fri, Sept 18, 2026 &middot; daily balance projected through Dec 31, 2030</p>
+  <p class="sub" id="subhead">Closing Fri, Sept 18, 2026</p>
   <p class="sub" id="subcash" style="margin-top:-12px"></p>
 
   <div class="card pos">
@@ -763,7 +763,18 @@ function drawDonut(){
 /* ---------- Scenario engine ---------- */
 const RECON = {};                           // date -> {actual, note}; loaded from /api/state
 const START_BAL = 99026.57;                 // available balance, morning of 8/14
-const T0='2026-08-14', T1='2030-12-31';
+const T0='2026-08-14';
+/* The horizon is a control now, not a constant. 30 years lands on the 360th OKC mortgage
+   payment (Oct 2056), so the long view covers exactly the life of the loan. Everything that
+   used to end at a literal '2030-12' is derived from T1 instead — miss one and that item
+   silently stops paying partway through, which is the bug mortgageSchedule and the renter
+   utilities both had. */
+const HORIZONS={h5:{yrs:5,end:'2030-12-31',label:'5 years'},
+                h15:{yrs:15,end:'2041-12-31',label:'15 years'},
+                h30:{yrs:30,end:'2056-12-31',label:'30 years'}};
+let HORIZON='h5';
+let T1=HORIZONS[HORIZON].end;
+const TM = () => T1.slice(0,7);            // 'YYYY-MM' bound for the monthly generators
 const YR = d => +d.slice(0,4);
 /* 2026 and 2027 are modelled from statements and stay exactly as they were. Growth applies
    from 2028 on, so `inflAt`/`payAt` both return 1x for 2027 and nothing upstream shifts. */
@@ -813,7 +824,7 @@ const BONUS_DATE='2027-03-01', BONUS_GROSS=30000.00;
 // (no Roth deferral was taken). Oklahoma now withholds 4.75% supplemental on top.
 const BONUS_NET = +(BONUS_GROSS*(0.7035-0.0475)).toFixed(2);   // 19,680.00
 const IRS_AMT=5000.00;                      // recurs each March while the bonus does
-const YEARS_AHEAD=['2027','2028','2029','2030'];
+const yearsAhead = () => { const a=[]; for(let y=2027;y<=YR(T1);y++) a.push(String(y)); return a; };
 
 /* Depreciation recapture: only bites if the Midland home was rented and then sold.
    Straight line over 27.5 years on the building basis; the default rate is 25% federal
@@ -919,13 +930,18 @@ const priceOn = d => +(MID_VALUE_TODAY*Math.pow(1+MID_APPREC, nDays(MID_VALUE_DA
 function mortgageSchedule(){
   // Must run to T1. payoffOn() walks these rows, so a short schedule does not merely drop
   // payments — it stops amortising and then piles per-diem interest on a stale balance.
+  // It must also STOP once the loan retires, or a long horizon keeps billing a paid-off loan.
   let bal = MTG_BAL_AFTER_AUG;
-  return monthDays(1,'2026-09',T1.slice(0,7)).map(due=>{
-    const int = bal*MI, prin = MTG_PI-int;
-    const row={draft:bumpWk(due), due, int:+int.toFixed(2), prin:+prin.toFixed(2), balAfter:+(bal-prin).toFixed(2)};
-    bal -= prin;
-    return row;
-  });
+  const rows=[];
+  for(const due of monthDays(1,'2026-09',TM())){
+    if(bal<=0) break;
+    const int = bal*MI;
+    let prin = MTG_PI-int, pmt = MTG_PMT;
+    if(prin>=bal){ prin=bal; pmt=+(bal+int+(MTG_PMT-MTG_PI)).toFixed(2); }   // short final payment
+    bal = +(bal-prin).toFixed(2);
+    rows.push({draft:bumpWk(due), due, int:+int.toFixed(2), prin:+prin.toFixed(2), pmt, balAfter:bal});
+  }
+  return rows;
 }
 
 /* Build [date, amount] rows for whole years from a 12-month day/amount pattern. Used to carry
@@ -976,9 +992,11 @@ function escrowPlan(cfg){
   return {plan, notes};
 }
 
-const NH_DATES = ['2026-11-02','2026-12-01'].concat(monthly(1,'2027-01','2030-12'));
+const NH_TERM_PMTS=360;                // the loan retires on its 360th payment, not at T1
+const nhDates = () => ['2026-11-02','2026-12-01']
+  .concat(monthly(1,'2027-01',TM())).slice(0,NH_TERM_PMTS);
 const nhEscrowPlan = () => escrowPlan({
-  dates:NH_DATES, start:NH_ESC_START, pi:nhPI(),
+  dates:nhDates(), start:NH_ESC_START, pi:nhPI(),
   baseStart:+(NH_INS/12 + NH_TAX_ESC_MO).toFixed(2),   // collection, not the actual bill
   ins:NH_INS, insMonth:9,                 // policy renews on the closing anniversary
   taxForYear:nhTaxForYear, taxMonth:12, taxYearOffset:0,   // Oklahoma bills Nov, due Dec 31
@@ -1015,7 +1033,7 @@ function rentSchedule(rent){
    interest accrued per diem, the 46-day gap sends more of that payment to interest and less to
    principal, which is why the maturity date and the total interest both rise. The payment
    itself does not change. */
-const CAR_DATES = monthly(1,'2026-10','2033-12');
+const CAR_DATES = monthly(1,'2026-10','2034-12');   // natural payoff is 2031-08; headroom
 function carWalk(stopBefore){               // payments strictly before stopBefore (null = all)
   let bal=CAR_BAL_AFTER_ANCHOR, last=CAR_ANCHOR;
   const paid=[];
@@ -1079,7 +1097,7 @@ function buildEvents(sale, price, rent, home){
   E('2026-09-19',750.00,'Airbnb refund — pet deposit');
   if(owning){
     const NHE=nhEscrowPlan();
-    NH_DATES.forEach(d=>{
+    nhDates().forEach(d=>{
       const pl=NHE.notes[d];
       E(d,-NHE.plan[d], `NEW home mortgage (P&I ${fmt(nhPI())} + escrow ${fmt(pl.esc)}`
         +`${pl.short? ', incl. shortage '+fmt(pl.short):''})`);
@@ -1087,7 +1105,8 @@ function buildEvents(sale, price, rent, home){
   } else if(buyDate){
     // First payment skips a month, the same way the Sept 18 deal pays first on Nov 1.
     const first=addM(buyDate.slice(0,8)+'01',2);
-    monthly(1,first.slice(0,7),'2030-12').forEach(d=>E(d,-buy.pmt,'NEW home mortgage (P&I + escrow)'));
+    monthly(1,first.slice(0,7),TM()).slice(0,NH_TERM_PMTS)
+      .forEach(d=>E(d,-buy.pmt,'NEW home mortgage (P&I + escrow)'));
   }
   E('2026-08-17',-CAR_PMT,'Car payment (base)');
   ['2026-09-02','2026-10-02','2026-11-02','2026-12-02'].forEach(d=>E(d,-80.65,'AT&T'));
@@ -1097,15 +1116,15 @@ function buildEvents(sale, price, rent, home){
   ['2026-09-14','2026-10-14','2026-11-14','2026-12-14'].forEach(d=>E(d,-21.65,'Claude subscription (Apple.com)'));
   ['2026-09-15','2026-10-15','2026-11-16','2026-12-15'].forEach(d=>E(d,-0.99,'iCloud+ (Apple.com)'));
   ['2026-08-18','2026-09-18','2026-10-19','2026-11-18','2026-12-18'].forEach(d=>E(d,-20.56,'Spotify'));
-  monthly(2,'2027-01','2030-12').forEach(d=>E(d,-80.65*inflAt(d),'AT&T'));
-  monthly(1,'2027-01','2030-12').forEach(d=>E(d,-50.00*inflAt(d),'Credit-card autopays'));
-  monthly(10,'2027-01','2030-12').forEach(d=>E(d,-59.10*inflAt(d),'NY Life'));
-  monthly(12,'2027-01','2030-12').forEach(d=>E(d,-112.00*inflAt(d),'Apple Cash'));
-  monthDays(14,'2027-01','2030-12').forEach(d=>E(d,-21.65*inflAt(d),'Claude subscription (Apple.com)'));
-  monthDays(15,'2027-01','2030-12').forEach(d=>E(d,-0.99*inflAt(d),'iCloud+ (Apple.com)'));
-  monthly(18,'2027-01','2030-12').forEach(d=>E(d,-20.56*inflAt(d),'Spotify'));
+  monthly(2,'2027-01',TM()).forEach(d=>E(d,-80.65*inflAt(d),'AT&T'));
+  monthly(1,'2027-01',TM()).forEach(d=>E(d,-50.00*inflAt(d),'Credit-card autopays'));
+  monthly(10,'2027-01',TM()).forEach(d=>E(d,-59.10*inflAt(d),'NY Life'));
+  monthly(12,'2027-01',TM()).forEach(d=>E(d,-112.00*inflAt(d),'Apple Cash'));
+  monthDays(14,'2027-01',TM()).forEach(d=>E(d,-21.65*inflAt(d),'Claude subscription (Apple.com)'));
+  monthDays(15,'2027-01',TM()).forEach(d=>E(d,-0.99*inflAt(d),'iCloud+ (Apple.com)'));
+  monthly(18,'2027-01',TM()).forEach(d=>E(d,-20.56*inflAt(d),'Spotify'));
   E('2026-09-25',-940.00,'Car insurance (6-mo, switched)');
-  YEARS_AHEAD.forEach(y=>[bumpWk(y+'-03-25'),bumpWk(y+'-09-25')]
+  yearsAhead().forEach(y=>[bumpWk(y+'-03-25'),bumpWk(y+'-09-25')]
     .forEach(d=>E(d,-940.00*inflAt(d),'Car insurance (6-mo renewal)')));
   // OG&E + ONG + OKC water/trash, seasonal estimates (gas peak in winter, AC peak in summer).
   // Only charged for months you actually own the place.
@@ -1115,11 +1134,11 @@ function buildEvents(sale, price, rent, home){
    ['2027-01-25',330],['2027-02-22',315],['2027-03-22',255],['2027-04-26',205],
    ['2027-05-24',195],['2027-06-22',250],['2027-07-26',310],['2027-08-23',330],
    ['2027-09-22',270],['2027-10-25',200],['2027-11-22',250],['2027-12-22',300]]
-    .concat(seasonal(NH_UTIL_DAYS,NH_UTIL_AMTS,2028,2030))
+    .concat(seasonal(NH_UTIL_DAYS,NH_UTIL_AMTS,2028,YR(T1)))
     .forEach(([d,a])=>{ if(ownedFrom && d>=ownedFrom) E(d,-a,'New-home utilities (est.)'); });
 
   // ---- rules 3 & 4: the March 2027 bonus and the IRS payment ----
-  YEARS_AHEAD.forEach(y=>{
+  yearsAhead().forEach(y=>{
     E(bumpWk(y+'-03-01'), BONUS_NET, `Annual bonus — ${fmt0(BONUS_GROSS)} gross, net of fed/OASDI/Medicare/OK`);
     addTax(+y-1, 'IRS balance', IRS_AMT);   // paid with the return filed in year y
   });
@@ -1153,11 +1172,11 @@ function buildEvents(sale, price, rent, home){
   const WATER=Array(12).fill(131);
   const D22=Array(12).fill(22), D28=Array(12).fill(28), D30=Array(12).fill(30);
   const cirro=[['2026-08-24',180],['2026-09-22',170],['2026-10-22',120],['2026-11-23',90],['2026-12-22',110]]
-    .concat(seasonal(D22,CIRRO,2027,2030));
+    .concat(seasonal(D22,CIRRO,2027,YR(T1)));
   const atmos=[['2026-08-28',22],['2026-09-28',22],['2026-10-28',35],['2026-11-30',60],['2026-12-28',80]]
-    .concat(seasonal(D28,ATMOS,2027,2030));
+    .concat(seasonal(D28,ATMOS,2027,YR(T1)));
   const water=[['2026-08-31',131],['2026-09-30',131],['2026-10-30',131],['2026-11-30',131],['2026-12-30',131]]
-    .concat(seasonal(D30,WATER,2027,2030));
+    .concat(seasonal(D30,WATER,2027,YR(T1)));
   [[cirro,'Cirro electric (Midland)'],[atmos,'Atmos gas (Midland)'],[water,'Midland water']].forEach(([arr,lab])=>{
     arr.forEach(([d,a])=>{ if((!sale || lt(d,sale)) && !rented(d)) E(d,-a,lab); });
   });
@@ -1280,7 +1299,7 @@ function buildEvents(sale, price, rent, home){
     // inflate like every other cost. The end month must be T1 — hardcoding '2027-12' here cut
     // them off at the old horizon, so any lease past 2027 silently stopped paying utilities.
     const utilStop = (buyDate && lt(buyDate,myEnd))? buyDate : myEnd;
-    monthDays(25,home.start.slice(0,7),T1.slice(0,7)).forEach(d=>{
+    monthDays(25,home.start.slice(0,7),TM()).forEach(d=>{
       if(d>=home.start && lt(d,utilStop)) E(d,-home.util*inflAt(d),'Utilities (rental)');
     });
   }
@@ -1453,7 +1472,7 @@ function netWorth(res, sale, rent, home){
 /* ---------- render ---------- */
 const NS='http://www.w3.org/2000/svg';
 let LAST_DATA=[];
-let VIEW='2026';         // timeline window: 'all' | '2026' | '2027'
+let VIEW='span';         // 'span' = the whole horizon, otherwise a 'YYYY' string
 let TPAGE=null;          // table page — a 'YYYY-MM' key
 let TPAGE_PINNED=false;  // true once the reader picks a month themselves
 let PMONTHS=[];          // month keys currently pageable, in order
@@ -1528,7 +1547,11 @@ function render(){
   const saleMin = (rentEndDate && rentEndDate>SALE_FLOOR)? rentEndDate : SALE_FLOOR;
   const $sd=document.getElementById('saledate');
   const noSalePossible = saleMin>T1;
-  $sd.min=saleMin;
+  $sd.min=saleMin; $sd.max=T1;
+  // Shrinking the horizon can leave the sale date beyond the new end; pull it back in.
+  if($sd.value && $sd.value>T1) $sd.value = saleMin<=T1? T1 : saleMin;
+  ['rentstart','hstart'].forEach(id=>document.getElementById(id).max=T1);
+  document.getElementById('hbuydate').max=T1;
   // A date sitting exactly on a rent-derived floor is "riding" it: it follows the floor up and
   // down as the term changes, and when renting is switched off entirely it goes back to
   // whatever it was before renting first pushed it. A date the reader typed is never moved.
@@ -1567,6 +1590,8 @@ function render(){
   drawDonut();
   document.getElementById('downsm').textContent =
     `${fmt0(nhDown())} down · loan ${fmt0(nhLoan())} · P&I ${fmt(nhPI())}`;
+  document.getElementById('subhead').textContent =
+    `Closing Fri, Sept 18, 2026 · daily balance projected through ${nice(T1)} (${HORIZONS[HORIZON].label})`;
   document.getElementById('subcash').textContent =
     `${DOWN_PCT}% down on ${fmt0(NH_PRICE)} · ${fmt(nhCashToClose())} due at closing`;
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
@@ -1574,14 +1599,14 @@ function render(){
          recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,midEscEnd,
          rentNetIncome,rentIncTax,rentCostTotal,suspendedLoss}=buildSeries(sale,price,rent,home,apy);
   // the chart draws only the selected window; the tiles and the running balance stay whole-series
-  const VD = VIEW==='all'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
+  const VD = VIEW==='span'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
   const svg=document.getElementById('tl');
   while(svg.firstChild) svg.removeChild(svg.firstChild);
   const cw=svg.parentNode.clientWidth||940, mobile=cw<640;
   const nMonths=Math.max(1, VD.filter(d=>d.d.slice(8)==='01').length);
   // Only the multi-year window is ever allowed to overflow. A single year is pinned to the
   // container, so it never scrolls and the scrub gesture is never ambiguous.
-  const canPan = mobile && VIEW==='all';
+  const canPan = mobile && VIEW==='span';
   const W=mobile? (canPan? Math.max(300,Math.round(cw),nMonths*30) : Math.max(300,Math.round(cw)))
                 : 940,
         H=mobile?300:380;
@@ -1603,7 +1628,14 @@ function render(){
   const iw=W-m.l-m.r, ih=H-m.t-m.b, n=VD.length;
   const bmin=Math.min(0,...VD.map(d=>Math.min(d.b, realAt(d.b,d.d))));
   const bmax=Math.max(...VD.map(d=>d.b));
-  const y0=Math.floor(bmin/10000)*10000, y1=(Math.ceil(bmax/10000)*10000)||10000;
+  // Snap the scale to the STEP, not a fixed 10k, or the labels read $990k / $1,990k.
+  const niceStep=v=>{const m=Math.pow(10,Math.floor(Math.log10(Math.max(1,v)))), r=v/m;
+                     return (r<=1?1:r<=2?2:r<=2.5?2.5:r<=5?5:10)*m;};
+  const gstep=niceStep(Math.max(1,bmax-bmin)/(mobile?4:6));
+  // Snapping the FLOOR to the step wastes a third of the chart when the low is small and the
+  // step is large (-$13k rounding to -$100k). Let the floor sit on the data and draw gridlines
+  // only at round multiples that fall inside the range.
+  const y0=bmin<0? bmin*1.04 : 0, y1=(Math.ceil(bmax/gstep)*gstep)||gstep;
   const X=i=>m.l+iw*i/(n-1), Y=v=>m.t+ih*(1-(v-y0)/(y1-y0));
   const add=(tag,attrs)=>{const el=document.createElementNS(NS,tag);for(const k in attrs)el.setAttribute(k,attrs[k]);svg.appendChild(el);return el;};
 
@@ -1611,8 +1643,10 @@ function render(){
   const ti=VD.findIndex(d=>d.d===TODAY_ISO);
   if(ti>0) add('rect',{x:m.l,y:m.t,width:X(ti)-m.l,height:ih,fill:'var(--ink)',opacity:.05});
   const span=y1-y0;
-  const step=mobile?(span>90000?50000:(span>40000?20000:10000)):(span>90000?40000:20000);
-  for(let v=y0;v<=y1;v+=step){
+  // Pick a round step that yields ~6 gridlines at ANY span. A fixed 20k/40k stacks the labels
+  // into an unreadable column once the range reaches millions.
+  const step=gstep;
+  for(let v=Math.ceil(y0/step)*step; v<=y1; v+=step){
     add('line',{x1:m.l,x2:W-m.r,y1:Y(v),y2:Y(v),stroke:'var(--grid)','stroke-width':1});
     const t=add('text',{x:m.l-6,y:Y(v)+3.5,'text-anchor':'end',fill:'var(--muted)','font-size':mobile?10:11});
     t.style.fontVariantNumeric='tabular-nums'; t.textContent=fmt0(v/1000)+'k';
@@ -1622,11 +1656,25 @@ function render(){
   // the mobile chart is now wider than its container, so a count-based rule read it wrong.
   const nMon=nMonths;
   const mStep=Math.max(1, Math.ceil(55/((W-m.l-m.r)/nMon)));
-  let mSeen=-1, mLast=-99;               // January is always labelled; spacing resyncs from it
+  /* Past ~3 years the month is noise and "always label January" collides 31 times, so switch
+     to labelling years only, thinned by the same pixel budget. */
+  const nYears=new Set(VD.map(d=>d.d.slice(0,4))).size;
+  const longSpan = nMon>36;
+  const yStep = Math.max(1, Math.ceil(55/((W-m.l-m.r)/Math.max(1,nYears))));
+  let mSeen=-1, mLast=-99, yLast=-99;
   VD.forEach((d,i)=>{ if(d.d.slice(8)==='01'||i===0){
     add('line',{x1:X(i),x2:X(i),y1:m.t,y2:H-m.b,stroke:'var(--grid)','stroke-width':1,'stroke-dasharray':'2 3'});
     mSeen++;
     const jan=d.d.slice(5,7)==='01';
+    if(longSpan){
+      if(!jan && i!==0) return;
+      const y=+d.d.slice(0,4);
+      if(y-yLast<yStep && i!==0) return;
+      yLast=y;
+      add('text',{x:X(i)+3,y:H-m.b+15,fill:'var(--muted)','font-size':mobile?10:11,
+                  'font-weight':600}).textContent="'"+d.d.slice(2,4);
+      return;
+    }
     // December always sits right next to a forced January label, so suppress it — the year
     // marker carries that boundary on its own.
     const nextIsJan=d.d.slice(5,7)==='12';
@@ -1653,22 +1701,30 @@ function render(){
     if(si>=0) markLabel(si,'SALE','var(--s3)',clash?27:12);
   };
 
+  /* A 30-year window is ~11,000 daily points, and three paths over that is ~66,000 path
+     commands. Thin what is DRAWN (never the series — the tiles and table still read every day),
+     keeping X(i) indexed on the full array so hit-testing and the readout stay exact. */
+  const pstep = Math.max(1, Math.ceil(n/1500));
+  const keep = i => i%pstep===0 || i===n-1;
   // Buying power first, so the nominal line paints over it where they cross.
   const RY = i => Y(realAt(VD[i].b, VD[i].d));
-  let rpath='';
-  VD.forEach((d,i)=>{const x=X(i),y=RY(i);
-    rpath+= i===0?`M${x} ${y}`:`L${x} ${RY(i-1)} L${x} ${y}`;});
+  let rpath=''; let rprev=-1;
+  VD.forEach((d,i)=>{ if(!keep(i)) return; const x=X(i),y=RY(i);
+    rpath+= rprev<0?`M${x} ${y}`:`L${x} ${RY(rprev)} L${x} ${y}`; rprev=i;});
   // The gap between the two IS the inflation bite, so shade it rather than leaving it implied.
   // Forward along the nominal, then back along the real with the steps mirrored, then close.
+  const kept=[]; for(let i=0;i<n;i++) if(keep(i)) kept.push(i);
   let band='';
-  VD.forEach((d,i)=>{const x=X(i),y=Y(d.b); band+= i===0?`M${x} ${y}`:`L${x} ${Y(VD[i-1].b)} L${x} ${y}`;});
-  band+=`L${X(n-1)} ${RY(n-1)}`;
-  for(let i=n-1;i>0;i--) band+=`L${X(i)} ${RY(i-1)}L${X(i-1)} ${RY(i-1)}`;
+  kept.forEach((i,k)=>{const x=X(i),y=Y(VD[i].b);
+    band+= k===0?`M${x} ${y}`:`L${x} ${Y(VD[kept[k-1]].b)} L${x} ${y}`;});
+  band+=`L${X(kept[kept.length-1])} ${RY(kept[kept.length-1])}`;
+  for(let k=kept.length-1;k>0;k--) band+=`L${X(kept[k])} ${RY(kept[k-1])}L${X(kept[k-1])} ${RY(kept[k-1])}`;
   band+='Z';
   add('path',{d:band,fill:'var(--s7)',stroke:'none',opacity:.08});
   add('path',{d:rpath,fill:'none',stroke:'var(--s7)','stroke-width':1.6,'stroke-linejoin':'round'});
-  let path='';
-  VD.forEach((d,i)=>{const x=X(i),y=Y(d.b); path+= i===0?`M${x} ${y}`:`L${x} ${Y(VD[i-1].b)} L${x} ${y}`;});
+  let path=''; let pprev=-1;
+  VD.forEach((d,i)=>{ if(!keep(i)) return; const x=X(i),y=Y(d.b);
+    path+= pprev<0?`M${x} ${y}`:`L${x} ${Y(VD[pprev].b)} L${x} ${y}`; pprev=i;});
   add('path',{d:path,fill:'none',stroke:'var(--s1)','stroke-width':2,'stroke-linejoin':'round'});
   /* At $800 a 53-month window draws hundreds of triangles and the line disappears behind them.
      Raise the bar with the span so a wide view marks only the genuinely large moves — the
@@ -1826,7 +1882,7 @@ function render(){
                        suspendedLoss}, sale, rent, home);
   set('t_nw', fmt(NW.nw), NW.nw<0?'neg':'posv');
   document.getElementById('t_nwd').textContent =
-    `Dec 31, 2030 · cash ${fmt0(NW.cash)}${NW.okc?' · OKC equity '+fmt0(NW.okc):''}`
+    `Dec 31, ${YR(T1)} · cash ${fmt0(NW.cash)}${NW.okc?' · OKC equity '+fmt0(NW.okc):''}`
     +`${NW.mid?' · Midland '+fmt0(NW.mid):''}${NW.car?' − car '+fmt0(NW.car):''}`
     +`${NW.deferred?' − deferred tax '+fmt0(NW.deferred):''}`;
   document.getElementById('t_lowd').textContent = dd(mnD.d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
@@ -1849,7 +1905,7 @@ function render(){
   const endDay=VD[VD.length-1] || DATA[DATA.length-1];
   set('t_end', fmt(endDay.b), endDay.b<0?'neg':'posv');
   document.getElementById('t_endd').textContent =
-    nice(endDay.d) + (VIEW==='all'? ' · whole window' : '');
+    nice(endDay.d) + (VIEW==='span'? ` · ${HORIZONS[HORIZON].label}` : '');
   // Same money in T0 dollars. Beating inflation means this clears START_BAL, not just the
   // nominal figure — which is the whole reason the line is on the chart.
   const realEnd=realAt(endDay.b, endDay.d);
@@ -1948,7 +2004,7 @@ function render(){
     run=d.b;                             // resync (also applies a reconcile rebase)
   });
   // pages follow the timeline window, so picking "2027" scopes both
-  PMONTHS=[...new Set(rows.map(r=>r.ym))].filter(mo=>VIEW==='all'||mo.slice(0,4)===VIEW);
+  PMONTHS=[...new Set(rows.map(r=>r.ym))].filter(mo=>VIEW==='span'||mo.slice(0,4)===VIEW);
   // Open on the month we are actually in, and keep re-snapping to it until the reader pages
   // somewhere themselves. Re-snapping also lets the server's date — which lands after the
   // first render — correct a wrong device clock. Outside the window, take the nearest month
@@ -1969,7 +2025,7 @@ function render(){
   const net=+page.reduce((a,r)=>a+r.a,0).toFixed(2);
   const mEnd=DATA.filter(d=>d.d.slice(0,7)===TPAGE).slice(-1)[0];
   gid('tblmeta').textContent =
-    `${rows.filter(r=>VIEW==='all'||r.ym.slice(0,4)===VIEW).length} across ${PMONTHS.length} months`;
+    `${rows.filter(r=>VIEW==='span'||r.ym.slice(0,4)===VIEW).length} across ${PMONTHS.length} months`;
   gid('pginfo').textContent =
     `${page.length} line${page.length===1?'':'s'} · net ${fmt(net)}`+
     (mEnd? ` · month-end ${fmt(mEnd.b)}`:'')+
@@ -2094,24 +2150,37 @@ const $ra=document.getElementById('rentamt');
 $ra.addEventListener('input',render);
 $ra.addEventListener('blur',()=>{$ra.value=digits('rentamt',1,20000,RENT_DEFAULT.amt).toLocaleString('en-US');render();});
 $ra.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();$ra.blur();} });
-/* Six buttons did not survive adding years. One select plus steppers scales to any horizon
-   and matches the transactions pager, so both controls read the same way. */
-const VIEWS=['all']; for(let y=YR(T0); y<=YR(T1); y++) VIEWS.push(String(y));
+/* One select carries two different things: the HORIZON (how far the model runs) and the
+   WINDOW (what slice of it the chart shows). Picking a horizon rebuilds the year list, since
+   a 30-year model has 31 of them. Picking a year keeps whatever horizon is loaded. */
 const $vw=document.getElementById('viewsel');
-$vw.innerHTML=VIEWS.map(v=>
-  `<option value="${v}"${v===VIEW?' selected':''}>${v==='all'?'All years':v}</option>`).join('');
+let VIEWS=[];
+function buildViews(){
+  VIEWS=Object.keys(HORIZONS).concat();
+  for(let y=YR(T0); y<=YR(T1); y++) VIEWS.push(String(y));
+  const hs=Object.entries(HORIZONS).map(([k,h])=>
+    `<option value="${k}"${(VIEW==='span'&&HORIZON===k)?' selected':''}>${h.label}</option>`).join('');
+  const ys=VIEWS.filter(v=>!HORIZONS[v]).map(v=>
+    `<option value="${v}"${v===VIEW?' selected':''}>${v}</option>`).join('');
+  $vw.innerHTML=`<optgroup label="Horizon">${hs}</optgroup><optgroup label="Single year">${ys}</optgroup>`;
+}
 function setView(v){
-  if(!VIEWS.includes(v)) return;
-  VIEW=v; $vw.value=v;
-  const i=VIEWS.indexOf(v);
+  if(v==null) return;
+  if(HORIZONS[v]){ HORIZON=v; T1=HORIZONS[v].end; VIEW='span'; buildViews(); }
+  else { if(!VIEWS.includes(v)) return; VIEW=v; $vw.value=v; }
+  const cur = VIEW==='span'? HORIZON : VIEW;
+  const i=VIEWS.indexOf(cur);
   document.getElementById('vwprev').disabled = i<=0;
   document.getElementById('vwnext').disabled = i>=VIEWS.length-1;
   render();
 }
+buildViews();
 $vw.addEventListener('change',e=>setView(e.target.value));
-document.getElementById('vwprev').addEventListener('click',()=>setView(VIEWS[VIEWS.indexOf(VIEW)-1]));
-document.getElementById('vwnext').addEventListener('click',()=>setView(VIEWS[VIEWS.indexOf(VIEW)+1]));
-setView(VIEW);
+document.getElementById('vwprev').addEventListener('click',()=>
+  setView(VIEWS[VIEWS.indexOf(VIEW==='span'?HORIZON:VIEW)-1]));
+document.getElementById('vwnext').addEventListener('click',()=>
+  setView(VIEWS[VIEWS.indexOf(VIEW==='span'?HORIZON:VIEW)+1]));
+setView(HORIZON);
 /* the scenario controls live in a sheet; edits apply live, so "Done" only closes it */
 const $set=document.getElementById('setmodal');
 const openSet =()=>{$set.hidden=false; document.body.style.overflow='hidden';};

@@ -103,7 +103,8 @@ stat tiles, and rewrites the transaction table. Called on every input change and
 
 ```js
 START_BAL   = 99026.57      // available balance, morning of 8/14/26
-T0, T1      = '2026-08-14', '2030-12-31'   // 1,601 days, 53 table pages
+T0 = '2026-08-14';  T1 is CHOSEN, not fixed — see HORIZONS
+HORIZONS = {h5:'2030-12-31', h15:'2041-12-31', h30:'2056-12-31'}   // 1.6k / 5.6k / 11.1k days
 PAY10, PAY5 = 3830.28, 3557.15   // net paycheck w/ 10 and 5 OT hrs
 MTG_BAL_AFTER_AUG = 336756.31    // current-home principal after Aug payment
 MTG_RATE = 0.05375, MTG_PI = 2131.90, MTG_PMT = 2318.72
@@ -495,6 +496,41 @@ subtracts three things the balance never sees:
 - **`deferred`** — the subtle one. Valuing an unsold house *net of selling costs* implies a
   sale, so you must also charge the recapture and capital gains that sale would trigger. Omit
   it and never-sell scenarios are overstated.
+
+### Three horizons (rule 25)
+
+`T1` is a **variable**, not a constant. `h30` ends 2056-12-31, which lands on the **360th OKC
+mortgage payment** — the long view covers exactly the life of the loan.
+
+⚠️ **Anything that used to end at a literal `'2030-12'` must derive from `TM()`.** Miss one and
+that item silently stops paying partway through the horizon while everything else continues —
+the same failure `mortgageSchedule` and the renter utilities each had. `yearsAhead()`,
+`nhDates()`, `seasonal(...,YR(T1))` and every `monthly(...)` range now key off `T1`.
+
+⚠️ **A loan must stop at its TERM, not at `T1`.** Running to the horizon billed the OKC mortgage
+**362 times** — two payments after it retires — and would have amortised Midland's past zero.
+Both now stop: OKC capped at `NH_TERM_PMTS = 360` (last draft 2056-10), Midland breaking when
+the balance clears (276 payments, 2049-08) with a short final payment. This is invisible at 5
+years and obvious at 30.
+
+**Rendering is thinned, the data is not.** 11k daily points across three paths is ~66k path
+commands. `keep(i)` samples the drawing to ~1,500 points while `X(i)` stays indexed on the full
+array, so hit-testing and the readout remain exact. Renders in under a millisecond at every
+horizon.
+
+Axis scaling had to become adaptive too: a fixed 20k/40k y-step stacks 80 labels into a column
+at $3.2M, and "always label January" collides 31 times over 30 years. The step is now a
+nice-number fit to ~6 gridlines, the **floor sits on the data** rather than snapping to the step
+(which wasted a third of the chart), and past 36 months the axis switches to year-only labels.
+
+**Income assumptions over 30 years.** Pay rises 3%/yr throughout — which is **flat in real
+terms**, since inflation is also 3%. The 2056 figure of $217,958 net is $89,795 in 2026 dollars,
+essentially 2027's $92,486. The bonus and the $5,000 IRS balance stay flat in *nominal* terms, so
+both shrink in real terms. **No retirement is modelled** — that is the single biggest limitation
+of the 30-year view.
+
+Real growth in the long views comes mostly from a **fixed P&I against 3% wage inflation**: the
+mortgage shrinks in real terms every year it is held.
 
 ### Buying power (rule 24)
 
