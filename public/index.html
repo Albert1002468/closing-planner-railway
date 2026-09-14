@@ -992,6 +992,28 @@ function escrowPlan(cfg){
   return {plan, notes};
 }
 
+/* A mortgage retiring does not retire the house. When the last payment posts, the servicer
+   closes the escrow account and refunds the credit balance — and stops paying the tax and
+   insurance bills, which become direct bills to you. Modelling the loan without this quietly
+   stops charging property tax for every year past the payoff, which at a 30-year horizon is
+   six figures on the Midland house. Returns [date, amount, label] rows; amounts are signed. */
+function postPayoffBills(cfg){
+  const last = cfg.dates[cfg.dates.length-1];
+  // `retired` has to be asked of the loan, not inferred from the dates. Both schedules are cut
+  // off at TM(), so at a short horizon the last row is simply where the window ends with the
+  // balance still owing — treating that as a payoff bills tax twice in the final year.
+  if(!last || !cfg.retired || !lt(last,T1)) return [];
+  const out=[], p2=n=>String(n).padStart(2,'0');
+  const bal = cfg.notes[last].bal;
+  if(bal>0) out.push([addD(last,30), bal, cfg.refundLabel]);
+  for(let y=YR(last); y<=YR(T1); y++){
+    out.push([bumpWk(`${y}-${p2(cfg.insMonth)}-${p2(cfg.insDay)}`), -cfg.ins, cfg.insLabel]);
+    out.push([bumpWk(`${y}-${p2(cfg.taxMonth)}-${p2(cfg.taxDay)}`),
+              -cfg.taxForYear(y+cfg.taxYearOffset), cfg.taxLabel]);
+  }
+  return out.filter(([d]) => d>last && d<=T1);
+}
+
 const NH_TERM_PMTS=360;                // the loan retires on its 360th payment, not at T1
 const nhDates = () => ['2026-11-02','2026-12-01']
   .concat(monthly(1,'2027-01',TM())).slice(0,NH_TERM_PMTS);
@@ -1102,6 +1124,12 @@ function buildEvents(sale, price, rent, home){
       E(d,-NHE.plan[d], `NEW home mortgage (P&I ${fmt(nhPI())} + escrow ${fmt(pl.esc)}`
         +`${pl.short? ', incl. shortage '+fmt(pl.short):''})`);
     });
+    postPayoffBills({ dates:nhDates(), notes:NHE.notes, retired:nhDates().length===NH_TERM_PMTS,
+      ins:NH_INS, insMonth:9, insDay:18, taxForYear:nhTaxForYear, taxMonth:12, taxDay:31,
+      taxYearOffset:0, refundLabel:'NEW home escrow refund (loan paid off, account closed)',
+      insLabel:'NEW home insurance (billed direct — escrow closed)',
+      taxLabel:'OKC property tax (billed direct — escrow closed)'
+    }).forEach(([d,a,l])=>E(d,a,l));
   } else if(buyDate){
     // First payment skips a month, the same way the Sept 18 deal pays first on Nov 1.
     const first=addM(buyDate.slice(0,8)+'01',2);
@@ -1206,6 +1234,16 @@ function buildEvents(sale, price, rent, home){
     if(escBal>0) E(addD(sale,30), escBal, 'PennyMac escrow refund (account closed)');
     else if(escBal<0) E(bumpWk(sale), escBal, 'PennyMac escrow deficiency (added to the payoff)');
   }
+  /* No sale means the loan runs to its own payoff in Aug 2049, after which the tax and
+     insurance the escrow used to cover land on you directly. Every date here falls after the
+     final draft, so a sale before payoff filters all of them out on its own. */
+  postPayoffBills({ dates:sched.map(r=>r.draft), notes:ESC.notes,
+    retired: !!sched.length && sched[sched.length-1].balAfter<=0,
+    ins:MID_INS, insMonth:5, insDay:15, taxForYear:midTaxForYear, taxMonth:1, taxDay:31,
+    taxYearOffset:-1, refundLabel:'PennyMac escrow refund (loan paid off, account closed)',
+    insLabel:'Midland insurance (billed direct — escrow closed)',
+    taxLabel:'Midland property tax (billed direct — escrow closed)'
+  }).forEach(([d,a,l])=>{ if(!sale || lt(d,sale)) E(d,a,l); });
   const escVals=Object.values(ESC.notes);
   const midEscEnd = sale? 0 : (escVals.length? escVals[escVals.length-1].bal : MID_ESC_START);
   // AutoFortiva: paid off in full 8/20/2026 — no further monthly drafts.
@@ -1460,7 +1498,11 @@ function netWorth(res, sale, rent, home, asOf){
     // a liability. Balance as of this date, not at the end of the model.
     const notes=midEscrowPlan().notes;
     const seen=Object.entries(notes).filter(([d])=>d<=asOf);
-    const escBal = seen.length? seen[seen.length-1][1].bal : MID_ESC_START;
+    // Once the loan retires the escrow closes and its balance is refunded into cash. Still
+    // netting it against the tax bill here would count that money twice.
+    const fin=mortgageSchedule().slice(-1)[0];
+    const closed = fin && fin.balAfter<=0 && fin.draft<=asOf;
+    const escBal = closed? 0 : (seen.length? seen[seen.length-1][1].bal : MID_ESC_START);
     midTaxOwed = Math.max(0, midTaxForYear(YR(asOf)) - escBal);
     // Valuing it net of selling costs implies a sale, so charge the tax that sale would
     // trigger — using only the depreciation actually taken by this date.
@@ -1592,7 +1634,7 @@ function render(){
   const derived = priceOn(priceDate);
   const price = override? priceVal() : derived;
   document.getElementById('pricederived').innerHTML =
-    fmt0(derived)+`<span>${sale? 'implied by '+nice(sale) : 'value on Dec 31, 2030 — no sale set'}`
+    fmt0(derived)+`<span>${sale? 'implied by '+nice(sale) : 'value on '+nice(T1)+' — no sale set'}`
     +` · ${MID_VALUE_TODAY.toLocaleString('en-US')} today at ${(MID_APPREC*100).toFixed(2)}%/yr</span>`;
   const apy = numOr('cashapy',0)/100;
   // Down payment drives the cash wire, the loan, the P&I and the prepaid interest, so it has

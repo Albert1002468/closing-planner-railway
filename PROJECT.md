@@ -269,6 +269,32 @@ over the following year. The resulting payment steps:
 Sept 1 draft posted, so the walk begins one deposit earlier at $977.26. Change one and the
 other must move with it.
 
+#### The escrow closes with the loan — the bills do not
+
+⚠️ **A mortgage retiring does not retire the house.** When the last payment posts the servicer
+closes the escrow, refunds the credit balance, and stops paying the tax and insurance — which
+become direct bills to you. Modelling only the loan meant the model quietly **stopped charging
+Midland property tax and insurance from Aug 2049**, the month the PennyMac loan retires. In a
+never-sold 30-year run that is **$88,835 of tax and $9,303 of insurance never charged**. OKC has
+the same shape from Oct 2056; almost nothing lands inside the present horizon, but it would at
+any horizon past 2057.
+
+`postPayoffBills(cfg)` emits the refund plus a direct tax and insurance bill each year after the
+final draft, for both homes, off the same config shape `escrowPlan` uses.
+
+⚠️ **`retired` must be asked of the loan, never inferred from the dates.** Both schedules are
+cut off at `TM()`, so at a short horizon the last row is just where the window ends with the
+balance still owing. Testing `lastDate < T1` treated that as a payoff and billed the OKC tax
+twice in the final year — $6,556 of phantom expense on the 5-year view. Midland asks
+`balAfter <= 0`; OKC asks whether it reached its 360th payment.
+
+⚠️ The same refund is **not** a deduction against `midTaxOwed` in `netWorth`. Once the account
+closes, the balance is refunded into cash and counted there; still netting it against next
+January's bill counts it twice ($8,236).
+
+The renting-then-buying branch needs none of this: 360 payments starting from any purchase date
+past 2027 retire after 2057, outside every horizon.
+
 **The account is underwater from Jan 2027 to Feb 2028 — 10 drafts, bottoming at −$3,447.85.**
 A credit balance is refunded ~30 days after payoff, but a **deficiency is added to the payoff
 quote and comes out of the proceeds at closing**. Guarding the refund on `escBal>0` and doing
