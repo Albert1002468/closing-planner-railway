@@ -507,8 +507,14 @@ one inflation assumption, not two. A consequence worth knowing: changing it move
 line too, because costs stop or start inflating. At 0% the two lines coincide exactly, which is
 the check that the deflator is wired correctly.
 
-The real line is included in the y-scale (`bmin`), or it clips below the axis, and it is drawn
-**before** the nominal line so blue paints over purple where they cross.
+The real line is included in the y-scale (`bmin`), or it clips below the axis. Draw order is
+**band → real → nominal**, so blue paints over purple where they cross and the fill sits behind
+both. The band runs forward along the nominal path then back along the real one with the step
+corners mirrored (`L x,RY(i-1)` then `L x-1,RY(i-1)`), closed with `Z` — get the mirroring wrong
+and the fill shears across the chart rather than hugging the two lines.
+
+⚠️ **`--s7` is reserved for buying power.** The reconciled-variance rows and tooltip moved to
+**`--s4`** (amber, which reads as an adjustment) so nothing else competes with the purple.
 
 **Default scenario is now: rent the Midland home 36 months, then sell** (Oct 2029). Ranked on
 buying power at Dec 31 2030, in Aug 2026 dollars:

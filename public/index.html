@@ -248,7 +248,7 @@
   .reclist{margin-top:14px;font-size:12px;border-top:1px solid var(--grid);padding-top:10px}
   .reclist div{display:flex;justify-content:space-between;gap:12px;padding:2.5px 0;font-variant-numeric:tabular-nums}
   .reclist .n{color:var(--muted)}
-  tr.recrowT td{color:var(--s7)}
+  tr.recrowT td{color:var(--s4)}          /* amber, so --s7 is purely buying power */
   #evtable td.pos{color:var(--goodtext)}
   tr.mrule td{border-top:1px solid var(--axis)}
   .viewrow{margin:0}
@@ -1651,11 +1651,19 @@ function render(){
   };
 
   // Buying power first, so the nominal line paints over it where they cross.
+  const RY = i => Y(realAt(VD[i].b, VD[i].d));
   let rpath='';
-  VD.forEach((d,i)=>{const x=X(i),y=Y(realAt(d.b,d.d));
-    rpath+= i===0?`M${x} ${y}`:`L${x} ${Y(realAt(VD[i-1].b,VD[i-1].d))} L${x} ${y}`;});
-  add('path',{d:rpath,fill:'none',stroke:'var(--s7)','stroke-width':1.6,
-              'stroke-dasharray':'5 4','stroke-linejoin':'round',opacity:.85});
+  VD.forEach((d,i)=>{const x=X(i),y=RY(i);
+    rpath+= i===0?`M${x} ${y}`:`L${x} ${RY(i-1)} L${x} ${y}`;});
+  // The gap between the two IS the inflation bite, so shade it rather than leaving it implied.
+  // Forward along the nominal, then back along the real with the steps mirrored, then close.
+  let band='';
+  VD.forEach((d,i)=>{const x=X(i),y=Y(d.b); band+= i===0?`M${x} ${y}`:`L${x} ${Y(VD[i-1].b)} L${x} ${y}`;});
+  band+=`L${X(n-1)} ${RY(n-1)}`;
+  for(let i=n-1;i>0;i--) band+=`L${X(i)} ${RY(i-1)}L${X(i-1)} ${RY(i-1)}`;
+  band+='Z';
+  add('path',{d:band,fill:'var(--s7)',stroke:'none',opacity:.13});
+  add('path',{d:rpath,fill:'none',stroke:'var(--s7)','stroke-width':1.6,'stroke-linejoin':'round'});
   let path='';
   VD.forEach((d,i)=>{const x=X(i),y=Y(d.b); path+= i===0?`M${x} ${y}`:`L${x} ${Y(VD[i-1].b)} L${x} ${y}`;});
   add('path',{d:path,fill:'none',stroke:'var(--s1)','stroke-width':2,'stroke-linejoin':'round'});
@@ -1686,7 +1694,7 @@ function render(){
     if(d.ev.length) h+='<ul>'+d.ev.map(e=>`<li><span>${e.l}</span><span>${fmt(e.a)}</span></li>`).join('')+'</ul>';
     if(d.rec && d.rec.delta!==0){
       h+=`<ul style="border-top:1px solid var(--grid);margin-top:5px;padding-top:4px">`+
-         `<li><span style="color:var(--s7)">Reconciled variance</span><span style="color:var(--s7)">${fmt(d.rec.delta)}</span></li></ul>`;
+         `<li><span style="color:var(--s4)">Reconciled variance</span><span style="color:var(--s4)">${fmt(d.rec.delta)}</span></li></ul>`;
       if(d.rec.note) h+=`<div style="color:var(--muted);margin-top:3px">“${esc(d.rec.note)}”</div>`;
     }
     tip.innerHTML=h; tip.style.display='block';
