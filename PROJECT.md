@@ -974,9 +974,11 @@ a live result box showing projected balance → variance → **new balance**.
   scrollbar under the chart with `touch-action:none`, dragged at `scrollWidth/clientWidth` so one
   sweep covers the whole span. It appears only when there is travel, which makes it the
   affordance as well as the control.
-- **The ending-balance tile follows the window**, not the series: it reads `VD[VD.length-1]`,
-  so selecting 2027 shows Dec 31 2027. Net worth deliberately does **not** follow — it is
-  anchored to `T1` throughout (`payoffOn(T1)`, `priceOn(T1)`), so its `.sm` line says so.
+- **Ending balance, buying power and net worth all follow the window.** `endDay` is defined
+  once beside `VD` and all three measure as of it. `netWorth(res, sale, rent, home, asOf)` takes
+  the date rather than assuming `T1`, which fixed more than scoping: viewing 2027 with a 2029
+  sale now **counts Midland equity as an asset**, because the house genuinely is not sold yet.
+  Depreciation for the deferred-tax charge counts only months rented *through* `asOf` too.
 - **Only `VIEW==='all'` may overflow** (`canPan`). A single year is pinned to the container, so
   it never scrolls and the gesture is never ambiguous even in principle.
 - **Edge auto-pan during a scrub.** On the multi-year window only ~29% of the chart is on

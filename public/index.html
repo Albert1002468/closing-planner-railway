@@ -1429,44 +1429,56 @@ function loanBalAfter(loan, annRate, pmt, n){
   for(let k=0;k<n;k++){ b=b*(1+i)-pmt; if(b<=0) return 0; }
   return +b.toFixed(2);
 }
-function paymentsThrough(firstPay){
+function paymentsThrough(firstPay, asOf){
   const [y,m]=firstPay.slice(0,7).split('-').map(Number);
-  return Math.max(0,(YR(T1)-y)*12+(12-m)+1);
+  const [ay,am]=asOf.slice(0,7).split('-').map(Number);
+  return Math.max(0, Math.min(NH_TERM_PMTS, (ay-y)*12+(am-m)+1));
 }
-function netWorth(res, sale, rent, home){
-  const cash = res.series[res.series.length-1].b;
-  // 1. the OKC house
+/* Everything here is measured AS OF a date, not at T1, so the tile can follow the selected
+   window the way the ending balance and buying power already do. Selecting 2027 while the sale
+   is in 2029 must therefore still count the Midland house as an asset — it is not sold yet. */
+function netWorth(res, sale, rent, home, asOf){
+  const day = res.series.find(d=>d.d===asOf) || res.series[res.series.length-1];
+  const cash = day.b;
+  const soldByNow = !!sale && sale<=asOf;
+
+  // 1. the OKC house, only once it is actually owned
   const buyDate = home.own? '2026-09-18' : res.buyDate;
   let okc=0;
-  if(buyDate){
+  if(buyDate && buyDate<=asOf){
     const first = buyDate==='2026-09-18'? '2026-11-01' : addM(buyDate.slice(0,8)+'01',2);
-    const bal = loanBalAfter(nhLoan(), NH_RATE, nhPI(), paymentsThrough(first));
-    okc = NH_PRICE*Math.pow(1+OKC_APPREC, yrsBetween(buyDate,T1))*(1-SELL_COST) - bal;
+    const bal = loanBalAfter(nhLoan(), NH_RATE, nhPI(), paymentsThrough(first, asOf));
+    okc = NH_PRICE*Math.pow(1+OKC_APPREC, yrsBetween(buyDate,asOf))*(1-SELL_COST) - bal;
   }
-  // 2. the Midland house, only if you still own it, valued at its Dec 31 2030 worth
+
+  // 2. the Midland house, while it is still yours
   let mid=0, midTaxOwed=0, deferred=0;
-  if(!sale){
-    const endValue = priceOn(T1);
-    mid = endValue*(1-SELL_COST) - payoffOn(T1);
-    // The 2030 bill is due Jan 31 2031, outside T1 — but the escrow has been saving for it,
-    // so only the gap between the bill and the escrow balance is a real liability.
-    midTaxOwed = Math.max(0, midTaxForYear(YR(T1)) - (res.midEscEnd||0));
-    // Valuing it net of selling costs implies a sale — so charge the tax that sale triggers.
-    const monthsRented = rent? rent.months : 0;
+  if(!soldByNow){
+    const val = priceOn(asOf);
+    mid = val*(1-SELL_COST) - payoffOn(asOf);
+    // The escrow has been saving toward the bill that is due next January, so only the gap is
+    // a liability. Balance as of this date, not at the end of the model.
+    const notes=midEscrowPlan().notes;
+    const seen=Object.entries(notes).filter(([d])=>d<=asOf);
+    const escBal = seen.length? seen[seen.length-1][1].bal : MID_ESC_START;
+    midTaxOwed = Math.max(0, midTaxForYear(YR(asOf)) - escBal);
+    // Valuing it net of selling costs implies a sale, so charge the tax that sale would
+    // trigger — using only the depreciation actually taken by this date.
+    const monthsRented = rent? rentSchedule(rent).dates.filter(d=>lt(d,asOf)).length : 0;
     const dep  = rent? rent.basis/DEPREC_YEARS/12*monthsRented : 0;
-    const gain = endValue*(1-SELL_COST) - (MID_BASIS - dep);
+    const gain = val*(1-SELL_COST) - (MID_BASIS - dep);
     const recap= Math.max(0, Math.min(dep, gain))*(rent? rent.rate:0)/100;
-    const cg   = T1 > SEC121_LAST ? Math.max(0, gain-dep)*LTCG_RATE/100 : 0;
-    // That same hypothetical sale would release the suspended losses, so net them off.
+    const cg   = asOf > SEC121_LAST ? Math.max(0, gain-dep)*LTCG_RATE/100 : 0;
     const released = rent? (res.suspendedLoss||0)*rent.taxRate/100 : 0;
     deferred = recap + cg - released;
   }
+
   // 3. debts the cash balance never sees
-  const carSettled = res.carPayoffDate && res.carPayoffDate<=T1 && res.carPayoff>0;
-  const car = carSettled? 0 : res.carOwedAtEnd;
+  const carSettled = res.carPayoffDate && res.carPayoffDate<=asOf && res.carPayoff>0;
+  const car = carSettled? 0 : carPayoffOn(asOf);
   return {nw:+(cash + okc + mid - car - midTaxOwed - deferred).toFixed(2),
-          cash, okc:+okc.toFixed(2), mid:+mid.toFixed(2), car, midTaxOwed:+midTaxOwed.toFixed(2),
-          deferred:+deferred.toFixed(2)};
+          cash, okc:+okc.toFixed(2), mid:+mid.toFixed(2), car:+car.toFixed(2),
+          midTaxOwed:+midTaxOwed.toFixed(2), deferred:+deferred.toFixed(2)};
 }
 
 /* ---------- render ---------- */
@@ -1600,6 +1612,9 @@ function render(){
          rentNetIncome,rentIncTax,rentCostTotal,suspendedLoss}=buildSeries(sale,price,rent,home,apy);
   // the chart draws only the selected window; the tiles and the running balance stay whole-series
   const VD = VIEW==='span'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
+  // The last day in the window. Three tiles and netWorth all measure as of this date, so it is
+  // defined here rather than beside any one of them.
+  const endDay = VD[VD.length-1] || DATA[DATA.length-1];
   const svg=document.getElementById('tl');
   while(svg.firstChild) svg.removeChild(svg.firstChild);
   const cw=svg.parentNode.clientWidth||940, mobile=cw<640;
@@ -1878,11 +1893,11 @@ function render(){
   document.getElementById('t_thind').textContent = thinDays
     ? `from ${nice(firstThin.d)} · ${DATA.filter(d=>d.b<5000).length} under ${fmt0(5000)}`
     : `never below ${fmt0(CUSHION)}`;
-  const NW = netWorth({series:DATA,buyDate,carPayoffDate,carPayoff,carOwedAtEnd,midEscEnd,
-                       suspendedLoss}, sale, rent, home);
+  const NW = netWorth({series:DATA,buyDate,carPayoffDate,carPayoff,suspendedLoss},
+                      sale, rent, home, endDay.d);
   set('t_nw', fmt(NW.nw), NW.nw<0?'neg':'posv');
   document.getElementById('t_nwd').textContent =
-    `Dec 31, ${YR(T1)} · cash ${fmt0(NW.cash)}${NW.okc?' · OKC equity '+fmt0(NW.okc):''}`
+    `${nice(endDay.d)} · cash ${fmt0(NW.cash)}${NW.okc?' · OKC equity '+fmt0(NW.okc):''}`
     +`${NW.mid?' · Midland '+fmt0(NW.mid):''}${NW.car?' − car '+fmt0(NW.car):''}`
     +`${NW.deferred?' − deferred tax '+fmt0(NW.deferred):''}`;
   document.getElementById('t_lowd').textContent = dd(mnD.d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
@@ -1902,7 +1917,6 @@ function render(){
       ? `payoff ${nice(carPayoffDate)} is past the window — ${fmt0(carOwedAtEnd)} owed Dec 31, 2030`
       : `still owed Dec 31, 2030 · clears ${nice(carNaturalDate)} if never sold`;
   // Ending balance follows the WINDOW, not the whole series — on "2027" this is Dec 31 2027.
-  const endDay=VD[VD.length-1] || DATA[DATA.length-1];
   set('t_end', fmt(endDay.b), endDay.b<0?'neg':'posv');
   document.getElementById('t_endd').textContent =
     nice(endDay.d) + (VIEW==='span'? ` · ${HORIZONS[HORIZON].label}` : '');
