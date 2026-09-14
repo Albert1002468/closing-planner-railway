@@ -321,6 +321,7 @@
         <div class="tile"><div class="lab">Today</div><div class="val" id="t_today">—</div><div class="sm" id="t_todayd"></div></div>
         <div class="tile"><div class="lab">Net worth</div><div class="val" id="t_nw">—</div><div class="sm" id="t_nwd"></div></div>
         <div class="tile"><div class="lab" id="t_endlab">Ending balance</div><div class="val" id="t_end">—</div><div class="sm" id="t_endd"></div></div>
+        <div class="tile"><div class="lab">Buying power</div><div class="val" id="t_real">—</div><div class="sm" id="t_reald"></div></div>
         <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
         <div class="tile"><div class="lab">Days under $15k</div><div class="val" id="t_thin">—</div><div class="sm" id="t_thind"></div></div>
         <div class="tile"><div class="lab">Before the wire</div><div class="val" id="t_morn">—</div><div class="sm">Sept 18, incl. that paycheck</div></div>
@@ -374,6 +375,7 @@
       <span><span class="sw" style="background:var(--crit);opacity:.15;border-radius:2px"></span>below $0</span>
       <span><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale</span>
       <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
+      <span><span class="sw" style="background:var(--s7);height:3px;border-radius:0"></span>buying power (2026 $)</span>
     </div>
 
     <details id="tblwrap">
@@ -464,6 +466,10 @@
           <span class="rends" id="downsm">&nbsp;</span>
         </div>
         <div class="ctl">
+          <label for="inflpct">Inflation %/yr</label>
+          <input type="number" id="inflpct" min="0" max="20" step="0.25" value="3">
+        </div>
+        <div class="ctl">
           <label for="cashapy">Cash APY % on the bank balance</label>
           <input type="number" id="cashapy" min="0" max="10" step="0.05" value="0">
         </div>
@@ -478,17 +484,17 @@
         <div class="ctl ctl-wide">
           <label id="rentlab">Rent out the Midland home</label>
           <label class="switch" for="renton">
-            <input type="checkbox" id="renton" aria-labelledby="rentlab rentontxt">
+            <input type="checkbox" id="renton" checked aria-labelledby="rentlab rentontxt">
             <span class="track"></span><span id="rentontxt">Rent it out instead of holding it empty</span>
           </label>
-          <div id="rentfields" hidden>
+          <div id="rentfields">
             <div class="ctl">
               <label for="rentstart">Rent starts</label>
               <input type="date" id="rentstart" min="2026-09-01" max="2030-06-01" value="2026-10-01">
             </div>
             <div class="ctl">
               <label for="rentterm">Term (months)</label>
-              <input type="number" id="rentterm" min="1" max="60" step="1" value="6">
+              <input type="number" id="rentterm" min="1" max="60" step="1" value="36">
             </div>
             <div class="ctl">
               <label for="rentamt">Monthly rent — paid the 1st</label>
@@ -758,7 +764,11 @@ const T0='2026-08-14', T1='2030-12-31';
 const YR = d => +d.slice(0,4);
 /* 2026 and 2027 are modelled from statements and stay exactly as they were. Growth applies
    from 2028 on, so `inflAt`/`payAt` both return 1x for 2027 and nothing upstream shifts. */
-const RAISE_PCT=0.03, INFL_PCT=0.03;
+const RAISE_PCT=0.03;
+let INFL_PCT=0.03;                     // set from the input; also deflates the buying-power line
+// Balance in T0 dollars. Answers "am I growing faster than inflation?" directly: if this line
+// rises you are, if it is flat you are treading water, if it falls you are going backwards.
+const realAt = (v,d) => +(v/Math.pow(1+INFL_PCT, nDays(T0,d)/365.25)).toFixed(2);
 const inflAt = d => Math.pow(1+INFL_PCT, Math.max(0, YR(d)-2027));
 const payAt  = d => +(PAY5*Math.pow(1+RAISE_PCT, Math.max(0, YR(d)-2027))).toFixed(2);
 const PAY10=3830.28, PAY5=3557.15;
@@ -860,7 +870,7 @@ const RELO_DEADLINE='2027-07-20';
 const SELLER_COST_PCT=0.075;                // 6% commission + ~1.5% title/escrow/misc
 
 /* --- renting the Midland home out --- */
-const RENT_DEFAULT={start:'2026-10-01', months:6, amt:3300};
+const RENT_DEFAULT={start:'2026-10-01', months:36, amt:3300};
 
 /* --- renting somewhere yourself instead of closing on Sept 18 --- */
 const MYRENT_DEFAULT={start:'2026-09-18', months:12, amt:2200, util:120};
@@ -1549,6 +1559,7 @@ function render(){
   const apy = numOr('cashapy',0)/100;
   // Down payment drives the cash wire, the loan, the P&I and the prepaid interest, so it has
   // to be set before buildSeries runs and the donut has to be redrawn from the same figures.
+  INFL_PCT = numOr('inflpct',3)/100;
   DOWN_PCT = numOr('downpct',22);
   drawDonut();
   document.getElementById('downsm').textContent =
@@ -1587,7 +1598,8 @@ function render(){
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
   svg.setAttribute('width',W); svg.setAttribute('height',H);
   const iw=W-m.l-m.r, ih=H-m.t-m.b, n=VD.length;
-  const bmin=Math.min(0,...VD.map(d=>d.b)), bmax=Math.max(...VD.map(d=>d.b));
+  const bmin=Math.min(0,...VD.map(d=>Math.min(d.b, realAt(d.b,d.d))));
+  const bmax=Math.max(...VD.map(d=>d.b));
   const y0=Math.floor(bmin/10000)*10000, y1=(Math.ceil(bmax/10000)*10000)||10000;
   const X=i=>m.l+iw*i/(n-1), Y=v=>m.t+ih*(1-(v-y0)/(y1-y0));
   const add=(tag,attrs)=>{const el=document.createElementNS(NS,tag);for(const k in attrs)el.setAttribute(k,attrs[k]);svg.appendChild(el);return el;};
@@ -1612,7 +1624,10 @@ function render(){
     add('line',{x1:X(i),x2:X(i),y1:m.t,y2:H-m.b,stroke:'var(--grid)','stroke-width':1,'stroke-dasharray':'2 3'});
     mSeen++;
     const jan=d.d.slice(5,7)==='01';
-    if(!jan && i!==0 && mSeen-mLast<mStep) return;
+    // December always sits right next to a forced January label, so suppress it — the year
+    // marker carries that boundary on its own.
+    const nextIsJan=d.d.slice(5,7)==='12';
+    if(!jan && i!==0 && (nextIsJan || mSeen-mLast<mStep)) return;
     mLast=mSeen;
     const lab=dd(d.d).toLocaleDateString('en-US',{month:'short'})+((jan||i===0)?" '"+d.d.slice(2,4):'');
     add('text',{x:X(i)+3,y:H-m.b+15,fill:'var(--muted)','font-size':mobile?10:11,
@@ -1635,6 +1650,12 @@ function render(){
     if(si>=0) markLabel(si,'SALE','var(--s3)',clash?27:12);
   };
 
+  // Buying power first, so the nominal line paints over it where they cross.
+  let rpath='';
+  VD.forEach((d,i)=>{const x=X(i),y=Y(realAt(d.b,d.d));
+    rpath+= i===0?`M${x} ${y}`:`L${x} ${Y(realAt(VD[i-1].b,VD[i-1].d))} L${x} ${y}`;});
+  add('path',{d:rpath,fill:'none',stroke:'var(--s7)','stroke-width':1.6,
+              'stroke-dasharray':'5 4','stroke-linejoin':'round',opacity:.85});
   let path='';
   VD.forEach((d,i)=>{const x=X(i),y=Y(d.b); path+= i===0?`M${x} ${y}`:`L${x} ${Y(VD[i-1].b)} L${x} ${y}`;});
   add('path',{d:path,fill:'none',stroke:'var(--s1)','stroke-width':2,'stroke-linejoin':'round'});
@@ -1659,7 +1680,9 @@ function render(){
     dot.setAttribute('r',isTouch?6:4.5);
     dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.setAttribute('visibility','visible');
     const ds=dd(d.d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-    let h=`<div class="d">${ds}</div><div class="b">${fmt(d.b)}</div>`;
+    let h=`<div class="d">${ds}</div><div class="b">${fmt(d.b)}</div>`
+         +`<div style="color:var(--s7);font-size:11px;margin:-1px 0 3px">`
+         +`${fmt(realAt(d.b,d.d))} in ${YR(T0)} dollars</div>`;
     if(d.ev.length) h+='<ul>'+d.ev.map(e=>`<li><span>${e.l}</span><span>${fmt(e.a)}</span></li>`).join('')+'</ul>';
     if(d.rec && d.rec.delta!==0){
       h+=`<ul style="border-top:1px solid var(--grid);margin-top:5px;padding-top:4px">`+
@@ -1800,6 +1823,14 @@ function render(){
   set('t_end', fmt(endDay.b), endDay.b<0?'neg':'posv');
   document.getElementById('t_endd').textContent =
     nice(endDay.d) + (VIEW==='all'? ' · whole window' : '');
+  // Same money in T0 dollars. Beating inflation means this clears START_BAL, not just the
+  // nominal figure — which is the whole reason the line is on the chart.
+  const realEnd=realAt(endDay.b, endDay.d);
+  set('t_real', fmt(realEnd), realEnd<0?'neg':'posv');
+  document.getElementById('t_reald').textContent =
+    `${fmt0(endDay.b-realEnd)} lost to ${(INFL_PCT*100).toFixed(2)}% inflation · `
+    + (realEnd>START_BAL? `${fmt0(realEnd-START_BAL)} ahead of where you started`
+                        : `${fmt0(START_BAL-realEnd)} behind where you started`);
   const rentNetCash = rent? +(rentTotal - rentCostTotal - rentIncTax).toFixed(2) : 0;
   set('t_rent', rent? fmt(rentNetCash):'—', rent?'posv':'');
   document.getElementById('t_rentd').textContent = rent
@@ -2021,7 +2052,7 @@ document.getElementById('hown').addEventListener('change',e=>{
 document.getElementById('hbuy').addEventListener('change',e=>{
   document.getElementById('hbuyfields').hidden = !e.target.checked; render();
 });
-['rentrate','renttax','rentmgmt','rentvac','rentescal','hescal','apprec','cashapy','downpct']
+['rentrate','renttax','rentmgmt','rentvac','rentescal','hescal','apprec','cashapy','downpct','inflpct']
   .forEach(id=>document.getElementById(id).addEventListener('input',render));
 document.getElementById('priceover').addEventListener('change',e=>{
   document.getElementById('pricefields').hidden = !e.target.checked; render();

@@ -116,7 +116,7 @@ WARRANTY_REFUND = 2300.00, FIANCEE_REPAY = 27000.00
 BONUS_DATE = '2027-03-01', BONUS_GROSS = 30000.00, BONUS_NET = 19680.00
 IRS_DATE = '2027-03-19', IRS_AMT = 5000.00
 RELO_DEADLINE = '2027-07-20', SELLER_COST_PCT = 0.075
-RENT_DEFAULT = {start:'2026-10-01', months:6, amt:3300}
+RENT_DEFAULT = {start:'2026-10-01', months:36, amt:3300}   // rent 3 yrs, then sell
 RAISE_PCT = 0.03, INFL_PCT = 0.03          // both apply from 2028 only
 DEPREC_YEARS = 27.5, RECAP_DEFAULT = {basis:373210, rate:29.75}   // Midland CAD improvements line
 LANDLORD_DEFAULT = {mgmt:10, vacancyMo:1, maint:2500}, RENT_ESCAL_DEFAULT = 3
@@ -495,6 +495,35 @@ subtracts three things the balance never sees:
 - **`deferred`** — the subtle one. Valuing an unsold house *net of selling costs* implies a
   sale, so you must also charge the recapture and capital gains that sale would trigger. Omit
   it and never-sell scenarios are overstated.
+
+### Buying power (rule 24)
+
+`realAt(v,d)` deflates any balance to **`T0` dollars**, and a dashed `--s7` line on the chart
+plots the whole series that way. It exists to answer one question — *am I growing faster than
+inflation?* — which the nominal line cannot: rising means yes, flat means treading water.
+
+`INFL_PCT` is now an input and drives **both** cost inflation and the deflator, deliberately —
+one inflation assumption, not two. A consequence worth knowing: changing it moves the *nominal*
+line too, because costs stop or start inflating. At 0% the two lines coincide exactly, which is
+the check that the deflator is wired correctly.
+
+The real line is included in the y-scale (`bmin`), or it clips below the axis, and it is drawn
+**before** the nominal line so blue paints over purple where they cross.
+
+**Default scenario is now: rent the Midland home 36 months, then sell** (Oct 2029). Ranked on
+buying power at Dec 31 2030, in Aug 2026 dollars:
+
+| | sale | buying power | net worth |
+|---|---|---|---|
+| sell now | Oct 2026 | $246,336 | $449,761 |
+| 6 mo rent | Apr 2027 | **$251,490** | $455,628 |
+| 12 mo rent | Oct 2027 | $232,194 | $433,664 |
+| 24 mo rent | Oct 2028 | $244,763 | $447,971 |
+| **36 mo rent** | Oct 2029 | **$256,178** | $460,964 |
+| never sell | — | $147,861 | $464,316 |
+
+The ranking is **not monotonic in term** — 12 months is the worst of all of them. Renting past
+the relo deadline costs 7.5% of the price, and only a long enough tenancy earns that back.
 
 ### The relocation window (rule 8)
 
