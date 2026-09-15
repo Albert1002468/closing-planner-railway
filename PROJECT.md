@@ -697,6 +697,37 @@ was still a cushion. One inflation assumption for the whole model, not two. Beca
 grows, a large floor bites harder than it used to: at $500,000 the 30-year break-even is 19.2%
 (it was 16.56% when the floor was flat).
 
+### The scenario sheet (rule 29)
+
+Four labelled groups, not one flat list of ~25 fields: **Selling the Midland home** ·
+**Renting it out** · **Your own housing** · **Rates & assumptions**. Groups stack; each group's
+`.grpbody` is the two-column grid on desktop, so fields pair up *inside* a group rather than the
+whole sheet being one grid. `.wide` marks anything that must keep a full row.
+
+Appreciation moved into **Rates & assumptions** — it is an assumption, not a property of the
+sale — and pairs naturally with inflation there.
+
+⚠️ **The switch hit area is the switch.** The `<label>` used to wrap the caption as well, making
+a ~400px-wide target for a 38px control, so clicking the text toggled it. The caption is now a
+sibling `<span>` in a `.swrow`, tied to the input by `aria-labelledby` so it is still announced.
+Measured hit area: **48×32** (track + 5px padding, cancelled by a negative margin so the switch
+still sits flush). All four switches verified to still toggle from the track.
+
+⚠️ **`box-sizing:border-box` is required on the full-width inputs.** They carry 10px side padding
+and a 1px border, so `width:100%` alone resolves to `100% + 22px` — invisible in a roomy desktop
+column, but it pushed the whole sheet off the right edge of a phone. Verified no overflow at
+360/390/768/1180.
+
+Field widths are deliberately uniform (`width:100%` on numbers, dates and `.moneyfld` alike). A
+full-width box for `3` looks slightly empty, but mixed intrinsic widths — dates filling the
+column, money fields at 115px, numbers at 92px — read as ragged, and alignment is what makes 25
+fields scannable.
+
+**The "never sold in window" switch is gone.** Clearing the closing date models it instead: an
+empty value is falsy, so every `if(sale)` guard downstream already handled it, and the sheet
+says so in a note. Verified — clearing the date drops the proceeds tile to `—` and moves net
+worth.
+
 ### The sale date, the tenancy, and a switch that flipped itself
 
 ⚠️⚠️ **`.switch` needs `position:relative`, and it is load-bearing.** The hidden checkbox inside
