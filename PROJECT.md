@@ -697,6 +697,40 @@ was still a cushion. One inflation assumption for the whole model, not two. Beca
 grows, a large floor bites harder than it used to: at $500,000 the 30-year break-even is 19.2%
 (it was 16.56% when the floor was flat).
 
+### Reading the comparison, and the live date preview
+
+⚠️ **The comparison line's gap is not visible to the eye, and that is a scale problem, not a
+bug.** On the 5-year view the y-axis spans $334,380 across 332px, so **1 pixel ≈ $1,007**. The
+two lines end $2,472 apart — **2.5 pixels** — and read as perfectly aligned. The scrub tooltip
+therefore spells the gap out (`"$323,206.34 if sold now · −$2,471.57 behind"`), shown only while
+the panel is open, i.e. only when the line is on screen.
+
+Worth recording, because it looks wrong and is not: **before the sale the sell-now line is well
+ahead** (+$79,086 Sept 2026, +$51,769 Jan 2029, +$62,354 Sept 2029) — that is the early
+compounding the reader expects. At the Oct 2029 sale the main line jumps $44,427 past it, and
+from mid-2030 they run ~$2,400 apart. The two effects genuinely cancel over this window:
+
+| | |
+|---|---|
+| proceeds selling now (Sep 2026) | $85,895 |
+| proceeds selling later (Oct 2029) | $112,428 — **$26,533 more, three years later** |
+| rent collected over the tenancy | $93,480 (before the mortgage it still pays) |
+
+⚠️ And the usual misreading: **both lines earn the same investment rate** on cash above the
+floor. The sell-now line's advantage is only holding *more cash earlier*, never being the only
+one invested. Set the return to 0 and the paths separate sharply.
+
+**`syncSaleDate(rent, home)` is split out of `render()`** so the sheet can keep the closing date
+honest on **every keystroke** while the expensive recompute stays batched behind Apply. It does
+DOM work only — no engine — and `render()` calls the same function, so the live preview and the
+applied projection can never disagree about the date. `previewDates()` is the cheap wrapper the
+sheet's listeners call.
+
+⚠️ **Order matters in those listeners:** re-arm `SALE_AUTO` *before* previewing, or the preview
+runs against the stale flag and has to be corrected by a second pass. The impossible-sale
+warning is raised inside `syncSaleDate` (it needs no engine figures, so the reader sees it
+immediately); `render()` owns only the relo-cost variant, which needs `sellerCost`.
+
 ### The scenario sheet (rule 29)
 
 Four labelled groups, not one flat list of ~25 fields: **Selling the Midland home** ·

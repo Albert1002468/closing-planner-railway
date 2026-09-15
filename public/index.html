@@ -1835,6 +1835,77 @@ let SALE_BEFORE_RENT=null;   // the date renting pushed off, to put back when th
 let SALE_AUTO=true;          // true = the sale date tracks the end of the tenancy, both ways
 const nice = d => dd(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 
+/* Everything about the sale date that depends only on the FORM, not on the engine. Split out of
+   render() so the sheet can keep the date honest on every keystroke while the expensive
+   recompute stays batched behind Apply. render() calls this same function, so the live preview
+   and the applied projection can never disagree about the date. */
+function syncSaleDate(rent, home){
+  const rentEndDate = rent? rentSchedule(rent).end : null;
+  // You may close a purchase up to BUY_LEAD_MONTHS before the lease is up, not before.
+  const myEndDate = home.own? null : rentSchedule(home).end;
+  const $bd=document.getElementById('hbuydate');
+  if(!home.own){
+    const buyMin=addM(myEndDate,-BUY_LEAD_MONTHS);
+    $bd.min=buyMin;
+    if($bd.value && $bd.value<buyMin) $bd.value=buyMin;
+    if(home.buy) home.buy.date=$bd.value;
+  }
+  // The house cannot be sold out from under a tenant: the sale can only close once the term is up.
+  const saleMin = (rentEndDate && rentEndDate>SALE_FLOOR)? rentEndDate : SALE_FLOOR;
+  const $sd=document.getElementById('saledate');
+  const noSalePossible = saleMin>T1;
+  /* ⚠️ NEVER let min exceed max. When the tenancy outruns the horizon the old code set
+     min=2068-06-01 against max=2030-12-31, an impossible range that leaves the control
+     permanently invalid in a real browser. No sale is possible in that state anyway, so the
+     range collapses to T1 and `disabled` plus the warning carry the meaning. */
+  $sd.min = noSalePossible? T1 : saleMin;
+  $sd.max = T1;
+  ['rentstart','hstart'].forEach(id=>document.getElementById(id).max=T1);
+  $bd.max=T1;
+  /* The sale date FOLLOWS the tenancy in both directions while `SALE_AUTO` holds, and stops the
+     moment the reader types a date of their own. Editing the lease (term or start) re-arms it,
+     since changing when the tenant leaves is a statement about when the house can sell.
+
+     This replaces inferring intent from `$sd.value===LAST_SALE_MIN`, which silently broke: any
+     render where the target was outside the horizon left the value unequal to the floor, so the
+     date stopped tracking for good. That is why 300 -> 100 months appeared to do nothing. */
+  if(SALE_AUTO){
+    if(saleMin>SALE_FLOOR){
+      if(SALE_BEFORE_RENT===null) SALE_BEFORE_RENT=$sd.value;
+      // Outside the horizon there is nothing valid to show; hold the value and let the warning
+      // speak. Widening the horizon re-derives it from saleMin on the very next render.
+      if(!noSalePossible) $sd.value=saleMin;
+    } else {
+      if(SALE_BEFORE_RENT) $sd.value=SALE_BEFORE_RENT;
+      SALE_BEFORE_RENT=null;
+    }
+  } else if($sd.value){
+    // A typed date is only ever pushed FORWARD, off a tenant, or back inside the horizon.
+    if(!noSalePossible && $sd.value<saleMin) $sd.value=saleMin;
+    if($sd.value>T1) $sd.value=T1;
+  }
+  LAST_SALE_MIN=saleMin;
+  /* The "never sold in window" switch is gone. Clearing the date models it instead — an empty
+     value is falsy, so every `if(sale)` guard downstream already handles it. */
+  $sd.disabled = noSalePossible;
+  const sale = noSalePossible? null : ($sd.value || null);
+  document.getElementById('saleday').textContent =
+    sale? dd(sale).toLocaleDateString('en-US',{weekday:'long'}) : 'no sale modeled';
+  /* The impossible-sale warning needs no engine figures, so it is raised here and the reader
+     sees it immediately. render() owns the relo-cost variant, which needs sellerCost. */
+  const rlw=document.getElementById('relowarn');
+  if(noSalePossible){
+    rlw.hidden=false;
+    rlw.textContent = `The tenant is in place until ${nice(saleMin)}, past the end of this window `
+      + `(${nice(T1)}) — so no sale can close inside it. Shorten the term, or widen the `
+      + `horizon beyond ${HORIZONS[HORIZON].label}.`;
+  }
+  return {rentEndDate, myEndDate, saleMin, noSalePossible, sale};
+}
+
+// Live date preview while the sheet is open: cheap DOM work only, no engine.
+const previewDates = () => { try{ syncSaleDate(readRent(), readHome()); }catch(e){} };
+
 /* The panel body. Split out of render() because it is only ever called when the panel is
    open, and because the horizon sweep is the expensive part of the whole app. */
 function fillOppPanel(rent, home, rates){
@@ -1901,55 +1972,9 @@ function fillOppPanel(rent, home, rates){
 function render(){
   const rent = readRent();
   const home = readHome();
-  const rentEndDate = rent? rentSchedule(rent).end : null;
-  // You may close a purchase up to BUY_LEAD_MONTHS before the lease is up, not before.
-  const myEndDate = home.own? null : rentSchedule(home).end;
-  const $bd=document.getElementById('hbuydate');
-  if(!home.own){
-    const buyMin=addM(myEndDate,-BUY_LEAD_MONTHS);
-    $bd.min=buyMin;
-    if($bd.value && $bd.value<buyMin) $bd.value=buyMin;
-    if(home.buy) home.buy.date=$bd.value;
-  }
-  // The house cannot be sold out from under a tenant: the sale can only close once the term is up.
-  const saleMin = (rentEndDate && rentEndDate>SALE_FLOOR)? rentEndDate : SALE_FLOOR;
+  const {rentEndDate, myEndDate, saleMin, noSalePossible, sale:sale0} = syncSaleDate(rent, home);
   const $sd=document.getElementById('saledate');
-  const noSalePossible = saleMin>T1;
-  /* ⚠️ NEVER let min exceed max. When the tenancy outruns the horizon the old code set
-     min=2068-06-01 against max=2030-12-31, an impossible range that leaves the control
-     permanently invalid in a real browser. No sale is possible in that state anyway, so the
-     range collapses to T1 and `disabled` plus the warning carry the meaning. */
-  $sd.min = noSalePossible? T1 : saleMin;
-  $sd.max = T1;
-  ['rentstart','hstart'].forEach(id=>document.getElementById(id).max=T1);
-  document.getElementById('hbuydate').max=T1;
-  /* The sale date FOLLOWS the tenancy in both directions while `SALE_AUTO` holds, and stops the
-     moment the reader types a date of their own. Editing the lease (term or start) re-arms it,
-     since changing when the tenant leaves is a statement about when the house can sell.
-
-     This replaces inferring intent from `$sd.value===LAST_SALE_MIN`, which silently broke: any
-     render where the target was outside the horizon left the value unequal to the floor, so the
-     date stopped tracking for good. That is why 300 -> 100 months appeared to do nothing. */
-  if(SALE_AUTO){
-    if(saleMin>SALE_FLOOR){
-      if(SALE_BEFORE_RENT===null) SALE_BEFORE_RENT=$sd.value;
-      // Outside the horizon there is nothing valid to show; hold the value and let the warning
-      // speak. Widening the horizon re-derives it from saleMin on the very next render.
-      if(!noSalePossible) $sd.value=saleMin;
-    } else {
-      if(SALE_BEFORE_RENT) $sd.value=SALE_BEFORE_RENT;
-      SALE_BEFORE_RENT=null;
-    }
-  } else if($sd.value){
-    // A typed date is only ever pushed FORWARD, off a tenant, or back inside the horizon.
-    if(!noSalePossible && $sd.value<saleMin) $sd.value=saleMin;
-    if($sd.value>T1) $sd.value=T1;
-  }
-  LAST_SALE_MIN=saleMin;
-  /* The "never sold in window" switch is gone. Clearing the date models it instead — an empty
-     value is falsy, so every `if(sale)` guard downstream already handles it. */
-  $sd.disabled = noSalePossible;
-  let sale = noSalePossible? null : ($sd.value || null);
+  let sale = sale0;
   if(sale && sale>T1) sale=null;
   // Price follows the sale date unless the reader is pricing a specific offer.
   MID_VALUE_TODAY = digits('midvalue',50000,2000000,420000);
@@ -2203,6 +2228,15 @@ function render(){
     let h=`<div class="d">${ds}</div><div class="b">${fmt(d.b)}</div>`
          +`<div style="color:var(--s7);font-size:11px;margin:-1px 0 3px">`
          +`${fmt(realAt(d.b,d.d))} in ${YR(T0)} dollars</div>`;
+    /* The comparison line's whole point is the GAP, and at ~$1,000 a pixel a $2,400 difference
+       is under three pixels — the two lines read as identical when they are not. So the gap is
+       spelled out here rather than left to the eye. Only while the line is on screen. */
+    if(oppVD.length===n){
+      const g2=oppVD[i].b-d.b;
+      h+=`<div style="color:var(--s8);font-size:11px;margin:-1px 0 4px">`
+        +`${fmt(oppVD[i].b)} if sold now · `
+        +`<b>${g2>=0?'+':'−'}${fmt(Math.abs(g2)).replace('$','$')}</b> ${g2>=0?'ahead':'behind'}</div>`;
+    }
     if(d.ev.length) h+='<ul>'+d.ev.map(e=>`<li><span>${e.l}</span><span>${fmt(e.a)}</span></li>`).join('')+'</ul>';
     if(d.rec && d.rec.delta!==0){
       h+=`<ul style="border-top:1px solid var(--grid);margin-top:5px;padding-top:4px">`+
@@ -2421,15 +2455,13 @@ function render(){
         +`costs you ~${fmt0(price*SELLER_COST_PCT)} in seller closing costs and voids the loss-on-sale credit.`
       : `Tenancy runs to ${nice(rentEndDate)} — you can still close inside the relo window.`;
   }
+  // syncSaleDate already raised the impossible-sale warning; this owns the relo-cost variant.
   const rlw=document.getElementById('relowarn');
-  rlw.hidden = !(sale && !reloOK) && !noSalePossible;
-  if(!rlw.hidden) rlw.textContent = noSalePossible
-    ? `The tenant is in place until ${nice(saleMin)}, past the end of this window `
-      + `(${nice(T1)}) — so no sale can close inside it. Shorten the term, or widen the `
-      + `horizon beyond ${HORIZONS[HORIZON].label}.`
-    : `Closes after Jul 20, 2027: ${fmt(sellerCost)} of seller costs come out of pocket and the loss credit is void.`;
-  document.getElementById('saleday').textContent =
-    sale? dd(sale).toLocaleDateString('en-US',{weekday:'long'}) : 'no sale modeled';
+  if(!noSalePossible){
+    rlw.hidden = !(sale && !reloOK);
+    if(!rlw.hidden) rlw.textContent =
+      `Closes after Jul 20, 2027: ${fmt(sellerCost)} of seller costs come out of pocket and the loss credit is void.`;
+  }
   const scen = sale
     ? dd(sale).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' · '+fmt0(price)
     : 'never sold in window';
@@ -2597,19 +2629,21 @@ $pr.addEventListener('input',()=>{showPrice(+$pr.value);markDirty();});
 document.getElementById('saledate').addEventListener('input',()=>{SALE_AUTO=false;markDirty();});
 document.getElementById('oppwrap').addEventListener('toggle',render);
 document.getElementById('renton').addEventListener('change',e=>{
-  document.getElementById('rentfields').hidden = !e.target.checked; markDirty();
+  document.getElementById('rentfields').hidden = !e.target.checked;
+  SALE_AUTO=true; markDirty(); previewDates();
 });
-['rentstart','rentterm','hstart','hterm','hbuydate'].forEach(id=>
-  document.getElementById(id).addEventListener('input',markDirty));
+/* One listener per field, in the right order: re-arm tracking FIRST, then preview, or the
+   preview runs against the stale flag and has to be corrected by a second pass. */
+['hstart','hterm','hbuydate'].forEach(id=>
+  document.getElementById(id).addEventListener('input',()=>{markDirty();previewDates();}));
 // Changing the lease says when the tenant leaves, so the sale date starts tracking it again.
 ['rentstart','rentterm'].forEach(id=>
-  document.getElementById(id).addEventListener('input',()=>{SALE_AUTO=true;}));
-document.getElementById('renton').addEventListener('change',()=>{SALE_AUTO=true;});
+  document.getElementById(id).addEventListener('input',()=>{SALE_AUTO=true;markDirty();previewDates();}));
 document.getElementById('hown').addEventListener('change',e=>{
-  document.getElementById('hfields').hidden = !e.target.checked; markDirty();
+  document.getElementById('hfields').hidden = !e.target.checked; markDirty(); previewDates();
 });
 document.getElementById('hbuy').addEventListener('change',e=>{
-  document.getElementById('hbuyfields').hidden = !e.target.checked; markDirty();
+  document.getElementById('hbuyfields').hidden = !e.target.checked; markDirty(); previewDates();
 });
 ['rentrate','renttax','rentmgmt','rentvac','rentescal','hescal','apprec','cashapy','downpct','inflpct','opproi']
   .forEach(id=>document.getElementById(id).addEventListener('input',markDirty));
