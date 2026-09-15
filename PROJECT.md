@@ -635,8 +635,26 @@ The sensitivity to Midland appreciation is genuinely **flat** (11.33% at 0%/yr �
 tax and the recapture/CGT bill, and by 30 years salaried savings dominate terminal net worth in
 both scenarios. It was checked precisely because it looked wrong.
 
-⚠️ **`--s2` is now the sell-now-and-invest line** on the chart, drawn first so both the real and
+⚠️ **`--s2` is the sell-Midland-now line** on the chart, drawn first so both the real and
 nominal lines paint over it, and folded into `bmin`/`bmax` or it draws off the top.
+
+⚠️⚠️ **The chart line runs at `apy`, NEVER at `OPP_ROI`.** Two balance lines on one chart at
+different compounding rates are not comparable, and this was shipped wrong once: with the
+default cash APY of 0% against a 7% alternative, the sell line ended at $9,440,855 against the
+blue line's $3,259,869 — **2.90x higher, and essentially all of that gap was the rate rather
+than the house decision.** It read as "selling makes you three times richer." Forcing both to
+the same rate puts them within $10k of each other (1.00x) at 0/0, 4/7 and 7/7.
+
+**The two rate inputs are separate on purpose, and each surface must be internally consistent:**
+
+| Input | Means | Drives |
+|---|---|---|
+| `cashapy` | what a bank account pays | the main projection **and** the chart's comparison line — same rate, so the two lines are comparable |
+| `opproi` | what you would earn by investing | both columns of the break-even panel — same rate, so the two columns are comparable |
+
+The honest limitation behind the split: the model has **one** balance, so it cannot distinguish
+near-term operating cash (checking, ~0%) from long-term invested surplus. The legend and the
+panel intro both name the rate they are using so the two surfaces can never be conflated.
 
 ⚠️ **`--s7` is reserved for buying power.** Reconciled variance uses its own pair instead —
 **`--vpos`** (lime) when the day came in over projection and **`--vneg`** (light red) when it

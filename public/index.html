@@ -396,7 +396,7 @@
       <span><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale</span>
       <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
       <span><span class="sw" style="background:var(--s7);height:3px;border-radius:0"></span>buying power (2026 $)</span>
-      <span><span class="sw" style="background:var(--s2);height:3px;border-radius:0"></span>sell now &amp; invest</span>
+      <span><span class="sw" style="background:var(--s2);height:3px;border-radius:0"></span><span id="keyopp">sell Midland now</span></span>
     </div>
 
     <details id="tblwrap">
@@ -1736,7 +1736,10 @@ function fillOppPanel(rent, home, roi){
   document.getElementById('oppintro').innerHTML =
     `Two futures, same salary, same spending, and <b>the same ${(roi*100).toFixed(2)}% return applied to `
     +`the cash in both</b> — otherwise this would just be a house earning nothing against an index `
-    +`fund. <b>Keep &amp; rent</b> never sells and stays tenanted the whole way. <b>Sell now &amp; `
+    +`fund. That rate is this panel's own assumption — it is deliberately NOT your `
+    +`<b>${(numOr('cashapy',0)).toFixed(2)}% cash APY</b>, which is what a bank account pays and `
+    +`what the chart's two balance lines both use. `
+    +`<b>Keep &amp; rent</b> never sells and stays tenanted the whole way. <b>Sell now &amp; `
     +`invest</b> sells ${esc(nice(SALE_FLOOR))} and never has a tenant. The break-even column is the `
     +`return at which the two finish level: beat it and selling wins.`;
 
@@ -1864,7 +1867,12 @@ function render(){
   const oppKeep = oppScenario(null, rent? {...rent, months:oppMonths} : null, home);
   const oppSell = oppScenario(SALE_FLOOR, null, home);
   const OPPBE   = breakEvenROI(oppKeep, oppSell, home);
-  const oppFull = oppWalk(oppSell, OPP_ROI, true);
+  /* ⚠️ The chart line runs at `apy`, the SAME rate as the blue balance line — never at
+     OPP_ROI. Two lines on one chart at different compounding rates are not comparable: at
+     cash APY 0% against a 7% alternative the sell line ended 2.90x higher, and essentially
+     all of that gap was the rate rather than the house. The rate question belongs in the
+     panel, where both columns share OPP_ROI. */
+  const oppFull = oppWalk(oppSell, apy, true);
   const oppVD   = VIEW==='span'? oppFull : oppFull.filter(d=>d.d.slice(0,4)===VIEW);
   const oppEnd  = oppNW(oppSell, home, OPP_ROI);
   const keepEnd = oppNW(oppKeep, home, OPP_ROI);
@@ -2286,6 +2294,8 @@ function render(){
     OPPBE.verdict==='sell' ? 'selling wins outright'
     : OPPBE.rate===null ? `keeping wins below ${(OPP_MAX*100).toFixed(0)}%`
     : `break-even ${(OPPBE.rate*100).toFixed(1)}%`;
+  document.getElementById('keyopp').textContent =
+    `sell Midland now (cash at ${(apy*100).toFixed(2)}%, same as the balance line)`;
   if(oppw.open) fillOppPanel(rent, home, OPP_ROI);
 
   // ---- table ----
