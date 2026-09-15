@@ -718,6 +718,24 @@ and a 1px border, so `width:100%` alone resolves to `100% + 22px` — invisible 
 column, but it pushed the whole sheet off the right edge of a phone. Verified no overflow at
 360/390/768/1180.
 
+⚠️⚠️ **Two mobile-only traps, neither reproducible in headless Chrome.**
+
+**1. `width:100%` does not constrain a date input.** A grid or flex item defaults to
+`min-width:auto`, so it refuses to shrink below the native control's intrinsic width — and on
+iOS that control is wider than the field, so the dates hung over the card edge even with
+`box-sizing:border-box` already set. The fix is `min-width:0` on the input **and** on every
+ancestor that has to pass the constraint down (`.ctl`, `.grpbody > *`, `#rentfields > *`,
+`#hfields > *`, `#hbuyfields > *`), plus `-webkit-appearance:none` and the
+`::-webkit-date-and-time-value` / `::-webkit-datetime-edit` resets that stop iOS centring and
+padding the value. Desktop Chrome renders date inputs far narrower, so none of this shows up in
+a headless screenshot.
+
+**2. iOS zooms the page when a focused control has `font-size < 16px`,** and the reader then has
+to pinch back out. The controls were 14px. They are now 16px under `@media (max-width:759px)` —
+applied to every control on the page, not just the sheet. ⚠️ Do **not** "fix" this with
+`maximum-scale=1` or `user-scalable=no` on the viewport: it disables pinch-zoom for everybody
+and is a real accessibility regression. 16px is the threshold, so 16px is the fix.
+
 Field widths are deliberately uniform (`width:100%` on numbers, dates and `.moneyfld` alike). A
 full-width box for `3` looks slightly empty, but mixed intrinsic widths — dates filling the
 column, money fields at 115px, numbers at 92px — read as ragged, and alignment is what makes 25

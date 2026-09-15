@@ -149,7 +149,17 @@
   /* ⚠️ box-sizing is required with width:100%. These inputs carry 10px side padding and a 1px
      border, and without border-box that lands at 100% + 22px — fine inside a roomy desktop
      column, but it pushed the whole sheet off the right edge of a phone. */
-  .ctl input[type=number],.ctl input[type=date]{width:100%;box-sizing:border-box}
+  .ctl input[type=number],.ctl input[type=date]{width:100%;box-sizing:border-box;min-width:0;max-width:100%}
+  /* ⚠️ `width:100%` alone does NOT constrain a date input. A grid/flex item defaults to
+     `min-width:auto`, so it refuses to shrink below the native control's intrinsic width —
+     and on iOS that control is wider than the field. `min-width:0` on the item AND on every
+     ancestor that could pass the constraint down is what actually stops it overflowing.
+     Headless Chrome on desktop renders date inputs far narrower, so this is invisible there. */
+  .ctl,.grpbody>*,#rentfields>*,#hfields>*,#hbuyfields>*{min-width:0}
+  .ctl input[type=date]{-webkit-appearance:none;appearance:none}
+  /* iOS centres the value inside the control and pads it; both push it past the edge. */
+  .ctl input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0}
+  .ctl input[type=date]::-webkit-datetime-edit{padding:0}
   .ctl input:disabled{opacity:.4;cursor:not-allowed}
   .ctl input[type=date]:focus-visible,.ctl input[type=number]:focus-visible,
   .moneyfld:focus-within{outline:2px solid var(--s1);outline-offset:1px}
@@ -350,6 +360,16 @@
   .tlbar:hover .tlthumb::after{background:var(--ink-2)}
   #donut{max-width:290px;width:72vw;height:auto;display:block;margin:0 auto}
   .donut-wrap{justify-content:center}
+  /* ⚠️ iOS Safari zooms the page whenever a focused form control has font-size < 16px, and the
+     reader then has to pinch back out. 16px is the threshold, so this is the fix — NOT
+     `maximum-scale`/`user-scalable=no` on the viewport, which would disable pinch-zoom for
+     everyone and is an accessibility regression. Applies to every control, not just the sheet. */
+  @media (max-width:759px){
+    .ctl input[type=date],.ctl input[type=number],.moneyfld input,.moneyfld span,
+    .fld input,.fld textarea,.fld select,select,input[type=text],input[type=date],
+    input[type=number],textarea{font-size:16px}
+    .ctl input[type=date],.ctl input[type=number]{padding:9px 10px}
+  }
   @media (max-width:640px){
     .viz-root{padding:9px}
     .card{padding:12px 12px;border-radius:10px}
