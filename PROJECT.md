@@ -214,6 +214,12 @@ is worth less than was paid, and Sec.121 would cover a modest gain anyway.
 
 ### Midland property tax (rule 13)
 
+⚠️ **One selling-cost figure, not two.** `netWorth` used to value the unsold Midland house at
+a private `SELL_COST = 7%` while the sale engine charges `SELLER_COST_PCT = 7.5%` — so the
+net-worth tile and the proceeds tile disagreed by half a point of the price (~$2,100 today,
+growing). Midland now uses `SELLER_COST_PCT` everywhere. OKC keeps its own `OKC_SELL_COST`
+haircut: nothing in the model ever sells it, so there is no engine to match.
+
 Absent from the model until 2026-09-02 — the PennyMac escrow (`MTG_PMT - MTG_PI = $186.82/mo`)
 is **insurance only**, so four years of Texas property tax sat in no balance anywhere.
 
@@ -582,6 +588,55 @@ The real line is included in the y-scale (`bmin`), or it clips below the axis. D
 both. The band runs forward along the nominal path then back along the real one with the step
 corners mirrored (`L x,RY(i-1)` then `L x-1,RY(i-1)`), closed with `Z` — get the mirroring wrong
 and the fill shears across the chart rather than hugging the two lines.
+
+### Opportunity cost — the break-even ROI (rule 26)
+
+Answers *"what would I have to earn elsewhere to beat keeping the Midland house and renting it
+out?"* The answer is the **indifference rate**: run the same engine on two scenarios and find
+the rate at which their net worth at `T1` is identical. Beat it and selling wins.
+
+| Horizon | Keep & rent | Sell now & invest @7% | Break-even |
+|---|---|---|---|
+| 5 years  | $541,460    | $501,853    | **19.7%** |
+| 15 years | $2,823,171  | $2,582,605  | **13.3%** |
+| 30 years | $11,622,772 | $10,647,185 | **11.5%** |
+
+Both sides run the **real engine**, so the relo window, the loss credit, recapture, the §121
+expiry, escrow and landlord costs are all priced in for free and can never drift out of sync
+with a parallel calculation. That is the whole design argument for doing it this way.
+
+⚠️ **The same rate must be applied to both scenarios' cash.** Comparing a house against an
+index fund while the house's spare cash earns 0% is not a comparison, it is a rigged one.
+
+⚠️ **The keep side must stay rented for the whole window.** Passing the configured 36-month
+term meant *"rent it 3 years, then hold an empty house for 27 paying every bill with no
+income"* — a scenario nobody is choosing. It inverted the answer: the panel reported *selling
+wins outright* where the truth is a break-even of 11.5%. `oppMonths` extends the term to `T1`.
+
+⚠️ **`buildEvents` does not depend on the rate — only the daily walk does.** So each scenario's
+events are built **once** and re-walked per candidate rate (`oppWalk`). That turns a 24-step
+bisection from ~48 full engine runs into two, and is the only reason this sits in `render()` at
+a 30-year horizon instead of behind a button. `oppWalk` is verified to match `buildSeries`
+**to the cent** at 0/3/7/15/30%.
+
+⚠️ **Bisection is only valid because keep-minus-sell is monotonically decreasing in the rate**
+(the selling side holds more cash earlier, so every extra point is worth more to it).
+Monotonicity is asserted by sampling 13 points across the range — on a non-monotone difference
+bisection would land on an arbitrary root. `verdict` is `'sell'` when selling wins even at 0%
+and `'keep'` when keeping still wins at `OPP_MAX` (60%); neither invents a number.
+
+⚠️ **`oppAcrossHorizons` swaps the global `T1`** and restores it in a `finally`. `T1` is read by
+`TM()`, every schedule and every event builder, so leaving it pointing at the wrong horizon
+would silently corrupt every later render, not just that one. The panel body is filled **only
+when the `<details>` is open**, because the sweep is six event builds.
+
+The sensitivity to Midland appreciation is genuinely **flat** (11.33% at 0%/yr → 12.87% at
+7%/yr) and this is not a bug. Higher appreciation raises the sale value but also the property
+tax and the recapture/CGT bill, and by 30 years salaried savings dominate terminal net worth in
+both scenarios. It was checked precisely because it looked wrong.
+
+⚠️ **`--s2` is now the sell-now-and-invest line** on the chart, drawn first so both the real and
+nominal lines paint over it, and folded into `bmin`/`bmax` or it draws off the top.
 
 ⚠️ **`--s7` is reserved for buying power.** Reconciled variance uses its own pair instead —
 **`--vpos`** (lime) when the day came in over projection and **`--vneg`** (light red) when it

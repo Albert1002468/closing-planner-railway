@@ -82,6 +82,22 @@
   .secsum::-webkit-details-marker{display:none}
   .secsum:hover{border-color:var(--ink-2)}
   .secsum:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
+  /* 5 columns of currency do not fit a narrow phone. Scroll the table, never the page. */
+  .opptw{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:14px}
+  .opptw table{margin-bottom:0}
+  #opptable,#oppexits{min-width:430px}
+  .oppnote{font-size:12.5px;line-height:1.55;color:var(--ink-2);margin:2px 0 12px}
+  .oppnote b{color:var(--ink)}
+  #opptable,#oppexits{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px}
+  #opptable th,#oppexits th{font-weight:600;font-size:11px;letter-spacing:.04em;
+    text-transform:uppercase;color:var(--ink-2);padding:0 8px 6px;border-bottom:1px solid var(--line)}
+  #opptable td,#oppexits td{padding:7px 8px;border-bottom:1px solid var(--line)}
+  #opptable tr:last-child td,#oppexits tr:last-child td{border-bottom:0}
+  #opptable td.num,#oppexits td.num{text-align:right;font-variant-numeric:tabular-nums}
+  #opptable tr.now td{background:color-mix(in srgb,var(--s1) 7%,transparent)}
+  #oppexits tr.cliff td{background:color-mix(in srgb,var(--crit) 8%,transparent)}
+  .oppwin{color:var(--goodtext);font-weight:600}
+  .opplose{color:var(--crit);font-weight:600}
   .secic{display:flex;color:var(--muted)}
   .secic svg{width:15px;height:15px}
   .secmeta{margin-left:auto;font-size:11.5px;color:var(--muted);font-weight:400;
@@ -325,6 +341,7 @@
         <div class="tile"><div class="lab">Net worth</div><div class="val" id="t_nw">—</div><div class="sm" id="t_nwd"></div></div>
         <div class="tile"><div class="lab" id="t_endlab">Ending balance</div><div class="val" id="t_end">—</div><div class="sm" id="t_endd"></div></div>
         <div class="tile"><div class="lab">Buying power</div><div class="val" id="t_real">—</div><div class="sm" id="t_reald"></div></div>
+        <div class="tile"><div class="lab">Break-even ROI</div><div class="val" id="t_be">—</div><div class="sm" id="t_bed"></div></div>
         <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
         <div class="tile"><div class="lab">Days under $15k</div><div class="val" id="t_thin">—</div><div class="sm" id="t_thind"></div></div>
         <div class="tile"><div class="lab">Before the wire</div><div class="val" id="t_morn">—</div><div class="sm">Sept 18, incl. that paycheck</div></div>
@@ -379,6 +396,7 @@
       <span><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale</span>
       <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
       <span><span class="sw" style="background:var(--s7);height:3px;border-radius:0"></span>buying power (2026 $)</span>
+      <span><span class="sw" style="background:var(--s2);height:3px;border-radius:0"></span>sell now &amp; invest</span>
     </div>
 
     <details id="tblwrap">
@@ -400,6 +418,32 @@
           <span class="pginfo" id="pginfo"></span>
         </div>
         <table id="evtable"><thead><tr><th>Date</th><th>Item</th><th style="text-align:right">Amount</th><th style="text-align:right">Balance</th></tr></thead><tbody></tbody></table>
+      </div>
+    </details>
+
+    <details id="oppwrap">
+      <summary class="secsum">
+        <span class="secic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M4 18 L10 11 L14 15 L20 6"/><path d="M15 6h5v5"/>
+          </svg></span>
+        <span>Keep it or sell it?</span>
+        <span class="secmeta" id="oppmeta"></span>
+        <span class="secchev" aria-hidden="true">&#9660;</span>
+      </summary>
+      <div class="secbody">
+        <p class="oppnote" id="oppintro"></p>
+        <div class="opptw"><table id="opptable"><thead><tr><th>Horizon</th>
+          <th style="text-align:right">Keep &amp; rent</th>
+          <th style="text-align:right">Sell now &amp; invest</th>
+          <th style="text-align:right">Difference</th>
+          <th style="text-align:right">Break-even</th></tr></thead><tbody></tbody></table></div>
+        <p class="oppnote" id="oppexitintro"></p>
+        <div class="opptw"><table id="oppexits"><thead><tr><th>Exit</th><th>Date</th>
+          <th style="text-align:right">Seller costs</th>
+          <th style="text-align:right">Loss credit</th>
+          <th style="text-align:right">In hand</th></tr></thead><tbody></tbody></table></div>
+        <p class="oppnote" id="oppcaveat"></p>
       </div>
     </details>
 
@@ -475,6 +519,11 @@
         <div class="ctl">
           <label for="cashapy">Cash APY % on the bank balance</label>
           <input type="number" id="cashapy" min="0" max="10" step="0.05" value="0">
+        </div>
+        <div class="ctl">
+          <label for="opproi">Alternative investment return %/yr</label>
+          <input type="number" id="opproi" min="0" max="60" step="0.25" value="7">
+          <span class="rends" id="oppsm">&nbsp;</span>
         </div>
         <div class="ctl">
           <label id="scenlab">Scenario</label>
@@ -1458,10 +1507,93 @@ function buildSeries(sale, price, rent, home, apy){
           suspendedLoss};
 }
 
+/* ---------------------------------------------------------------------------------------
+   OPPORTUNITY COST. "What return would I need elsewhere to beat keeping the Midland house?"
+
+   The answer is the indifference rate: run the SAME engine on two scenarios and find the rate
+   at which their net worth at T1 is identical. Beat it and selling wins; miss it and keeping
+   wins. Because both sides run the real engine, every rule already in the model - relo seller
+   costs, the loss credit, recapture, S121 expiry, escrow, landlord costs - is priced in for
+   free and can never drift out of sync with a parallel calculation.
+
+   ⚠️ The SAME rate must be applied to BOTH scenarios' cash. Comparing a house against an index
+   fund while the house's spare cash earns 0% is not a comparison, it is a rigged one: whatever
+   you would do with surplus cash, you do in both worlds.
+
+   Performance: buildEvents does NOT depend on the rate - only the daily walk does. So each
+   scenario's events are built once and re-walked per candidate rate. That turns a bisection
+   from ~40 full engine runs into one, and is the only reason this is fast enough to sit in
+   render() at a 30-year horizon.
+   --------------------------------------------------------------------------------------- */
+const OPP_MAX=0.60;              // ceiling for the search; above this the question is moot
+let OPP_ROI=0.07;                // the rate the comparison line on the chart is drawn at
+
+function oppScenario(sale, rent, home){
+  const built = buildEvents(sale, priceOn(sale||T1), rent, home);
+  const map={}; built.ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
+  return {built, map, sale, rent};
+}
+/* The balance walk from buildSeries, minus the per-day bookkeeping. `full` also returns the
+   daily series, which the chart needs for the comparison line. */
+function oppWalk(sc, roi, full){
+  let bal=START_BAL, cur=T0; const rate=roi||0, series=full?[]:null;
+  while(cur<=T1){
+    if(rate>0 && bal>0) bal += bal*rate/365;
+    (sc.map[cur]||[]).forEach(e=>bal+=e.a);
+    const r=RECON[cur]; if(r) bal=r.actual;
+    if(full) series.push({d:cur,b:+bal.toFixed(2)});
+    cur=addD(cur,1);
+  }
+  return full? series : +bal.toFixed(2);
+}
+function oppNW(sc, home, roi){
+  const b=oppWalk(sc,roi), x=sc.built;
+  return netWorth({series:[{d:T1,b}], buyDate:x.buyDate, carPayoffDate:x.carPayoffDate,
+                   carPayoff:x.carPayoff, suspendedLoss:x.suspendedLoss},
+                  sc.sale, sc.rent, home, T1).nw;
+}
+/* keep-minus-sell is monotonically DECREASING in the rate: the selling side is holding more
+   cash earlier, so every extra point of return is worth more to it. Monotone is what makes
+   bisection safe here - on a non-monotone difference it would land on an arbitrary root. */
+function breakEvenROI(keepSc, sellSc, home){
+  const f = r => oppNW(keepSc,home,r) - oppNW(sellSc,home,r);
+  const at0=f(0);
+  if(at0<0)          return {rate:0,    verdict:'sell', gap:at0};
+  if(f(OPP_MAX)>0)   return {rate:null, verdict:'keep', gap:f(OPP_MAX)};
+  let lo=0, hi=OPP_MAX;
+  for(let i=0;i<24;i++){ const m=(lo+hi)/2; if(f(m)>0) lo=m; else hi=m; }
+  return {rate:(lo+hi)/2, verdict:'cross', gap:at0};
+}
+
+/* Run the comparison at every horizon. T1 is a module-level global that TM(), every schedule
+   and every event builder reads, so it is swapped and restored around the sweep. The restore
+   sits in `finally` deliberately: leaving T1 pointing at the wrong horizon would silently
+   corrupt every later render, not just this one. */
+function oppAcrossHorizons(rent, home, roi){
+  const saveT1=T1, out=[];
+  try{
+    for(const k of ['h5','h15','h30']){
+      T1=HORIZONS[k].end;
+      const months = rent
+        ? Math.max(1,(YR(T1)-YR(rent.start))*12 + (+T1.slice(5,7) - +rent.start.slice(5,7)) + 1)
+        : 0;
+      const keepSc=oppScenario(null, rent? {...rent, months}:null, home);
+      const sellSc=oppScenario(SALE_FLOOR, null, home);
+      out.push({key:k, label:HORIZONS[k].label, end:T1,
+                keep:oppNW(keepSc,home,roi), sell:oppNW(sellSc,home,roi),
+                be:breakEvenROI(keepSc,sellSc,home)});
+    }
+  } finally { T1=saveT1; }
+  return out;
+}
+
 /* Net worth, not just cash. The bank balance alone ranks scenarios by how long you avoided
    owning anything, because a mortgage payment leaves the account and the equity it buys never
    comes back in. */
-const OKC_APPREC=0.03, SELL_COST=0.07;
+/* Midland MUST use the same figure the sale engine charges (SELLER_COST_PCT), or netWorth and
+   the proceeds tile quietly disagree by half a point of the price. OKC keeps its own haircut:
+   nothing ever sells it, so there is no engine to match. */
+const OKC_APPREC=0.03, OKC_SELL_COST=0.07;
 const yrsBetween=(a,b)=>nDays(a,b)/365.25;
 
 function loanBalAfter(loan, annRate, pmt, n){
@@ -1488,14 +1620,14 @@ function netWorth(res, sale, rent, home, asOf){
   if(buyDate && buyDate<=asOf){
     const first = buyDate==='2026-09-18'? '2026-11-01' : addM(buyDate.slice(0,8)+'01',2);
     const bal = loanBalAfter(nhLoan(), NH_RATE, nhPI(), paymentsThrough(first, asOf));
-    okc = NH_PRICE*Math.pow(1+OKC_APPREC, yrsBetween(buyDate,asOf))*(1-SELL_COST) - bal;
+    okc = NH_PRICE*Math.pow(1+OKC_APPREC, yrsBetween(buyDate,asOf))*(1-OKC_SELL_COST) - bal;
   }
 
   // 2. the Midland house, while it is still yours
   let mid=0, midTaxOwed=0, deferred=0;
   if(!soldByNow){
     const val = priceOn(asOf);
-    mid = val*(1-SELL_COST) - payoffOn(asOf);
+    mid = val*(1-SELLER_COST_PCT) - payoffOn(asOf);
     // The escrow has been saving toward the bill that is due next January, so only the gap is
     // a liability. Balance as of this date, not at the end of the model.
     const notes=midEscrowPlan().notes;
@@ -1510,7 +1642,7 @@ function netWorth(res, sale, rent, home, asOf){
     // trigger — using only the depreciation actually taken by this date.
     const monthsRented = rent? rentSchedule(rent).dates.filter(d=>lt(d,asOf)).length : 0;
     const dep  = rent? rent.basis/DEPREC_YEARS/12*monthsRented : 0;
-    const gain = val*(1-SELL_COST) - (MID_BASIS - dep);
+    const gain = val*(1-SELLER_COST_PCT) - (MID_BASIS - dep);
     const recap= Math.max(0, Math.min(dep, gain))*(rent? rent.rate:0)/100;
     const cg   = asOf > SEC121_LAST ? Math.max(0, gain-dep)*LTCG_RATE/100 : 0;
     const released = rent? (res.suspendedLoss||0)*rent.taxRate/100 : 0;
@@ -1586,6 +1718,63 @@ let LAST_SALE_MIN=null;      // so a sale date parked on the rent floor can foll
 let SALE_BEFORE_RENT=null;   // the date renting pushed off, to put back when the floor lifts
 const nice = d => dd(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 
+/* The panel body. Split out of render() because it is only ever called when the panel is
+   open, and because the horizon sweep is the expensive part of the whole app. */
+function fillOppPanel(rent, home, roi){
+  const rows=oppAcrossHorizons(rent, home, roi);
+  const pct=b => b.verdict==='sell'? 'any return wins'
+               : b.rate===null? `over ${(OPP_MAX*100).toFixed(0)}%`
+               : (b.rate*100).toFixed(1)+'%';
+  document.getElementById('opptable').querySelector('tbody').innerHTML = rows.map(r=>{
+    const d=r.keep-r.sell;
+    return `<tr class="${r.end===T1?'now':''}"><td>${esc(r.label)} <span style="color:var(--ink-2)">`
+      +`· to ${esc(nice(r.end))}</span></td>`
+      +`<td class="num">${fmt0(r.keep)}</td><td class="num">${fmt0(r.sell)}</td>`
+      +`<td class="num ${d>=0?'oppwin':'opplose'}">${d>=0?'+':'−'}${fmt0(Math.abs(d))}</td>`
+      +`<td class="num"><b>${esc(pct(r.be))}</b></td></tr>`;
+  }).join('');
+  document.getElementById('oppintro').innerHTML =
+    `Two futures, same salary, same spending, and <b>the same ${(roi*100).toFixed(2)}% return applied to `
+    +`the cash in both</b> — otherwise this would just be a house earning nothing against an index `
+    +`fund. <b>Keep &amp; rent</b> never sells and stays tenanted the whole way. <b>Sell now &amp; `
+    +`invest</b> sells ${esc(nice(SALE_FLOOR))} and never has a tenant. The break-even column is the `
+    +`return at which the two finish level: beat it and selling wins.`;
+
+  // The exits. Every figure comes from the engine, so the relo window and the loss credit are
+  // whatever the rest of the model already says they are.
+  const exits=[{d:SALE_FLOOR,l:'Sell now'},
+               {d:RELO_DEADLINE,l:'Last day of the relo window'},
+               {d:addD(RELO_DEADLINE,1),l:'One day later'}];
+  const rs=rent? rentSchedule({...rent}).end : null;
+  if(rs && rs<=T1) exits.push({d:rs,l:`After the ${rent.months}-month lease`});
+  let prev=null;
+  document.getElementById('oppexits').querySelector('tbody').innerHTML = exits.map(x=>{
+    if(x.d>T1) return '';
+    const b=buildEvents(x.d, priceOn(x.d), null, home);
+    const hand=b.proceeds+b.loss;
+    const cliff = prev!==null && hand < prev-5000;
+    prev=hand;
+    return `<tr class="${cliff?'cliff':''}"><td>${esc(x.l)}</td><td>${esc(nice(x.d))}</td>`
+      +`<td class="num">${b.sellerCost? '−'+fmt0(b.sellerCost) : '<span class="oppwin">covered</span>'}</td>`
+      +`<td class="num">${b.loss? fmt0(b.loss):'—'}</td>`
+      +`<td class="num"><b>${fmt0(hand)}</b></td></tr>`;
+  }).join('');
+  const a=buildEvents(RELO_DEADLINE, priceOn(RELO_DEADLINE), null, home);
+  const bq=buildEvents(addD(RELO_DEADLINE,1), priceOn(addD(RELO_DEADLINE,1)), null, home);
+  document.getElementById('oppexitintro').innerHTML =
+    `If you do sell, <b>when</b> is worth more than the break-even rate. Crossing `
+    +`${esc(nice(RELO_DEADLINE))} costs <b>${fmt0((a.proceeds+a.loss)-(bq.proceeds+bq.loss))}</b> `
+    +`overnight, because the relocation company stops covering seller costs.`;
+  document.getElementById('oppcaveat').innerHTML =
+    `<b>Read this before trusting the number.</b> It is an <b>after-tax</b> rate — in a taxable `
+    +`brokerage you need a higher pre-tax return to clear it. It prices no risk: one leveraged, `
+    +`undiversified, illiquid house in an oil-price town is not the same bet as an index fund, and `
+    +`the model cannot see a bad tenant, a roof, or a foundation. Maintenance is your `
+    +`${fmt0(rent? rent.maint : 0)}/yr assumption held flat for decades, and vacancy is `
+    +`${rent? rent.vacancyMo : 0} month a year every year. The house also has to actually sell at `
+    +`${fmt0(priceOn(SALE_FLOOR))} for the sell column to mean anything.`;
+}
+
 function render(){
   const rent = readRent();
   const home = readHome();
@@ -1642,6 +1831,7 @@ function render(){
   // Down payment drives the cash wire, the loan, the P&I and the prepaid interest, so it has
   // to be set before buildSeries runs and the donut has to be redrawn from the same figures.
   INFL_PCT = numOr('inflpct',3)/100;
+  OPP_ROI  = numOr('opproi',7)/100;
   DOWN_PCT = numOr('downpct',22);
   drawDonut();
   document.getElementById('downsm').textContent =
@@ -1659,6 +1849,26 @@ function render(){
   // The last day in the window. Three tiles and netWorth all measure as of this date, so it is
   // defined here rather than beside any one of them.
   const endDay = VD[VD.length-1] || DATA[DATA.length-1];
+
+  /* ---- opportunity cost: keep-and-rent vs sell-now-and-invest ----
+     Deliberately NOT the sale date configured above. The question is "what would I need to earn
+     elsewhere to beat being a landlord", so the keep side never sells and the sell side never
+     rents. Both run the real engine, so the relo window, the loss credit, recapture and the
+     S121 expiry are all priced in without being restated here. */
+  /* ⚠️ The keep side must stay rented for the WHOLE window. Passing the configured term meant
+     "rent it 36 months, then hold an empty house for 27 years paying every bill with no
+     income" — a scenario nobody is choosing, which made selling look far better than it is. */
+  const oppMonths = rent
+    ? Math.max(1,(YR(T1)-YR(rent.start))*12 + (+T1.slice(5,7) - +rent.start.slice(5,7)) + 1)
+    : 0;
+  const oppKeep = oppScenario(null, rent? {...rent, months:oppMonths} : null, home);
+  const oppSell = oppScenario(SALE_FLOOR, null, home);
+  const OPPBE   = breakEvenROI(oppKeep, oppSell, home);
+  const oppFull = oppWalk(oppSell, OPP_ROI, true);
+  const oppVD   = VIEW==='span'? oppFull : oppFull.filter(d=>d.d.slice(0,4)===VIEW);
+  const oppEnd  = oppNW(oppSell, home, OPP_ROI);
+  const keepEnd = oppNW(oppKeep, home, OPP_ROI);
+
   const svg=document.getElementById('tl');
   while(svg.firstChild) svg.removeChild(svg.firstChild);
   const cw=svg.parentNode.clientWidth||940, mobile=cw<640;
@@ -1685,8 +1895,11 @@ function render(){
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
   svg.setAttribute('width',W); svg.setAttribute('height',H);
   const iw=W-m.l-m.r, ih=H-m.t-m.b, n=VD.length;
-  const bmin=Math.min(0,...VD.map(d=>Math.min(d.b, realAt(d.b,d.d))));
-  const bmax=Math.max(...VD.map(d=>d.b));
+  // The comparison line has to be inside the scale or it draws off the top of the chart.
+  let oLo=Infinity, oHi=-Infinity;
+  for(const d of oppVD){ if(d.b<oLo) oLo=d.b; if(d.b>oHi) oHi=d.b; }
+  const bmin=Math.min(0, oLo, ...VD.map(d=>Math.min(d.b, realAt(d.b,d.d))));
+  const bmax=Math.max(oHi, ...VD.map(d=>d.b));
   // Snap the scale to the STEP, not a fixed 10k, or the labels read $990k / $1,990k.
   const niceStep=v=>{const m=Math.pow(10,Math.floor(Math.log10(Math.max(1,v)))), r=v/m;
                      return (r<=1?1:r<=2?2:r<=2.5?2.5:r<=5?5:10)*m;};
@@ -1779,6 +1992,15 @@ function render(){
   band+=`L${X(kept[kept.length-1])} ${RY(kept[kept.length-1])}`;
   for(let k=kept.length-1;k>0;k--) band+=`L${X(kept[k])} ${RY(kept[k-1])}L${X(kept[k-1])} ${RY(kept[k-1])}`;
   band+='Z';
+  // Sell-now-and-invest, drawn first so both real lines paint over it. Same index space as VD,
+  // so the two are directly comparable day for day.
+  if(oppVD.length===n){
+    let opath=''; let oprev=-1;
+    oppVD.forEach((d,i)=>{ if(!keep(i)) return; const x=X(i),y=Y(d.b);
+      opath+= oprev<0?`M${x} ${y}`:`L${x} ${Y(oppVD[oprev].b)} L${x} ${y}`; oprev=i;});
+    add('path',{d:opath,fill:'none',stroke:'var(--s2)','stroke-width':1.6,
+                'stroke-linejoin':'round',opacity:.85});
+  }
   add('path',{d:band,fill:'var(--s7)',stroke:'none',opacity:.08});
   add('path',{d:rpath,fill:'none',stroke:'var(--s7)','stroke-width':1.6,'stroke-linejoin':'round'});
   let path=''; let pprev=-1;
@@ -1972,6 +2194,20 @@ function render(){
     `${fmt0(endDay.b-realEnd)} lost to ${(INFL_PCT*100).toFixed(2)}% inflation · `
     + (realEnd>START_BAL? `${fmt0(realEnd-START_BAL)} ahead of where you started`
                         : `${fmt0(START_BAL-realEnd)} behind where you started`);
+  /* Break-even ROI. `null` means keeping still wins at the top of the search range, which is
+     the honest answer rather than a made-up number. */
+  const bePct = OPPBE.rate===null? null : OPPBE.rate*100;
+  set('t_be', bePct===null? `>${(OPP_MAX*100).toFixed(0)}%`
+            : OPPBE.verdict==='sell'? 'any' : bePct.toFixed(1)+'%',
+      OPPBE.verdict==='sell'? 'posv' : '');
+  document.getElementById('t_bed').textContent =
+    OPPBE.verdict==='sell'
+      ? `selling already wins by ${fmt0(-OPPBE.gap)} — no return needed`
+      : `to beat ${rent?'renting it out':'holding it'} through ${nice(T1)}`
+        + (bePct===null? '' : ` · you assume ${(OPP_ROI*100).toFixed(2)}%`);
+  document.getElementById('oppsm').textContent =
+    `at ${(OPP_ROI*100).toFixed(2)}%: ${keepEnd>=oppEnd? 'keeping' : 'selling'} ahead by `
+    + `${fmt0(Math.abs(keepEnd-oppEnd))} at ${nice(T1)}`;
   const rentNetCash = rent? +(rentTotal - rentCostTotal - rentIncTax).toFixed(2) : 0;
   set('t_rent', rent? fmt(rentNetCash):'—', rent?'posv':'');
   document.getElementById('t_rentd').textContent = rent
@@ -2031,7 +2267,7 @@ function render(){
   const rlw=document.getElementById('relowarn');
   rlw.hidden = !(sale && !reloOK) && !noSalePossible;
   if(!rlw.hidden) rlw.textContent = noSalePossible
-    ? `The tenancy runs past Dec 31, 2030, so no sale falls inside this projection.`
+    ? `The tenancy runs past ${nice(T1)}, so no sale falls inside this projection.`
     : `Closes after Jul 20, 2027: ${fmt(sellerCost)} of seller costs come out of pocket and the loss credit is void.`;
   document.getElementById('saleday').textContent =
     sale? dd(sale).toLocaleDateString('en-US',{weekday:'long'}) : 'no sale modeled';
@@ -2041,6 +2277,16 @@ function render(){
   const sb=document.getElementById('setbtn');
   sb.title='Sale settings — '+scen; sb.setAttribute('aria-label','Sale settings — '+scen);
   document.getElementById('t_proceedsm').textContent = sale? scen : '';
+
+  // ---- keep it or sell it? ----
+  // Filled only when the panel is open: it runs the engine at all three horizons, and at 30
+  // years that is six event builds nobody should pay for while the panel is collapsed.
+  const oppw=document.getElementById('oppwrap');
+  document.getElementById('oppmeta').textContent =
+    OPPBE.verdict==='sell' ? 'selling wins outright'
+    : OPPBE.rate===null ? `keeping wins below ${(OPP_MAX*100).toFixed(0)}%`
+    : `break-even ${(OPPBE.rate*100).toFixed(1)}%`;
+  if(oppw.open) fillOppPanel(rent, home, OPP_ROI);
 
   // ---- table ----
   // Every row is built over the WHOLE series so the running balance stays true, then only the
@@ -2182,6 +2428,7 @@ $p.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();$p.blu
 $pr.addEventListener('input',()=>{showPrice(+$pr.value);render();});
 document.getElementById('saledate').addEventListener('input',render);
 document.getElementById('notsold').addEventListener('change',render);
+document.getElementById('oppwrap').addEventListener('toggle',render);
 document.getElementById('renton').addEventListener('change',e=>{
   document.getElementById('rentfields').hidden = !e.target.checked; render();
 });
@@ -2193,7 +2440,7 @@ document.getElementById('hown').addEventListener('change',e=>{
 document.getElementById('hbuy').addEventListener('change',e=>{
   document.getElementById('hbuyfields').hidden = !e.target.checked; render();
 });
-['rentrate','renttax','rentmgmt','rentvac','rentescal','hescal','apprec','cashapy','downpct','inflpct']
+['rentrate','renttax','rentmgmt','rentvac','rentescal','hescal','apprec','cashapy','downpct','inflpct','opproi']
   .forEach(id=>document.getElementById(id).addEventListener('input',render));
 document.getElementById('priceover').addEventListener('change',e=>{
   document.getElementById('pricefields').hidden = !e.target.checked; render();
