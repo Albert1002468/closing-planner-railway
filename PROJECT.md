@@ -697,6 +697,37 @@ was still a cushion. One inflation assumption for the whole model, not two. Beca
 grows, a large floor bites harder than it used to: at $500,000 the 30-year break-even is 19.2%
 (it was 16.56% when the floor was flat).
 
+### The sale date, the tenancy, and a switch that flipped itself
+
+⚠️⚠️ **`.switch` needs `position:relative`, and it is load-bearing.** The hidden checkbox inside
+each switch is `position:absolute`; with no positioned ancestor its containing block resolved to
+`.modal`, which is `position:fixed` and **does not scroll**. The sheet's content scrolls and
+that invisible 0×0 input stayed where it was, so after scrolling it could come to rest exactly
+on top of another field — clicking that field then toggled the switch instead. This is what
+made **"Rent it out" flip off while editing the rent term**. Verified contained at scroll
+offsets 0/400/900/1500, and the input also now carries `pointer-events:none` so only the label
+can ever activate it. All five switches still toggle from both the track and the label.
+
+⚠️ **Never let `$sd.min` exceed `$sd.max`.** When the tenancy outruns the horizon the old code
+set `min=2068-06-01` against `max=2030-12-31` — an impossible range that leaves the control
+permanently invalid in a real browser. No sale is possible in that state anyway, so the range
+collapses to `T1` and `disabled` plus the warning carry the meaning.
+
+**`SALE_AUTO` replaced inferring intent from the value.** The sale date follows the end of the
+tenancy **in both directions** while `SALE_AUTO` holds; typing a date opts out, and editing the
+lease (term or start, or the rent toggle) re-arms it — changing when the tenant leaves is a
+statement about when the house can sell.
+
+⚠️ The old test was `$sd.value===LAST_SALE_MIN`, and it broke silently: **any** render where the
+target fell outside the horizon left the value unequal to the floor, so the date stopped
+tracking permanently. That is why 300 → 100 months appeared to do nothing. With `SALE_AUTO`,
+widening the horizon re-derives the date from `saleMin` on the very next render.
+
+**A 5-year window with a long lease genuinely cannot sell**, and 300 → 100 months still moves
+nothing there — the tenant is in place until 2035 either way. That is correct, so the warning now
+names the blocking date rather than stating a generality: *"The tenant is in place until Oct 1,
+2051, past the end of this window (Dec 31, 2030) — so no sale can close inside it."*
+
 ### Batched edits and the spinner (rule 28)
 
 The sheet no longer recomputes on every keystroke. Edits call `markDirty()`; the recompute runs

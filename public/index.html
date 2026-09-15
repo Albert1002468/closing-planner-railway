@@ -166,9 +166,16 @@
   .ctl input[type=range]{width:100%;accent-color:var(--s1);margin:2px 0 0}
   .rends{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);
          font-variant-numeric:tabular-nums;margin-top:-2px}
-  .switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;
-          color:var(--ink-2);user-select:none;text-transform:none;letter-spacing:0;padding:7px 0}
-  .switch input{position:absolute;opacity:0;width:0;height:0}
+  /* ⚠️ `position:relative` is load-bearing, not decoration. The input below is absolutely
+     positioned; without a positioned ancestor its containing block resolves to `.modal`, which
+     is `position:fixed` and therefore does NOT scroll. The sheet's content scrolls and that
+     invisible 0x0 checkbox stays put, so after scrolling it can end up sitting exactly on top
+     of another field — clicking that field then toggles THIS switch. That is what made the
+     "rent it out" toggle flip while editing the rent term. */
+  .switch{position:relative;display:inline-flex;align-items:center;gap:10px;cursor:pointer;
+          font-size:13px;color:var(--ink-2);user-select:none;text-transform:none;
+          letter-spacing:0;padding:7px 0}
+  .switch input{position:absolute;top:0;left:0;opacity:0;width:0;height:0;pointer-events:none}
   .switch .track{flex:none;width:38px;height:22px;border-radius:11px;background:var(--axis);
                  position:relative;transition:background .15s}
   .switch .track::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;
@@ -1771,6 +1778,7 @@ function readHome(){
 const SALE_FLOOR='2026-09-15';
 let LAST_SALE_MIN=null;      // so a sale date parked on the rent floor can follow it
 let SALE_BEFORE_RENT=null;   // the date renting pushed off, to put back when the floor lifts
+let SALE_AUTO=true;          // true = the sale date tracks the end of the tenancy, both ways
 const nice = d => dd(d).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 
 /* The panel body. Split out of render() because it is only ever called when the panel is
@@ -1853,25 +1861,35 @@ function render(){
   const saleMin = (rentEndDate && rentEndDate>SALE_FLOOR)? rentEndDate : SALE_FLOOR;
   const $sd=document.getElementById('saledate');
   const noSalePossible = saleMin>T1;
-  $sd.min=saleMin; $sd.max=T1;
-  // Shrinking the horizon can leave the sale date beyond the new end; pull it back in.
-  if($sd.value && $sd.value>T1) $sd.value = saleMin<=T1? T1 : saleMin;
+  /* ⚠️ NEVER let min exceed max. When the tenancy outruns the horizon the old code set
+     min=2068-06-01 against max=2030-12-31, an impossible range that leaves the control
+     permanently invalid in a real browser. No sale is possible in that state anyway, so the
+     range collapses to T1 and `disabled` plus the warning carry the meaning. */
+  $sd.min = noSalePossible? T1 : saleMin;
+  $sd.max = T1;
   ['rentstart','hstart'].forEach(id=>document.getElementById(id).max=T1);
   document.getElementById('hbuydate').max=T1;
-  // A date sitting exactly on a rent-derived floor is "riding" it: it follows the floor up and
-  // down as the term changes, and when renting is switched off entirely it goes back to
-  // whatever it was before renting first pushed it. A date the reader typed is never moved.
-  const riding = LAST_SALE_MIN && LAST_SALE_MIN!==SALE_FLOOR && $sd.value===LAST_SALE_MIN;
-  if(!noSalePossible && $sd.value){
+  /* The sale date FOLLOWS the tenancy in both directions while `SALE_AUTO` holds, and stops the
+     moment the reader types a date of their own. Editing the lease (term or start) re-arms it,
+     since changing when the tenant leaves is a statement about when the house can sell.
+
+     This replaces inferring intent from `$sd.value===LAST_SALE_MIN`, which silently broke: any
+     render where the target was outside the horizon left the value unequal to the floor, so the
+     date stopped tracking for good. That is why 300 -> 100 months appeared to do nothing. */
+  if(SALE_AUTO){
     if(saleMin>SALE_FLOOR){
-      if($sd.value<saleMin){
-        if(!SALE_BEFORE_RENT) SALE_BEFORE_RENT=$sd.value;
-        $sd.value=saleMin;
-      } else if(riding) $sd.value=saleMin;
+      if(SALE_BEFORE_RENT===null) SALE_BEFORE_RENT=$sd.value;
+      // Outside the horizon there is nothing valid to show; hold the value and let the warning
+      // speak. Widening the horizon re-derives it from saleMin on the very next render.
+      if(!noSalePossible) $sd.value=saleMin;
     } else {
-      if(riding && SALE_BEFORE_RENT) $sd.value=SALE_BEFORE_RENT;
+      if(SALE_BEFORE_RENT) $sd.value=SALE_BEFORE_RENT;
       SALE_BEFORE_RENT=null;
     }
+  } else if($sd.value){
+    // A typed date is only ever pushed FORWARD, off a tenant, or back inside the horizon.
+    if(!noSalePossible && $sd.value<saleMin) $sd.value=saleMin;
+    if($sd.value>T1) $sd.value=T1;
   }
   LAST_SALE_MIN=saleMin;
   const notsold=document.getElementById('notsold').checked;
@@ -2351,7 +2369,9 @@ function render(){
   const rlw=document.getElementById('relowarn');
   rlw.hidden = !(sale && !reloOK) && !noSalePossible;
   if(!rlw.hidden) rlw.textContent = noSalePossible
-    ? `The tenancy runs past ${nice(T1)}, so no sale falls inside this projection.`
+    ? `The tenant is in place until ${nice(saleMin)}, past the end of this window `
+      + `(${nice(T1)}) — so no sale can close inside it. Shorten the term, or widen the `
+      + `horizon beyond ${HORIZONS[HORIZON].label}.`
     : `Closes after Jul 20, 2027: ${fmt(sellerCost)} of seller costs come out of pocket and the loss credit is void.`;
   document.getElementById('saleday').textContent =
     sale? dd(sale).toLocaleDateString('en-US',{weekday:'long'}) : 'no sale modeled';
@@ -2519,7 +2539,7 @@ $p.addEventListener('input',()=>{$pr.value=priceVal();markDirty();});
 $p.addEventListener('blur',()=>{const v=priceVal();showPrice(v);$pr.value=v;markDirty();});
 $p.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();$p.blur();} });
 $pr.addEventListener('input',()=>{showPrice(+$pr.value);markDirty();});
-document.getElementById('saledate').addEventListener('input',markDirty);
+document.getElementById('saledate').addEventListener('input',()=>{SALE_AUTO=false;markDirty();});
 document.getElementById('notsold').addEventListener('change',markDirty);
 document.getElementById('oppwrap').addEventListener('toggle',render);
 document.getElementById('renton').addEventListener('change',e=>{
@@ -2527,6 +2547,10 @@ document.getElementById('renton').addEventListener('change',e=>{
 });
 ['rentstart','rentterm','hstart','hterm','hbuydate'].forEach(id=>
   document.getElementById(id).addEventListener('input',markDirty));
+// Changing the lease says when the tenant leaves, so the sale date starts tracking it again.
+['rentstart','rentterm'].forEach(id=>
+  document.getElementById(id).addEventListener('input',()=>{SALE_AUTO=true;}));
+document.getElementById('renton').addEventListener('change',()=>{SALE_AUTO=true;});
 document.getElementById('hown').addEventListener('change',e=>{
   document.getElementById('hfields').hidden = !e.target.checked; markDirty();
 });
