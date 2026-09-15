@@ -645,16 +645,55 @@ blue line's $3,259,869 — **2.90x higher, and essentially all of that gap was t
 than the house decision.** It read as "selling makes you three times richer." Forcing both to
 the same rate puts them within $10k of each other (1.00x) at 0/0, 4/7 and 7/7.
 
-**The two rate inputs are separate on purpose, and each surface must be internally consistent:**
+### Two-tier interest (rule 27)
 
-| Input | Means | Drives |
-|---|---|---|
-| `cashapy` | what a bank account pays | the main projection **and** the chart's comparison line — same rate, so the two lines are comparable |
-| `opproi` | what you would earn by investing | both columns of the break-even panel — same rate, so the two columns are comparable |
+The fix for that whole class of bug. `accrue(bal, r)` splits the balance:
 
-The honest limitation behind the split: the model has **one** balance, so it cannot distinguish
-near-term operating cash (checking, ~0%) from long-term invested surplus. The legend and the
-panel intro both name the rate they are using so the two surfaces can never be conflated.
+```
+liquid = min(bal, r.floor)      -> earns r.cash     (bank rate)
+surplus = bal - liquid          -> earns r.invest   (investment rate)
+```
+
+There is now **ONE rate spec** — `RATES = {cash:apy, invest:OPP_ROI, floor:LIQ_FLOOR}` — built
+once in `render()` and handed to the main projection, both comparison scenarios and the chart
+line alike. Two surfaces can no longer disagree about what cash earns, because there is only one
+rule. `floor = 0` reproduces the old single-rate behaviour exactly (break-even 11.53% at 30
+years, matching the pre-two-tier figure to the basis point), which is the regression check.
+
+Why a floor at all: cash below it is **operating money** — it covers the cash-flow trough and
+the dated obligations (car payoff, the $27k to the fiancée, the annual IRS payment, the escrow
+shortage), none of which belong in equities. Only the surplus is genuinely long-horizon.
+
+⚠️ **The floor protects near-term cash-flow planning.** The Oct 2026 trough sits *below* the
+floor, so the investment rate cannot touch it: it moved only −$9,215.16 → −$8,702.03, and that
+$513 is two weeks of yield on the pre-closing balance. Had the rate applied to the whole
+balance, the projection you use to answer *"will I clear Oct 1?"* would have been inflated by
+market returns on money you cannot spend.
+
+Break-even rises with the floor, as it must — a bigger floor leaves less earning the investment
+rate, so it takes a higher rate to catch up:
+
+| Floor | Break-even (30y) |
+|---|---|
+| $0 | 11.53% |
+| $25,000 (default) | 11.60% |
+| $100,000 | 11.97% |
+| $500,000 | 16.56% |
+| $5,000,000 | keeping wins at any rate |
+
+⚠️ **Re-verified after the refactor, because the two-tier rule could have introduced a plateau**
+(a flat stretch where the rate has no effect would make the root non-unique and bisection
+meaningless). It is **strictly** monotone at all three horizons, 13 sample points, zero flat
+steps, and `oppWalk` still matches `buildSeries` to the cent at 0/3/7/15/30%.
+
+⚠️ **`--s8` (magenta) is the sell-Midland-now line, and it is drawn only when the panel is
+open** (`oppShown`). `oppVD` is `[]` otherwise, so the `isFinite` guards on `oLo`/`oHi` are
+load-bearing — without them an absent line poisons the y-scale with `Infinity`.
+
+**What the model still cannot see.** The investment rate is applied as a *smooth daily accrual*.
+Real returns are volatile, and a drawdown timed against one of the dated obligations forces
+selling at the bottom. Nothing here shows that sequence risk, and it is the single largest
+omission in the break-even figure.
 
 ⚠️ **`--s7` is reserved for buying power.** Reconciled variance uses its own pair instead —
 **`--vpos`** (lime) when the day came in over projection and **`--vneg`** (light red) when it

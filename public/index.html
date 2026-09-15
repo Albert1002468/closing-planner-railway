@@ -17,6 +17,7 @@
     --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
     --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,0.10);
     --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300; --s7:#4a3aa7;
+    --s8:#b5179e;
     --good:#0ca30c; --crit:#d03b3b; --goodtext:#006300;
     --vpos:#4f9e12; --vneg:#d9615c;      /* reconciled variance: over / short */
   }
@@ -28,6 +29,7 @@
       --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
       --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,0.10);
       --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9;
+      --s8:#f07cd8;
       --good:#0ca30c; --crit:#d03b3b; --goodtext:#0ca30c;
       --vpos:#8fd43a; --vneg:#f08a86;    /* lime / light red, lifted for the dark ground */
     }
@@ -396,7 +398,7 @@
       <span><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale</span>
       <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
       <span><span class="sw" style="background:var(--s7);height:3px;border-radius:0"></span>buying power (2026 $)</span>
-      <span><span class="sw" style="background:var(--s2);height:3px;border-radius:0"></span><span id="keyopp">sell Midland now</span></span>
+      <span id="keyoppwrap" hidden><span class="sw" style="background:var(--s8);height:3px;border-radius:0"></span><span id="keyopp">sell Midland now</span></span>
     </div>
 
     <details id="tblwrap">
@@ -521,9 +523,14 @@
           <input type="number" id="cashapy" min="0" max="10" step="0.05" value="0">
         </div>
         <div class="ctl">
-          <label for="opproi">Alternative investment return %/yr</label>
+          <label for="opproi">Investment return %/yr on cash above the floor</label>
           <input type="number" id="opproi" min="0" max="60" step="0.25" value="7">
           <span class="rends" id="oppsm">&nbsp;</span>
+        </div>
+        <div class="ctl">
+          <label for="liqfloor">Keep liquid (floor earning the cash APY)</label>
+          <input type="text" id="liqfloor" inputmode="numeric" value="25,000">
+          <span class="rends" id="liqsm">&nbsp;</span>
         </div>
         <div class="ctl">
           <label id="scenlab">Scenario</label>
@@ -1477,7 +1484,22 @@ function buildEvents(sale, price, rent, home){
           rentCostTotal};
 }
 
-function buildSeries(sale, price, rent, home, apy){
+/* Interest on the balance, in TWO TIERS. Cash up to `floor` is operating money — it covers the
+   cash-flow trough and the dated obligations, so it earns the bank rate. Only the surplus above
+   the floor is genuinely long-horizon money, and only that earns the investment rate.
+
+   ⚠️ This exists because a single global rate could not represent both at once, which is how
+   `cashapy` (0%, what a checking account pays) and the alternative return (7%, what investing
+   pays) came to contradict each other. There is now ONE rule, so no two surfaces can disagree.
+
+   Never accrues on an overdraft, same as before. */
+function accrue(bal, r){
+  if(bal<=0 || !r) return 0;
+  const liq=Math.min(bal, r.floor||0), inv=bal-liq;
+  return (liq*(r.cash||0) + inv*(r.invest||0))/365;
+}
+
+function buildSeries(sale, price, rent, home, rates){
   const {ev,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,
          recapDep,recapTax,cgTax,carNaturalDate,carNaturalAmt,carOwedAtEnd,
@@ -1485,9 +1507,8 @@ function buildSeries(sale, price, rent, home, apy){
   const map={};
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
   const series=[]; let bal=START_BAL, cur=T0;
-  const rate = apy||0;
   while(cur<=T1){
-    if(rate>0 && bal>0) bal += bal*rate/365;   // interest on the opening balance, never on an overdraft
+    bal += accrue(bal, rates);                 // two-tier, on the opening balance
     (map[cur]||[]).forEach(e=>bal+=e.a);
     const day={d:cur,b:+bal.toFixed(2),ev:(map[cur]||[]).map(e=>({a:e.a,l:e.l}))};
     const r=RECON[cur];
@@ -1526,7 +1547,8 @@ function buildSeries(sale, price, rent, home, apy){
    render() at a 30-year horizon.
    --------------------------------------------------------------------------------------- */
 const OPP_MAX=0.60;              // ceiling for the search; above this the question is moot
-let OPP_ROI=0.07;                // the rate the comparison line on the chart is drawn at
+let OPP_ROI=0.07;                // return earned on cash ABOVE the liquidity floor
+let LIQ_FLOOR=25000;             // operating cash: covers the trough and the dated obligations
 
 function oppScenario(sale, rent, home){
   const built = buildEvents(sale, priceOn(sale||T1), rent, home);
@@ -1535,10 +1557,10 @@ function oppScenario(sale, rent, home){
 }
 /* The balance walk from buildSeries, minus the per-day bookkeeping. `full` also returns the
    daily series, which the chart needs for the comparison line. */
-function oppWalk(sc, roi, full){
-  let bal=START_BAL, cur=T0; const rate=roi||0, series=full?[]:null;
+function oppWalk(sc, rates, full){
+  let bal=START_BAL, cur=T0; const series=full?[]:null;
   while(cur<=T1){
-    if(rate>0 && bal>0) bal += bal*rate/365;
+    bal += accrue(bal, rates);
     (sc.map[cur]||[]).forEach(e=>bal+=e.a);
     const r=RECON[cur]; if(r) bal=r.actual;
     if(full) series.push({d:cur,b:+bal.toFixed(2)});
@@ -1546,8 +1568,8 @@ function oppWalk(sc, roi, full){
   }
   return full? series : +bal.toFixed(2);
 }
-function oppNW(sc, home, roi){
-  const b=oppWalk(sc,roi), x=sc.built;
+function oppNW(sc, home, rates){
+  const b=oppWalk(sc,rates), x=sc.built;
   return netWorth({series:[{d:T1,b}], buyDate:x.buyDate, carPayoffDate:x.carPayoffDate,
                    carPayoff:x.carPayoff, suspendedLoss:x.suspendedLoss},
                   sc.sale, sc.rent, home, T1).nw;
@@ -1555,8 +1577,10 @@ function oppNW(sc, home, roi){
 /* keep-minus-sell is monotonically DECREASING in the rate: the selling side is holding more
    cash earlier, so every extra point of return is worth more to it. Monotone is what makes
    bisection safe here - on a non-monotone difference it would land on an arbitrary root. */
-function breakEvenROI(keepSc, sellSc, home){
-  const f = r => oppNW(keepSc,home,r) - oppNW(sellSc,home,r);
+/* Solves for the INVESTMENT rate, holding the cash rate and the liquidity floor fixed. Both
+   scenarios get the identical rate spec, so the only difference between them is the house. */
+function breakEvenROI(keepSc, sellSc, home, base){
+  const f = r => oppNW(keepSc,home,{...base,invest:r}) - oppNW(sellSc,home,{...base,invest:r});
   const at0=f(0);
   if(at0<0)          return {rate:0,    verdict:'sell', gap:at0};
   if(f(OPP_MAX)>0)   return {rate:null, verdict:'keep', gap:f(OPP_MAX)};
@@ -1569,7 +1593,7 @@ function breakEvenROI(keepSc, sellSc, home){
    and every event builder reads, so it is swapped and restored around the sweep. The restore
    sits in `finally` deliberately: leaving T1 pointing at the wrong horizon would silently
    corrupt every later render, not just this one. */
-function oppAcrossHorizons(rent, home, roi){
+function oppAcrossHorizons(rent, home, rates){
   const saveT1=T1, out=[];
   try{
     for(const k of ['h5','h15','h30']){
@@ -1580,8 +1604,8 @@ function oppAcrossHorizons(rent, home, roi){
       const keepSc=oppScenario(null, rent? {...rent, months}:null, home);
       const sellSc=oppScenario(SALE_FLOOR, null, home);
       out.push({key:k, label:HORIZONS[k].label, end:T1,
-                keep:oppNW(keepSc,home,roi), sell:oppNW(sellSc,home,roi),
-                be:breakEvenROI(keepSc,sellSc,home)});
+                keep:oppNW(keepSc,home,rates), sell:oppNW(sellSc,home,rates),
+                be:breakEvenROI(keepSc,sellSc,home,rates)});
     }
   } finally { T1=saveT1; }
   return out;
@@ -1720,8 +1744,9 @@ const nice = d => dd(d).toLocaleDateString('en-US',{month:'short',day:'numeric',
 
 /* The panel body. Split out of render() because it is only ever called when the panel is
    open, and because the horizon sweep is the expensive part of the whole app. */
-function fillOppPanel(rent, home, roi){
-  const rows=oppAcrossHorizons(rent, home, roi);
+function fillOppPanel(rent, home, rates){
+  const roi=rates.invest;
+  const rows=oppAcrossHorizons(rent, home, rates);
   const pct=b => b.verdict==='sell'? 'any return wins'
                : b.rate===null? `over ${(OPP_MAX*100).toFixed(0)}%`
                : (b.rate*100).toFixed(1)+'%';
@@ -1835,6 +1860,10 @@ function render(){
   // to be set before buildSeries runs and the donut has to be redrawn from the same figures.
   INFL_PCT = numOr('inflpct',3)/100;
   OPP_ROI  = numOr('opproi',7)/100;
+  LIQ_FLOOR= digits('liqfloor',0,5000000,25000);
+  /* ONE rate spec, used by the main projection and by both comparison scenarios. Operating cash
+     up to the floor earns the bank rate; only the surplus above it earns the investment rate. */
+  const RATES = {cash:apy, invest:OPP_ROI, floor:LIQ_FLOOR};
   DOWN_PCT = numOr('downpct',22);
   drawDonut();
   document.getElementById('downsm').textContent =
@@ -1846,7 +1875,7 @@ function render(){
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentTotal,myRentTotal,buyDate,buyCC,
          recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,midEscEnd,
-         rentNetIncome,rentIncTax,rentCostTotal,suspendedLoss}=buildSeries(sale,price,rent,home,apy);
+         rentNetIncome,rentIncTax,rentCostTotal,suspendedLoss}=buildSeries(sale,price,rent,home,RATES);
   // the chart draws only the selected window; the tiles and the running balance stay whole-series
   const VD = VIEW==='span'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
   // The last day in the window. Three tiles and netWorth all measure as of this date, so it is
@@ -1866,16 +1895,17 @@ function render(){
     : 0;
   const oppKeep = oppScenario(null, rent? {...rent, months:oppMonths} : null, home);
   const oppSell = oppScenario(SALE_FLOOR, null, home);
-  const OPPBE   = breakEvenROI(oppKeep, oppSell, home);
-  /* ⚠️ The chart line runs at `apy`, the SAME rate as the blue balance line — never at
-     OPP_ROI. Two lines on one chart at different compounding rates are not comparable: at
-     cash APY 0% against a 7% alternative the sell line ended 2.90x higher, and essentially
-     all of that gap was the rate rather than the house. The rate question belongs in the
-     panel, where both columns share OPP_ROI. */
-  const oppFull = oppWalk(oppSell, apy, true);
-  const oppVD   = VIEW==='span'? oppFull : oppFull.filter(d=>d.d.slice(0,4)===VIEW);
-  const oppEnd  = oppNW(oppSell, home, OPP_ROI);
-  const keepEnd = oppNW(oppKeep, home, OPP_ROI);
+  const OPPBE   = breakEvenROI(oppKeep, oppSell, home, RATES);
+  /* ⚠️ The chart line uses the SAME rate spec as the blue balance line. Two lines on one chart
+     at different compounding rates are not comparable: this shipped once with the line on the
+     investment rate while blue was on the cash rate, and at 0% vs 7% the sell line ended 2.90x
+     higher — nearly all of that gap being the rate rather than the house. With one shared spec
+     that class of bug is now impossible to reintroduce. */
+  const oppShown= document.getElementById('oppwrap').open;
+  const oppFull = oppShown? oppWalk(oppSell, RATES, true) : null;
+  const oppVD   = !oppFull? [] : VIEW==='span'? oppFull : oppFull.filter(d=>d.d.slice(0,4)===VIEW);
+  const oppEnd  = oppNW(oppSell, home, RATES);
+  const keepEnd = oppNW(oppKeep, home, RATES);
 
   const svg=document.getElementById('tl');
   while(svg.firstChild) svg.removeChild(svg.firstChild);
@@ -1906,8 +1936,8 @@ function render(){
   // The comparison line has to be inside the scale or it draws off the top of the chart.
   let oLo=Infinity, oHi=-Infinity;
   for(const d of oppVD){ if(d.b<oLo) oLo=d.b; if(d.b>oHi) oHi=d.b; }
-  const bmin=Math.min(0, oLo, ...VD.map(d=>Math.min(d.b, realAt(d.b,d.d))));
-  const bmax=Math.max(oHi, ...VD.map(d=>d.b));
+  const bmin=Math.min(0, isFinite(oLo)?oLo:Infinity, ...VD.map(d=>Math.min(d.b, realAt(d.b,d.d))));
+  const bmax=Math.max(isFinite(oHi)?oHi:-Infinity, ...VD.map(d=>d.b));
   // Snap the scale to the STEP, not a fixed 10k, or the labels read $990k / $1,990k.
   const niceStep=v=>{const m=Math.pow(10,Math.floor(Math.log10(Math.max(1,v)))), r=v/m;
                      return (r<=1?1:r<=2?2:r<=2.5?2.5:r<=5?5:10)*m;};
@@ -2006,8 +2036,8 @@ function render(){
     let opath=''; let oprev=-1;
     oppVD.forEach((d,i)=>{ if(!keep(i)) return; const x=X(i),y=Y(d.b);
       opath+= oprev<0?`M${x} ${y}`:`L${x} ${Y(oppVD[oprev].b)} L${x} ${y}`; oprev=i;});
-    add('path',{d:opath,fill:'none',stroke:'var(--s2)','stroke-width':1.6,
-                'stroke-linejoin':'round',opacity:.85});
+    add('path',{d:opath,fill:'none',stroke:'var(--s8)','stroke-width':1.8,
+                'stroke-linejoin':'round',opacity:.9});
   }
   add('path',{d:band,fill:'var(--s7)',stroke:'none',opacity:.08});
   add('path',{d:rpath,fill:'none',stroke:'var(--s7)','stroke-width':1.6,'stroke-linejoin':'round'});
@@ -2294,9 +2324,11 @@ function render(){
     OPPBE.verdict==='sell' ? 'selling wins outright'
     : OPPBE.rate===null ? `keeping wins below ${(OPP_MAX*100).toFixed(0)}%`
     : `break-even ${(OPPBE.rate*100).toFixed(1)}%`;
-  document.getElementById('keyopp').textContent =
-    `sell Midland now (cash at ${(apy*100).toFixed(2)}%, same as the balance line)`;
-  if(oppw.open) fillOppPanel(rent, home, OPP_ROI);
+  document.getElementById('keyoppwrap').hidden = !oppShown;
+  document.getElementById('keyopp').textContent = 'sell Midland now';
+  document.getElementById('liqsm').textContent =
+    `below ${fmt0(LIQ_FLOOR)} earns ${(apy*100).toFixed(2)}% · above it earns ${(OPP_ROI*100).toFixed(2)}%`;
+  if(oppw.open) fillOppPanel(rent, home, RATES);
 
   // ---- table ----
   // Every row is built over the WHOLE series so the running balance stays true, then only the
@@ -2455,7 +2487,7 @@ document.getElementById('hbuy').addEventListener('change',e=>{
 document.getElementById('priceover').addEventListener('change',e=>{
   document.getElementById('pricefields').hidden = !e.target.checked; render();
 });
-['hamt','hutil','hbuycash','hbuypmt','hbuycc','rentbasis','midvalue','rentmaint'].forEach(id=>{
+['hamt','hutil','hbuycash','hbuypmt','hbuycc','rentbasis','midvalue','rentmaint','liqfloor'].forEach(id=>{
   const el=document.getElementById(id), max=(id==='hbuycash'||id==='rentbasis'||id==='midvalue')?2000000:100000;
   el.addEventListener('input',render);
   el.addEventListener('blur',()=>{el.value=digits(id,0,max,0).toLocaleString('en-US');render();});
