@@ -225,6 +225,19 @@
   .modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
          padding:14px;background:rgba(11,11,11,.55);backdrop-filter:blur(2px)}
   .modal[hidden]{display:none}
+  /* Applying the sheet is a blocking recompute, so it gets a real spinner rather than a frozen
+     page. z-index sits ABOVE the sheet (60) so it covers the controls being applied. */
+  .spin{position:fixed;inset:0;z-index:70;display:flex;flex-direction:column;gap:12px;
+        align-items:center;justify-content:center;background:rgba(11,11,11,.55);backdrop-filter:blur(3px)}
+  .spin[hidden]{display:none}
+  .spinring{width:40px;height:40px;border:3px solid rgba(255,255,255,.28);border-top-color:#fff;
+            border-radius:50%;animation:spinturn .7s linear infinite}
+  @keyframes spinturn{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion: reduce){ .spinring{animation-duration:2s} }
+  .spin p{margin:0;color:#fff;font-size:13px;letter-spacing:.02em}
+  .dirtybadge{display:none;font-size:11.5px;color:var(--s4);font-weight:600;margin-left:10px}
+  .dirtybadge.on{display:inline}
+  .recrow button.wide{min-width:180px}
   @media (prefers-color-scheme: dark){
     :root:where(:not([data-theme="light"])) .modal{background:rgba(0,0,0,.66)}
   }
@@ -470,10 +483,16 @@
     </div>
   </details>
 
+  <div class="spin" id="spinner" hidden role="status" aria-live="polite">
+    <div class="spinring" aria-hidden="true"></div>
+    <p>Recomputing the projection&hellip;</p>
+  </div>
+
   <div class="modal" id="setmodal" hidden role="dialog" aria-modal="true" aria-labelledby="settitle">
     <div class="sheet">
       <h3 id="settitle">Home sale scenario</h3>
-      <p class="hint">Everything downstream recomputes as you change these.</p>
+      <p class="hint">Set everything you want to change, then hit <b>Update projection</b> &mdash;
+         the whole model recomputes at once rather than on every keystroke.</p>
       <div class="controls">
         <div class="ctl">
           <label for="saledate">Sale (closing) date</label>
@@ -528,8 +547,11 @@
           <span class="rends" id="oppsm">&nbsp;</span>
         </div>
         <div class="ctl">
-          <label for="liqfloor">Keep liquid (floor earning the cash APY)</label>
-          <input type="text" id="liqfloor" inputmode="numeric" value="25,000">
+          <label for="liqfloor">Keep liquid &mdash; floor in today's dollars</label>
+          <div class="moneyfld"><span>$</span>
+            <input type="text" id="liqfloor" inputmode="numeric" autocomplete="off" value="25,000"
+                   aria-label="Cash to keep liquid, in today's dollars">
+          </div>
           <span class="rends" id="liqsm">&nbsp;</span>
         </div>
         <div class="ctl">
@@ -670,7 +692,11 @@
         </div>
       </div>
 
-      <div class="recrow"><button id="setdone">Done</button></div>
+      <div class="recrow">
+        <button id="setapply" class="wide">Update projection</button>
+        <button id="setdone" class="ghost">Close</button>
+        <span class="dirtybadge" id="setdirty">unapplied changes</span>
+      </div>
     </div>
   </div>
 
@@ -1493,9 +1519,13 @@ function buildEvents(sale, price, rent, home){
    pays) came to contradict each other. There is now ONE rule, so no two surfaces can disagree.
 
    Never accrues on an overdraft, same as before. */
-function accrue(bal, r){
+function accrue(bal, r, d){
   if(bal<=0 || !r) return 0;
-  const liq=Math.min(bal, r.floor||0), inv=bal-liq;
+  /* The floor is stated in T0 dollars and INFLATES, using the same `inflAt` the costs do — a
+     $25,000 buffer in 2026 does not cover the same month of bills in 2056. One inflation
+     assumption for the whole model, not two. */
+  const floor=(r.floor||0)*inflAt(d);
+  const liq=Math.min(bal, floor), inv=bal-liq;
   return (liq*(r.cash||0) + inv*(r.invest||0))/365;
 }
 
@@ -1508,7 +1538,7 @@ function buildSeries(sale, price, rent, home, rates){
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
   const series=[]; let bal=START_BAL, cur=T0;
   while(cur<=T1){
-    bal += accrue(bal, rates);                 // two-tier, on the opening balance
+    bal += accrue(bal, rates, cur);            // two-tier, on the opening balance
     (map[cur]||[]).forEach(e=>bal+=e.a);
     const day={d:cur,b:+bal.toFixed(2),ev:(map[cur]||[]).map(e=>({a:e.a,l:e.l}))};
     const r=RECON[cur];
@@ -1549,6 +1579,7 @@ function buildSeries(sale, price, rent, home, rates){
 const OPP_MAX=0.60;              // ceiling for the search; above this the question is moot
 let OPP_ROI=0.07;                // return earned on cash ABOVE the liquidity floor
 let LIQ_FLOOR=25000;             // operating cash: covers the trough and the dated obligations
+let OPPC={key:null};             // memo for the whole comparison; keyed on its real inputs, not VIEW
 
 function oppScenario(sale, rent, home){
   const built = buildEvents(sale, priceOn(sale||T1), rent, home);
@@ -1560,7 +1591,7 @@ function oppScenario(sale, rent, home){
 function oppWalk(sc, rates, full){
   let bal=START_BAL, cur=T0; const series=full?[]:null;
   while(cur<=T1){
-    bal += accrue(bal, rates);
+    bal += accrue(bal, rates, cur);
     (sc.map[cur]||[]).forEach(e=>bal+=e.a);
     const r=RECON[cur]; if(r) bal=r.actual;
     if(full) series.push({d:cur,b:+bal.toFixed(2)});
@@ -1746,7 +1777,9 @@ const nice = d => dd(d).toLocaleDateString('en-US',{month:'short',day:'numeric',
    open, and because the horizon sweep is the expensive part of the whole app. */
 function fillOppPanel(rent, home, rates){
   const roi=rates.invest;
-  const rows=oppAcrossHorizons(rent, home, rates);
+  // Six event builds and three bisections. Memoised on the same key as the rest of the panel.
+  if(!OPPC.rows) OPPC.rows = oppAcrossHorizons(rent, home, rates);
+  const rows=OPPC.rows;
   const pct=b => b.verdict==='sell'? 'any return wins'
                : b.rate===null? `over ${(OPP_MAX*100).toFixed(0)}%`
                : (b.rate*100).toFixed(1)+'%';
@@ -1893,19 +1926,32 @@ function render(){
   const oppMonths = rent
     ? Math.max(1,(YR(T1)-YR(rent.start))*12 + (+T1.slice(5,7) - +rent.start.slice(5,7)) + 1)
     : 0;
-  const oppKeep = oppScenario(null, rent? {...rent, months:oppMonths} : null, home);
-  const oppSell = oppScenario(SALE_FLOOR, null, home);
-  const OPPBE   = breakEvenROI(oppKeep, oppSell, home, RATES);
+  /* Cached on everything it actually depends on — and VIEW is deliberately NOT in the key.
+     Switching the chart window is still a live render, so without this, picking a year would
+     rebuild two scenarios and re-run a 24-step bisection to produce a number that cannot have
+     changed. */
+  const oppKeyStr = JSON.stringify([rent,home,RATES,MID_VALUE_TODAY,MID_APPREC,
+                                    DOWN_PCT,INFL_PCT,T1,sale,price,RECON]);
+  if(OPPC.key!==oppKeyStr){
+    const keepSc=oppScenario(null, rent? {...rent, months:oppMonths} : null, home);
+    const sellSc=oppScenario(SALE_FLOOR, null, home);
+    OPPC={key:oppKeyStr, keepSc, sellSc,
+          be:breakEvenROI(keepSc,sellSc,home,RATES),
+          keepEnd:oppNW(keepSc,home,RATES), sellEnd:oppNW(sellSc,home,RATES),
+          full:null, rows:null};
+  }
+  const oppKeep = OPPC.keepSc, oppSell = OPPC.sellSc, OPPBE = OPPC.be;
   /* ⚠️ The chart line uses the SAME rate spec as the blue balance line. Two lines on one chart
      at different compounding rates are not comparable: this shipped once with the line on the
      investment rate while blue was on the cash rate, and at 0% vs 7% the sell line ended 2.90x
      higher — nearly all of that gap being the rate rather than the house. With one shared spec
      that class of bug is now impossible to reintroduce. */
   const oppShown= document.getElementById('oppwrap').open;
-  const oppFull = oppShown? oppWalk(oppSell, RATES, true) : null;
+  if(oppShown && !OPPC.full) OPPC.full = oppWalk(oppSell, RATES, true);
+  const oppFull = oppShown? OPPC.full : null;
   const oppVD   = !oppFull? [] : VIEW==='span'? oppFull : oppFull.filter(d=>d.d.slice(0,4)===VIEW);
-  const oppEnd  = oppNW(oppSell, home, RATES);
-  const keepEnd = oppNW(oppKeep, home, RATES);
+  const oppEnd  = OPPC.sellEnd;
+  const keepEnd = OPPC.keepEnd;
 
   const svg=document.getElementById('tl');
   while(svg.firstChild) svg.removeChild(svg.firstChild);
@@ -2327,8 +2373,11 @@ function render(){
   document.getElementById('keyoppwrap').hidden = !oppShown;
   document.getElementById('keyopp').textContent = 'sell Midland now';
   document.getElementById('liqsm').textContent =
-    `below ${fmt0(LIQ_FLOOR)} earns ${(apy*100).toFixed(2)}% · above it earns ${(OPP_ROI*100).toFixed(2)}%`;
-  if(oppw.open) fillOppPanel(rent, home, RATES);
+    `earns ${(apy*100).toFixed(2)}% below the floor, ${(OPP_ROI*100).toFixed(2)}% above · `
+    + `floor grows with inflation to ${fmt0(LIQ_FLOOR*inflAt(T1))} by ${YR(T1)}`;
+  /* The panel body depends on nothing that VIEW changes, and its exits table alone costs six
+     buildEvents. Fill it once per real input change, not once per view switch. */
+  if(oppw.open && !OPPC.filled){ fillOppPanel(rent, home, RATES); OPPC.filled=true; }
 
   // ---- table ----
   // Every row is built over the WHOLE series so the running balance stays true, then only the
@@ -2464,38 +2513,40 @@ function priceVal(){
   return Math.min(PRICE_MAX, Math.max(PRICE_MIN, n));
 }
 const showPrice=v=>{$p.value=v.toLocaleString('en-US');};
-$p.addEventListener('input',()=>{$pr.value=priceVal();render();});
-$p.addEventListener('blur',()=>{const v=priceVal();showPrice(v);$pr.value=v;render();});
+/* The slider and its box stay live with EACH OTHER — that feedback has to be instant — but the
+   recompute they trigger is batched like every other sheet edit. */
+$p.addEventListener('input',()=>{$pr.value=priceVal();markDirty();});
+$p.addEventListener('blur',()=>{const v=priceVal();showPrice(v);$pr.value=v;markDirty();});
 $p.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();$p.blur();} });
-$pr.addEventListener('input',()=>{showPrice(+$pr.value);render();});
-document.getElementById('saledate').addEventListener('input',render);
-document.getElementById('notsold').addEventListener('change',render);
+$pr.addEventListener('input',()=>{showPrice(+$pr.value);markDirty();});
+document.getElementById('saledate').addEventListener('input',markDirty);
+document.getElementById('notsold').addEventListener('change',markDirty);
 document.getElementById('oppwrap').addEventListener('toggle',render);
 document.getElementById('renton').addEventListener('change',e=>{
-  document.getElementById('rentfields').hidden = !e.target.checked; render();
+  document.getElementById('rentfields').hidden = !e.target.checked; markDirty();
 });
 ['rentstart','rentterm','hstart','hterm','hbuydate'].forEach(id=>
-  document.getElementById(id).addEventListener('input',render));
+  document.getElementById(id).addEventListener('input',markDirty));
 document.getElementById('hown').addEventListener('change',e=>{
-  document.getElementById('hfields').hidden = !e.target.checked; render();
+  document.getElementById('hfields').hidden = !e.target.checked; markDirty();
 });
 document.getElementById('hbuy').addEventListener('change',e=>{
-  document.getElementById('hbuyfields').hidden = !e.target.checked; render();
+  document.getElementById('hbuyfields').hidden = !e.target.checked; markDirty();
 });
 ['rentrate','renttax','rentmgmt','rentvac','rentescal','hescal','apprec','cashapy','downpct','inflpct','opproi']
-  .forEach(id=>document.getElementById(id).addEventListener('input',render));
+  .forEach(id=>document.getElementById(id).addEventListener('input',markDirty));
 document.getElementById('priceover').addEventListener('change',e=>{
-  document.getElementById('pricefields').hidden = !e.target.checked; render();
+  document.getElementById('pricefields').hidden = !e.target.checked; markDirty();
 });
 ['hamt','hutil','hbuycash','hbuypmt','hbuycc','rentbasis','midvalue','rentmaint','liqfloor'].forEach(id=>{
   const el=document.getElementById(id), max=(id==='hbuycash'||id==='rentbasis'||id==='midvalue')?2000000:100000;
-  el.addEventListener('input',render);
-  el.addEventListener('blur',()=>{el.value=digits(id,0,max,0).toLocaleString('en-US');render();});
+  el.addEventListener('input',markDirty);
+  el.addEventListener('blur',()=>{el.value=digits(id,0,max,0).toLocaleString('en-US');markDirty();});
   el.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();el.blur();} });
 });
 const $ra=document.getElementById('rentamt');
-$ra.addEventListener('input',render);
-$ra.addEventListener('blur',()=>{$ra.value=digits('rentamt',1,20000,RENT_DEFAULT.amt).toLocaleString('en-US');render();});
+$ra.addEventListener('input',markDirty);
+$ra.addEventListener('blur',()=>{$ra.value=digits('rentamt',1,20000,RENT_DEFAULT.amt).toLocaleString('en-US');markDirty();});
 $ra.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();$ra.blur();} });
 /* One select carries two different things: the HORIZON (how far the model runs) and the
    WINDOW (what slice of it the chart shows). Picking a horizon rebuilds the year list, since
@@ -2530,14 +2581,33 @@ document.getElementById('vwprev').addEventListener('click',()=>
 document.getElementById('vwnext').addEventListener('click',()=>
   setView(VIEWS[VIEWS.indexOf(VIEW==='span'?HORIZON:VIEW)+1]));
 setView(VIEW);
-/* the scenario controls live in a sheet; edits apply live, so "Done" only closes it */
+/* The sheet BATCHES its edits. A full render walks up to 11,000 days, rebuilds two comparison
+   scenarios and bisects for the break-even, so doing that on every keystroke made typing in the
+   sheet feel stuck. Edits now only mark the form dirty; the recompute happens once on apply,
+   behind a spinner. Closing the sheet applies too, so a pending edit can never be lost. */
 const $set=document.getElementById('setmodal');
-const openSet =()=>{$set.hidden=false; document.body.style.overflow='hidden';};
+const $spin=document.getElementById('spinner');
+let DIRTY=false;
+const showDirty=()=>document.getElementById('setdirty').classList.toggle('on',DIRTY);
+function markDirty(){ DIRTY=true; showDirty(); }
+/* Two frames, not one: the first lets the spinner into the DOM, the second guarantees it has
+   actually PAINTED before the blocking work starts. With a single rAF the browser can coalesce
+   both, and the spinner never appears. */
+function applyChanges(close){
+  if(!DIRTY){ if(close) closeSet(); return; }
+  $spin.hidden=false;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    try{ render(); }
+    finally{ $spin.hidden=true; DIRTY=false; showDirty(); if(close) closeSet(); }
+  }));
+}
+const openSet =()=>{$set.hidden=false; document.body.style.overflow='hidden'; showDirty();};
 const closeSet=()=>{$set.hidden=true;  document.body.style.overflow='';};
 document.getElementById('setbtn').addEventListener('click',openSet);
-document.getElementById('setdone').addEventListener('click',closeSet);
-$set.addEventListener('mousedown',e=>{ if(e.target===$set) closeSet(); });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$set.hidden) closeSet(); });
+document.getElementById('setapply').addEventListener('click',()=>applyChanges(true));
+document.getElementById('setdone').addEventListener('click',()=>applyChanges(true));
+$set.addEventListener('mousedown',e=>{ if(e.target===$set) applyChanges(true); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$set.hidden) applyChanges(true); });
 const pgStep=n=>{const i=PMONTHS.indexOf(TPAGE)+n;
   if(i>=0&&i<PMONTHS.length){TPAGE=PMONTHS[i];TPAGE_PINNED=true;render();}};
 document.getElementById('pgprev').addEventListener('click',()=>pgStep(-1));

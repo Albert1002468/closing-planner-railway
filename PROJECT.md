@@ -690,6 +690,48 @@ steps, and `oppWalk` still matches `buildSeries` to the cent at 0/3/7/15/30%.
 open** (`oppShown`). `oppVD` is `[]` otherwise, so the `isFinite` guards on `oLo`/`oHi` are
 load-bearing — without them an absent line poisons the y-scale with `Infinity`.
 
+⚠️ **The floor INFLATES.** It is stated in `T0` dollars and scaled by the same `inflAt(d)` the
+costs use — $25,000 today is **$58,914 by 2056**. A buffer that stayed nominally flat would
+quietly shrink to a fraction of a month's bills over a 30-year window while the model claimed it
+was still a cushion. One inflation assumption for the whole model, not two. Because the floor
+grows, a large floor bites harder than it used to: at $500,000 the 30-year break-even is 19.2%
+(it was 16.56% when the floor was flat).
+
+### Batched edits and the spinner (rule 28)
+
+The sheet no longer recomputes on every keystroke. Edits call `markDirty()`; the recompute runs
+once, on apply, behind a spinner. **Why** — measured work per render, at the 30-year horizon:
+
+| Render | `buildEvents` | day-steps |
+|---|---|---|
+| cold, panel closed | 3 | 610,390 |
+| cold, panel **open** | 15 | **1,610,660** |
+| cached (view switch) | 1 | 11,098 |
+| cached, panel open | 1 | 11,098 |
+
+Every keystroke used to pay the cold cost. Two things fix it, and both were needed:
+
+**`OPPC`, the comparison memo.** Keyed on everything the comparison actually depends on — and
+**`VIEW` is deliberately not in the key**, because switching the chart window cannot change a
+break-even rate. `OPPC.filled` memoises the panel body separately; its exits table alone is six
+`buildEvents`. A cached render is now **one** `buildEvents` and one series walk, the floor.
+
+**Batching.** `applyChanges(close)` is wired to the apply button, the close button, the backdrop
+and Escape, so a pending edit can never be silently lost. The field-visibility toggles still fire
+instantly — only the recompute waits.
+
+⚠️ **Two `requestAnimationFrame`s, not one.** The first gets the spinner into the DOM, the second
+guarantees it has actually *painted* before the blocking work starts. With a single rAF the
+browser can coalesce both and the spinner never appears at all.
+
+⚠️ **Timing this in headless Chrome does not work.** `performance.now()` is clamped to 0, and
+`Date.now()` does not advance during synchronous JS under `--virtual-time-budget` — so a
+busy-wait loop (`while(Date.now()-t0 < 300)`) **never terminates**, hangs the browser, and the
+orphaned processes then block every later headless run until they are killed. Count work
+(`buildEvents` calls, day-steps) instead; it is deterministic and it is what actually changed.
+Also: `timeout` does not exist on macOS — a run wrapped in it never starts, and the empty output
+looks exactly like a page crash.
+
 **What the model still cannot see.** The investment rate is applied as a *smooth daily accrual*.
 Real returns are volatile, and a drawdown timed against one of the dated obligations forces
 selling at the bottom. Nothing here shows that sequence risk, and it is the single largest
