@@ -734,6 +734,14 @@ variance the reader originally typed**, not the stored balance — the balance i
 (`actual = projected + variance`), and the variance is the number they actually entered and are
 correcting. It also requires a reason, kept in the audit log.
 
+⚠️⚠️ **`refreshTrigger()` must account for corrections too.** It hid the reconcile button
+whenever `eligibleDates()` was empty — correct only while the sheet could *only add* entries.
+Once corrections exist, that hides the sheet at exactly the moment a typo needs fixing, and
+anyone reconciling daily eventually has no eligible days and loses the button entirely. It now
+hides only when there is nothing to add **and** nothing to correct. `fillForm()` also opens
+straight into Correct mode when "New entry" would have an empty date list, and disables the
+mode that has no dates.
+
 ⚠️ `/api/state` is **unauthenticated** and now returns `edits` alongside `reconciles`. Fine for
 a single-user planner on an unguessable URL, but it means the whole reconciliation history is
 readable by anyone with the link — worth knowing before sharing it.

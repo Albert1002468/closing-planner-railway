@@ -2798,26 +2798,33 @@ function projectedFor(dateS){
 }
 const $=id=>document.getElementById(id);
 
-function refreshTrigger(){ $('recbtn').hidden = eligibleDates().length===0; }
+/* ⚠️ The trigger must also survive "nothing left to reconcile". It used to hide whenever
+   `eligibleDates()` was empty, which is correct only while the sheet can ONLY add entries — once
+   corrections exist, that hid the sheet at exactly the moment a typo needed fixing. Anyone
+   reconciling daily eventually has no eligible days and loses the button entirely. */
+function refreshTrigger(){
+  $('recbtn').hidden = eligibleDates().length===0 && Object.keys(RECON).length===0;
+}
 
 /* Two modes on one form. Correcting is deliberately a separate mode rather than "just save over
    it": the date list, the hint, the button and the endpoint all differ, and a correction is
    logged to an audit trail server-side. */
 let RECMODE='new';
 const reconciledDates = () => Object.keys(RECON).sort().reverse();
-function setRecMode(m){
-  RECMODE=m;
-  const isFix = m==='fix';
+// One owner for the visual state: fillForm. This just picks the mode and re-renders.
+function setRecMode(m){ RECMODE=m; fillForm(); }
+function fillForm(){
+  /* With nothing left to reconcile, "New entry" has an empty date list — so open in Correct
+     mode rather than showing a form that cannot be submitted. */
+  if(RECMODE==='new' && eligibleDates().length===0 && reconciledDates().length>0) RECMODE='fix';
+  const isFix = RECMODE==='fix';
+  const dates = isFix? reconciledDates() : eligibleDates();
+  $('modenew').disabled = eligibleDates().length===0;
   $('modenew').classList.toggle('on',!isFix); $('modenew').setAttribute('aria-pressed',String(!isFix));
   $('modefix').classList.toggle('on', isFix); $('modefix').setAttribute('aria-pressed',String(isFix));
   $('reasonfld').hidden=!isFix;
   $('recformtitle').textContent = isFix? 'Correct a reconcile' : 'Reconcile balance';
   $('recsave').textContent = isFix? 'Save correction' : 'Save reconcile';
-  fillForm();
-}
-function fillForm(){
-  const isFix = RECMODE==='fix';
-  const dates = isFix? reconciledDates() : eligibleDates();
   $('recdate').innerHTML=dates.map(d=>`<option value="${d}">${dd(d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</option>`).join('');
   $('modefix').disabled = reconciledDates().length===0;
   $('rechint').textContent=(SRV.online?'':'Offline — entries cannot be saved without the server. ')+
