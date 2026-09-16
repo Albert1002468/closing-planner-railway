@@ -697,6 +697,34 @@ was still a cushion. One inflation assumption for the whole model, not two. Beca
 grows, a large floor bites harder than it used to: at $500,000 the 30-year break-even is 19.2%
 (it was 16.56% when the floor was flat).
 
+### The past is not a projection (rule 30)
+
+⚠️ **`accrue` returns 0 for any date before `TODAY_ISO`.** Days that have already happened are
+history: their balance is whatever actually occurred, anchored by `START_BAL` and pinned by any
+reconciles. Accruing a *projected* rate across them meant that changing an assumption silently
+rewrote dollars already lived through — and already reconciled against. Before the fix, nudging
+the cash APY moved the Aug 14 opening balance. Verified: every rate input (`cashapy`, `opproi`,
+`liqfloor`, `inflpct`) now leaves 2026-08-14 / 08-25 / 09-05 / 09-15 **bit-identical** while
+every future day still responds.
+
+Rates are the only settings that reached backwards. Everything else — rent, price, down payment,
+inflation on costs — only drives events dated in the future, so it was already safe.
+
+⚠️ **`SALE_FLOOR` must BE today, not a date someone typed on the day they wrote the line.** It
+was hardcoded to `'2026-09-15'` and had already drifted into the past, so the earliest allowed
+sale — and the whole "sell now" comparison — were dated yesterday. Now
+`TODAY_ISO > T0 ? TODAY_ISO : T0`, which also guarantees it can never precede the projection
+start. **Audit the other hardcoded dates the same way**: `T0`, `FENCE_PAID` and the 2026-09-18
+closing are genuine historical anchors and must NOT move, but anything meaning "now" must be
+derived.
+
+**The investment return defaults to 0%,** deliberately. The blue line is then a conservative
+projection that assumes no market return at all, and real gains arrive through
+**reconciliation** — where an account that grew shows up as lime-green positive variance and
+rebases everything after it. Projecting 7% instead would bake an assumption into the line you
+use for cash-flow planning. Raise it when you want to ask the opportunity-cost question; the
+break-even panel solves for its own rate regardless and is unaffected by the default.
+
 ### Reading the comparison, and the live date preview
 
 ⚠️ **The comparison line's gap is not visible to the eye, and that is a scale problem, not a

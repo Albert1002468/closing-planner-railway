@@ -733,7 +733,7 @@
             </div>
             <div class="ctl">
               <label for="opproi">Investment return %/yr &mdash; above the floor</label>
-              <input type="number" id="opproi" min="0" max="60" step="0.25" value="7">
+              <input type="number" id="opproi" min="0" max="60" step="0.25" value="0">
             </div>
             <div class="ctl">
               <label for="downpct">OKC down payment %</label>
@@ -1582,6 +1582,11 @@ function buildEvents(sale, price, rent, home){
    Never accrues on an overdraft, same as before. */
 function accrue(bal, r, d){
   if(bal<=0 || !r) return 0;
+  /* ⚠️ Nothing accrues before TODAY. Days that have already happened are history: their balance
+     is whatever actually occurred, pinned by START_BAL and by any reconciles. Accruing a
+     PROJECTED rate across them means changing an assumption silently rewrites dollars you have
+     already lived through — and already reconciled against. Only tomorrow onward is a forecast. */
+  if(lt(d, TODAY_ISO)) return 0;
   /* The floor is stated in T0 dollars and INFLATES, using the same `inflAt` the costs do — a
      $25,000 buffer in 2026 does not cover the same month of bills in 2056. One inflation
      assumption for the whole model, not two. */
@@ -1638,7 +1643,7 @@ function buildSeries(sale, price, rent, home, rates){
    render() at a 30-year horizon.
    --------------------------------------------------------------------------------------- */
 const OPP_MAX=0.60;              // ceiling for the search; above this the question is moot
-let OPP_ROI=0.07;                // return earned on cash ABOVE the liquidity floor
+let OPP_ROI=0;                   // return earned on cash ABOVE the liquidity floor
 let LIQ_FLOOR=25000;             // operating cash: covers the trough and the dated obligations
 let OPPC={key:null};             // memo for the whole comparison; keyed on its real inputs, not VIEW
 
@@ -1829,7 +1834,10 @@ function readHome(){
            cc:   digits('hbuycc',0,100000,BUY_DEFAULT.cc)};
   return h;
 }
-const SALE_FLOOR='2026-09-15';
+/* ⚠️ Was hardcoded to the day it was written, and had already drifted into the PAST — the
+   earliest possible sale, and the "sell now" comparison, were both dated yesterday. It has to
+   BE today, and it can never precede the projection start. */
+const SALE_FLOOR = TODAY_ISO > T0 ? TODAY_ISO : T0;
 let LAST_SALE_MIN=null;      // so a sale date parked on the rent floor can follow it
 let SALE_BEFORE_RENT=null;   // the date renting pushed off, to put back when the floor lifts
 let SALE_AUTO=true;          // true = the sale date tracks the end of the tenancy, both ways
@@ -1990,7 +1998,7 @@ function render(){
   // Down payment drives the cash wire, the loan, the P&I and the prepaid interest, so it has
   // to be set before buildSeries runs and the donut has to be redrawn from the same figures.
   INFL_PCT = numOr('inflpct',3)/100;
-  OPP_ROI  = numOr('opproi',7)/100;
+  OPP_ROI  = numOr('opproi',0)/100;
   LIQ_FLOOR= digits('liqfloor',0,5000000,25000);
   /* ONE rate spec, used by the main projection and by both comparison scenarios. Operating cash
      up to the floor earns the bank rate; only the surplus above it earns the investment rate. */
