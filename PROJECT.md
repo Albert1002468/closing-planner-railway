@@ -697,6 +697,22 @@ was still a cushion. One inflation assumption for the whole model, not two. Beca
 grows, a large floor bites harder than it used to: at $500,000 the 30-year break-even is 19.2%
 (it was 16.56% when the floor was flat).
 
+### Cash to close is anchored to the lender's figure
+
+`nhCashToClose()` must equal **$109,504.92 at 22% down** — the figure from the lender, which is
+authoritative over the component build-up. `RELO_SHORTFALL` (72.32) is the line that closes the
+gap, entered separately so the donut still reconciles and the shortfall stays visible.
+
+⚠️ **It must not scale with `DOWN_PCT`.** A relo shortfall is a fixed dollar amount, not a share
+of the price. Verified: 72.32 flat at 15% / 22% / 30% down, while the total moves
+$72,491.06 / $109,504.92 / $151,806.48.
+
+⚠️ **Worth re-checking against an actual Closing Disclosure.** The component build-up was
+already within **$72.32** of the stated figure, which does not match the description of the
+relocation company covering materially less. Either the shortfall really is that small, or relo
+dropped a larger itemised cost and something else in the build-up is too high by about the same
+amount — the total is right either way, but the itemisation may not be.
+
 ### The past is not a projection (rule 30)
 
 ⚠️ **`accrue` returns 0 for any date before `TODAY_ISO`.** Days that have already happened are

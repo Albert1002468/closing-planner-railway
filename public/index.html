@@ -823,6 +823,8 @@ const nhPI    = () => { const i=NH_RATE/12, L=nhLoan();
                         return +(L*i/(1-Math.pow(1+i,-NH_TERM))).toFixed(2); };
 const nhPrepaid = () => +(nhLoan()*NH_RATE/365*NH_PREPAID_DAYS).toFixed(2);
 
+/* Set so cash to close lands on the figure from the lender: $109,504.92 at 22% down. */
+const RELO_SHORTFALL = 72.32;
 const closingSlices = () => [
   {l:`Down payment (${DOWN_PCT}%)`, v:nhDown(), c:'var(--s1)'},
   {l:'Discount points',    v:11742.48,  c:'var(--s2)'},
@@ -832,6 +834,11 @@ const closingSlices = () => [
   {l:`Prepaid interest (${NH_PREPAID_DAYS} days)`, v:nhPrepaid(), c:'var(--s5)'},
   {l:'Escrow: 3 mo insurance', v:425.49, c:'var(--s4)'},
   {l:'Escrow: 4 mo property tax', v:200.00, c:'var(--s7)'},
+  /* Relo covers less of the buyer-side closing costs than first assumed. Its own line, not
+     folded into another figure, so the donut still reconciles to the stated cash to close and
+     the shortfall stays visible. ⚠️ It must NOT scale with DOWN_PCT — a relo shortfall is a
+     fixed dollar amount, not a share of the price. */
+  {l:'Closing costs relo does not cover', v:RELO_SHORTFALL, c:'var(--s6)'},
 ];
 const credits = [
   {l:'Builder / seller credit', v:-15000.00},
