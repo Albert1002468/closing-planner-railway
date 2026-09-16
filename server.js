@@ -35,21 +35,43 @@ try {
   const db = new DatabaseSync(path.join(DATA_DIR, 'planner.db'));
   db.exec(`CREATE TABLE IF NOT EXISTS reconciles (
     date TEXT PRIMARY KEY, actual REAL NOT NULL, note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL)`);
+  /* Corrections live in their own table, never by mutating history in place. A separate table
+     also means no migration of `reconciles` — existing rows are untouched. */
+  db.exec(`CREATE TABLE IF NOT EXISTS reconcile_edits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL,
+    prev_actual REAL NOT NULL, prev_note TEXT NOT NULL DEFAULT '',
+    new_actual REAL NOT NULL, new_note TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT '', edited_at TEXT NOT NULL)`);
   store = {
     kind: 'sqlite',
     all: () => db.prepare('SELECT date, actual, note, created_at FROM reconciles ORDER BY date').all(),
     has: d => !!db.prepare('SELECT 1 AS x FROM reconciles WHERE date = ?').get(d),
+    get: d => db.prepare('SELECT date, actual, note, created_at FROM reconciles WHERE date = ?').get(d),
     insert: r => db.prepare('INSERT INTO reconciles (date,actual,note,created_at) VALUES (?,?,?,?)')
-                   .run(r.date, r.actual, r.note, r.created_at)
+                   .run(r.date, r.actual, r.note, r.created_at),
+    update: r => db.prepare('UPDATE reconciles SET actual = ?, note = ? WHERE date = ?')
+                   .run(r.actual, r.note, r.date),
+    logEdit: e => db.prepare(`INSERT INTO reconcile_edits
+      (date,prev_actual,prev_note,new_actual,new_note,reason,edited_at) VALUES (?,?,?,?,?,?,?)`)
+      .run(e.date, e.prev_actual, e.prev_note, e.new_actual, e.new_note, e.reason, e.edited_at),
+    edits: () => db.prepare('SELECT date, prev_actual, new_actual, reason, edited_at FROM reconcile_edits ORDER BY edited_at').all()
   };
 } catch (err) {
   const file = path.join(DATA_DIR, 'reconciles.json');
+  const efile = path.join(DATA_DIR, 'reconcile_edits.json');
   const read = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; } };
+  const readE = () => { try { return JSON.parse(fs.readFileSync(efile, 'utf8')); } catch { return []; } };
+  const write = rows => fs.writeFileSync(file, JSON.stringify(rows, null, 2));
   store = {
     kind: 'json',
     all: () => read().slice().sort((a, b) => a.date < b.date ? -1 : 1),
     has: d => read().some(r => r.date === d),
-    insert: r => { const rows = read(); rows.push(r); fs.writeFileSync(file, JSON.stringify(rows, null, 2)); }
+    get: d => read().find(r => r.date === d) || null,
+    insert: r => { const rows = read(); rows.push(r); write(rows); },
+    update: r => { const rows = read(); const i = rows.findIndex(x => x.date === r.date);
+                   if (i >= 0) { rows[i].actual = r.actual; rows[i].note = r.note; write(rows); } },
+    logEdit: e => { const rows = readE(); rows.push(e); fs.writeFileSync(efile, JSON.stringify(rows, null, 2)); },
+    edits: () => readE()
   };
   console.log('[store] node:sqlite unavailable (' + err.code + ') — using JSON file');
 }
@@ -102,7 +124,7 @@ const server = http.createServer((req, res) => {
       today: now.date, hour: now.hour, unlockHour: UNLOCK_HOUR, timezone: TZ,
       rangeStart: RANGE_START, rangeEnd: RANGE_END,
       saveEnabled: !!PASSCODE, storage: store.kind,
-      reconciles: store.all()
+      reconciles: store.all(), edits: store.edits()
     });
   }
 
@@ -145,6 +167,41 @@ const server = http.createServer((req, res) => {
       const row = { date, actual: Math.round(amt * 100) / 100, note, created_at: new Date().toISOString() };
       try { store.insert(row); } catch { return json(res, 409, { error: 'This date is already reconciled.' }); }
       return json(res, 201, row);
+    });
+    return;
+  }
+
+  /* Correcting a reconcile. A reconcile stays immutable in SPIRIT: the row is updated, but the
+     previous value is written to reconcile_edits first, so a typo can be fixed without the
+     history quietly changing underneath you. Requires the passcode, same as a new entry. */
+  if (url.pathname === '/api/reconciles' && req.method === 'PUT') {
+    let raw = '';
+    req.on('data', c => { raw += c; if (raw.length > 32768) req.destroy(); });
+    req.on('end', () => {
+      let b; try { b = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'Malformed request.' }); }
+      if (throttled(ip)) return json(res, 429, { error: 'Too many failed attempts. Try again in 15 minutes.' });
+      if (!PASSCODE) return json(res, 503, { error: 'Saving is disabled: RECONCILE_PASSCODE is not set on the server.' });
+      if (!passOk(b.passcode)) { noteFail(ip); return json(res, 401, { error: 'Incorrect passcode.' }); }
+
+      const date = b.date;
+      if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(res, 400, { error: 'Invalid date.' });
+      const prev = store.get(date);
+      if (!prev) return json(res, 404, { error: 'That date has not been reconciled, so there is nothing to correct.' });
+      const amt = Number(b.actual);
+      if (!Number.isFinite(amt)) return json(res, 400, { error: 'Actual balance must be a number.' });
+      const note = String(b.note ?? '').trim();
+      if (note.length > 500) return json(res, 400, { error: 'Note too long (500 characters max).' });
+      const reason = String(b.reason ?? '').trim().slice(0, 200);
+
+      const actual = Math.round(amt * 100) / 100;
+      if (actual === prev.actual && note === prev.note)
+        return json(res, 400, { error: 'That is the same figure already recorded.' });
+
+      const edit = { date, prev_actual: prev.actual, prev_note: prev.note || '',
+                     new_actual: actual, new_note: note, reason, edited_at: new Date().toISOString() };
+      try { store.logEdit(edit); store.update({ date, actual, note }); }
+      catch { return json(res, 500, { error: 'Could not save the correction.' }); }
+      return json(res, 200, { date, actual, note, corrected: true, prev_actual: prev.actual });
     });
     return;
   }

@@ -777,7 +777,11 @@
           </div>
         </div>
         <div id="stageform" hidden>
-          <h3>Reconcile balance</h3>
+          <h3 id="recformtitle">Reconcile balance</h3>
+          <div class="signrow" style="margin-bottom:10px">
+            <button type="button" class="signbtn on" id="modenew" aria-pressed="true">New entry</button>
+            <button type="button" class="signbtn" id="modefix" aria-pressed="false">Correct an entry</button>
+          </div>
           <p class="hint" id="rechint"></p>
           <div class="fld"><label for="recdate">Date</label><select id="recdate"></select></div>
           <div class="fld">
@@ -793,6 +797,10 @@
           <div class="fld">
             <label for="recnote">Note (optional)</label>
             <textarea id="recnote" maxlength="500" placeholder="e.g. forgot the dentist copay"></textarea>
+          </div>
+          <div class="fld" id="reasonfld" hidden>
+            <label for="recreason">Why the correction (kept in the audit log)</label>
+            <input type="text" id="recreason" maxlength="200" placeholder="e.g. typo — entered 86.99, should be 102.80">
           </div>
           <div class="resultbox" id="recpreview"></div>
           <div class="recrow">
@@ -2792,11 +2800,31 @@ const $=id=>document.getElementById(id);
 
 function refreshTrigger(){ $('recbtn').hidden = eligibleDates().length===0; }
 
+/* Two modes on one form. Correcting is deliberately a separate mode rather than "just save over
+   it": the date list, the hint, the button and the endpoint all differ, and a correction is
+   logged to an audit trail server-side. */
+let RECMODE='new';
+const reconciledDates = () => Object.keys(RECON).sort().reverse();
+function setRecMode(m){
+  RECMODE=m;
+  const isFix = m==='fix';
+  $('modenew').classList.toggle('on',!isFix); $('modenew').setAttribute('aria-pressed',String(!isFix));
+  $('modefix').classList.toggle('on', isFix); $('modefix').setAttribute('aria-pressed',String(isFix));
+  $('reasonfld').hidden=!isFix;
+  $('recformtitle').textContent = isFix? 'Correct a reconcile' : 'Reconcile balance';
+  $('recsave').textContent = isFix? 'Save correction' : 'Save reconcile';
+  fillForm();
+}
 function fillForm(){
-  const dates=eligibleDates();
+  const isFix = RECMODE==='fix';
+  const dates = isFix? reconciledDates() : eligibleDates();
   $('recdate').innerHTML=dates.map(d=>`<option value="${d}">${dd(d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</option>`).join('');
+  $('modefix').disabled = reconciledDates().length===0;
   $('rechint').textContent=(SRV.online?'':'Offline — entries cannot be saved without the server. ')+
-    `Permanent once saved; cannot be edited. Today unlocks after ${UNLOCK_HOUR}:00 ${TZ}; past days with no entry stay open.`;
+    (isFix
+      ? 'Pick a day you already reconciled and enter what the variance SHOULD have been. The old figure is kept in an audit log.'
+      : `Permanent once saved; correct it later from this screen if you mistype. Today unlocks after ${UNLOCK_HOUR}:00 ${TZ}; past days with no entry stay open.`);
+  if(isFix) prefillFromExisting();
   const keys=Object.keys(RECON).sort();
   $('reclist').innerHTML = keys.length
     ? '<div class="n"><span>Recorded</span><span></span></div>'+keys.map(k=>{
@@ -2806,6 +2834,16 @@ function fillForm(){
       }).join('')
     : '<div class="n"><span>No reconciliations recorded yet.</span><span></span></div>';
   updatePreview();
+}
+/* Show the reader the variance they originally entered, not the stored balance — that is the
+   number they typed and the number they are correcting. */
+function prefillFromExisting(){
+  const date=$('recdate').value, rec=RECON[date], proj=projectedFor(date);
+  if(!rec || proj==null) return;
+  const v=+(rec.actual-proj).toFixed(2);
+  $('recvar').value=Math.abs(v).toFixed(2);
+  setSign(v<0? -1 : 1);
+  $('recnote').value=rec.note||'';
 }
 function updatePreview(){
   const date=$('recdate').value;
@@ -2835,7 +2873,8 @@ function openModal(){
 function closeModal(){
   $('recmodal').hidden=true;
   document.body.style.overflow='';
-  PIN=''; $('pinput').value=''; $('recvar').value=''; $('recnote').value=''; setSign(-1);
+  PIN=''; $('pinput').value=''; $('recvar').value=''; $('recnote').value='';
+  if($('recreason')) $('recreason').value=''; RECMODE='new'; setSign(-1);
   $('recmsg').textContent=''; $('recmsg').className='recmsg';
 }
 $('recbtn').addEventListener('click',openModal);
@@ -2868,7 +2907,6 @@ $('pinok').addEventListener('click',submitPin);
 $('pinput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); submitPin(); }});
 
 /* stage 2 — form */
-$('recdate').addEventListener('change',updatePreview);
 $('recvar').addEventListener('input',e=>{
   const el=e.target, had=el.value;
   if(/[-−]/.test(had)) setSign(-1);            // typed a minus on a keyboard that has one
@@ -2879,6 +2917,9 @@ $('recvar').addEventListener('input',e=>{
 });
 $('signneg').addEventListener('click',()=>setSign(-1));
 $('signpos').addEventListener('click',()=>setSign(1));
+$('modenew').addEventListener('click',()=>setRecMode('new'));
+$('modefix').addEventListener('click',()=>setRecMode('fix'));
+$('recdate').addEventListener('change',()=>{ if(RECMODE==='fix') prefillFromExisting(); updatePreview(); });
 
 $('recsave').addEventListener('click',async ()=>{
   const msg=$('recmsg'), btn=$('recsave');
@@ -2889,18 +2930,32 @@ $('recsave').addEventListener('click',async ()=>{
   if(variance===null){ msg.className='recmsg err'; msg.textContent='Enter the variance (0 is valid).'; return; }
   if(!SRV.online||!PIN){ msg.className='recmsg err'; msg.textContent='Not authenticated.'; return; }
   const proj=projectedFor(date), actual=+(proj+variance).toFixed(2);
-  if(!confirm(`Reconcile ${dd(date).toLocaleDateString('en-US',{month:'long',day:'numeric'})}\n\nProjected: ${fmt(proj)}\nVariance: ${fmt(variance)}\nNew balance: ${fmt(actual)}\n\nThis is permanent and cannot be edited or deleted.`)) return;
+  const isFix = RECMODE==='fix';
+  const prev = isFix? RECON[date] : null;
+  if(isFix && prev && prev.actual===actual && (prev.note||'')===note.trim()){
+    msg.className='recmsg err'; msg.textContent='That is the same figure already recorded.'; return;
+  }
+  const head = isFix
+    ? `Correct ${dd(date).toLocaleDateString('en-US',{month:'long',day:'numeric'})}`
+      +`\n\nWas: ${fmt(prev.actual)}  (variance ${fmt(+(prev.actual-proj).toFixed(2))})`
+      +`\nNow: ${fmt(actual)}  (variance ${fmt(variance)})`
+      +`\n\nThe old figure is kept in the audit log.`
+    : `Reconcile ${dd(date).toLocaleDateString('en-US',{month:'long',day:'numeric'})}`
+      +`\n\nProjected: ${fmt(proj)}\nVariance: ${fmt(variance)}\nNew balance: ${fmt(actual)}`
+      +`\n\nCorrect it later from this screen if you mistype.`;
+  if(!confirm(head)) return;
   btn.disabled=true; msg.textContent='Saving…';
   try{
-    const r=await fetch('/api/reconciles',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,actual,note,passcode:PIN})});
+    const r=await fetch('/api/reconciles',{method:isFix?'PUT':'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date,actual,note,passcode:PIN,reason:$('recreason').value||''})});
     const body=await r.json().catch(()=>({}));
     if(!r.ok){ msg.className='recmsg err'; msg.textContent=body.error||'Could not save.'; btn.disabled=false; return; }
     RECON[date]={actual:body.actual,note:body.note};
-    $('recvar').value=''; $('recnote').value=''; setSign(-1);
-    msg.className='recmsg ok'; msg.textContent='Saved and locked.';
+    $('recvar').value=''; $('recnote').value=''; $('recreason').value=''; setSign(-1);
+    msg.className='recmsg ok';
+    msg.textContent = isFix? `Corrected — was ${fmt(body.prev_actual)}, now ${fmt(body.actual)}.` : 'Saved.';
     render(); refreshTrigger();
-    if(eligibleDates().length===0){ setTimeout(closeModal,1600); } else fillForm();
+    if(!isFix && eligibleDates().length===0){ setTimeout(closeModal,1600); } else fillForm();
   }catch(e){
     msg.className='recmsg err'; msg.textContent='Network error — not saved.';
   }

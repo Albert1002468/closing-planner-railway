@@ -713,6 +713,31 @@ relocation company covering materially less. Either the shortfall really is that
 dropped a larger itemised cost and something else in the build-up is too high by about the same
 amount — the total is right either way, but the itemisation may not be.
 
+### Correcting a reconcile (rule 31)
+
+Reconciles used to be strictly append-only — `POST` returned **409 "already reconciled and
+cannot be changed"**, there was no `PUT`/`PATCH`/`DELETE`, and `eligibleDates()` only offered
+*unreconciled* days, so a mistyped entry was unfixable without shell access to the Railway
+volume. A typo is not history; it is a typo.
+
+`PUT /api/reconciles` corrects one. **Immutability is preserved in spirit, not abandoned:** the
+previous value is written to a new `reconcile_edits` table *before* the row is updated, so
+nothing changes silently. A separate table means **no migration of `reconciles`** — existing
+rows are untouched, which matters because the production data is live on a volume.
+
+Guards, all verified against a running server: wrong passcode → 401 · unknown date → 404
+("nothing to correct") · identical figure → 400 (no empty audit rows) · `POST` over an existing
+date still → 409, so the append-only path is unchanged.
+
+The sheet has two modes (`RECMODE`). **Correct** lists only reconciled days and **prefills the
+variance the reader originally typed**, not the stored balance — the balance is derived
+(`actual = projected + variance`), and the variance is the number they actually entered and are
+correcting. It also requires a reason, kept in the audit log.
+
+⚠️ `/api/state` is **unauthenticated** and now returns `edits` alongside `reconciles`. Fine for
+a single-user planner on an unguessable URL, but it means the whole reconciliation history is
+readable by anyone with the link — worth knowing before sharing it.
+
 ### The past is not a projection (rule 30)
 
 ⚠️ **`accrue` returns 0 for any date before `TODAY_ISO`.** Days that have already happened are
