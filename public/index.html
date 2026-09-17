@@ -406,7 +406,7 @@
         <div class="tile"><div class="lab">Break-even ROI</div><div class="val" id="t_be">—</div><div class="sm" id="t_bed"></div></div>
         <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
         <div class="tile"><div class="lab">Days under $15k</div><div class="val" id="t_thin">—</div><div class="sm" id="t_thind"></div></div>
-        <div class="tile"><div class="lab">Before the wire</div><div class="val" id="t_morn">—</div><div class="sm">Sept 18, incl. that paycheck</div></div>
+        <div class="tile"><div class="lab">Before the wire</div><div class="val" id="t_morn">—</div><div class="sm" id="t_mornd"></div></div>
         <div class="tile"><div class="lab">Net proceeds</div><div class="val" id="t_proceeds">—</div><div class="sm" id="t_proceedsm"></div></div>
         <div class="tile"><div class="lab">Payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm" id="t_payoffsm"></div></div>
         <div class="tile"><div class="lab">Loss credit</div><div class="val" id="t_loss">—</div><div class="sm">half of loss under $425k, max $25k</div></div>
@@ -823,6 +823,12 @@ const fmt0 = n => (n<0?'-':'') + '$' + Math.abs(n).toLocaleString('en-US',{maxim
    raises the cash AND shrinks the loan, which cuts the P&I and the prepaid interest — the
    original 20% figures ($105,980 down, $423,920 loan, $2,538.89 P&I, $904.40 prepaid) all
    fall straight out of these at DOWN_PCT = 20. */
+/* ⚠️ Two different dates, deliberately separate. CLOSING_DATE is when the deal closes: it sets
+   ownership, the loan start, the 13 days of prepaid interest to month end, the escrow and the
+   Nov 1 first payment. WIRE_DATE is only when the cash physically leaves the account. Moving
+   the wire earlier must NOT drag the loan terms with it. */
+const CLOSING_DATE='2026-09-18';
+const WIRE_DATE   ='2026-09-17';
 const NH_PRICE=529900, NH_RATE=0.0599, NH_TERM=360, NH_PREPAID_DAYS=13;
 let DOWN_PCT=22;                       // set from the input each render
 const nhDown  = () => +(NH_PRICE*DOWN_PCT/100).toFixed(2);
@@ -1260,17 +1266,19 @@ function buildEvents(sale, price, rent, home){
   const myEnd = my? my.end : null;
   const buy = (!owning && home.buy)? home.buy : null;
   const buyDate = buy? buy.date : null;
-  const ownedFrom = owning? '2026-09-18' : buyDate;   // null while renting with no purchase
+  const ownedFrom = owning? CLOSING_DATE : buyDate;   // null while renting with no purchase
 
   E('2026-08-21',3429.67,'Paycheck (4 straight-time extra hrs)');
   E('2026-09-04',PAY10,'Paycheck (10 OT hrs)');
-  E('2026-09-18',PAY10,'Paycheck (10 OT hrs)');
+  // Landed two days early; the rest of the biweekly run is unaffected.
+  E('2026-09-16',PAY10,'Paycheck (10 OT hrs) — landed early');
   ['2026-10-02','2026-10-16','2026-10-30','2026-11-13','2026-11-27','2026-12-11','2026-12-25']
     .forEach(d=>E(d,PAY5,'Paycheck (5 OT hrs)'));
   // biweekly from the last 2026 cheque; 3%/yr raise lands on the first cheque of each year
   for(let d=addD('2026-12-25',14); d<=T1; d=addD(d,14)) E(d,payAt(d),'Paycheck (5 OT hrs)');
-  if(owning) E('2026-09-18',-nhCashToClose(),
-    `CLOSING — cash to close (${DOWN_PCT}% down, loan ${fmt0(nhLoan())})`);
+  if(owning) E(WIRE_DATE,-nhCashToClose(),
+    `CLOSING WIRE — cash to close, ${nice(CLOSING_DATE)} closing `
+    +`(${DOWN_PCT}% down, loan ${fmt0(nhLoan())})`);
   E(FENCE_PAID,-FENCE_AMT,'Fence — your half of $7,230 (wired, outside closing)');
   E(FENCE_PAID,-FENCE_WIRE_FEE,'Wire fee');
   E('2026-09-19',234.00,'Airbnb refund — day refund');
@@ -1751,10 +1759,10 @@ function netWorth(res, sale, rent, home, asOf){
   const soldByNow = !!sale && sale<=asOf;
 
   // 1. the OKC house, only once it is actually owned
-  const buyDate = home.own? '2026-09-18' : res.buyDate;
+  const buyDate = home.own? CLOSING_DATE : res.buyDate;
   let okc=0;
   if(buyDate && buyDate<=asOf){
-    const first = buyDate==='2026-09-18'? '2026-11-01' : addM(buyDate.slice(0,8)+'01',2);
+    const first = buyDate===CLOSING_DATE? '2026-11-01' : addM(buyDate.slice(0,8)+'01',2);
     const bal = loanBalAfter(nhLoan(), NH_RATE, nhPI(), paymentsThrough(first, asOf));
     okc = NH_PRICE*Math.pow(1+OKC_APPREC, yrsBetween(buyDate,asOf))*(1-OKC_SELL_COST) - bal;
   }
@@ -2355,8 +2363,11 @@ function render(){
   hit.addEventListener('pointerleave',e=>{ if(!isTouchLike(e)) hide(); });
   document.addEventListener('pointerdown',e=>{ if(isTouchLike(e) && !svg.contains(e.target)) hide(); },{passive:true});
 
-  const b17=DATA.find(d=>d.d==='2026-09-17').b;
-  const morn=+(b17+PAY10).toFixed(2);
+  /* The balance the night before the wire. It used to add PAY10 by hand, because the paycheck
+     landed the same morning as the wire — that cheque now arrives two days earlier and is
+     already in the balance, so adding it again would double-count it. */
+  const eve=DATA.find(d=>d.d===addD(WIRE_DATE,-1));
+  const morn=eve? eve.b : DATA[0].b;
   const mnD=DATA.reduce((a,d)=>d.b<a.b?d:a,DATA[0]);
   const set=(id,txt,cls)=>{const el=document.getElementById(id);el.textContent=txt;el.className='val'+(cls?' '+cls:'');};
   set('t_payoff', sale? fmt(payoff):'—');
@@ -2364,6 +2375,8 @@ function render(){
   set('t_proceeds', sale? fmt(proceeds): '—', sale&&proceeds<0?'neg':(sale?'posv':''));
   set('t_loss', sale? (loss>0?fmt(loss):'$0.00'):'—', loss>0?'posv':'');
   set('t_morn', fmt(morn));
+  document.getElementById('t_mornd').textContent =
+    `close of ${nice(addD(WIRE_DATE,-1))}, wire goes ${nice(WIRE_DATE)}`;
   set('t_low', fmt(mnD.b), mnD.b<0?'neg':'');
   // One "lowest point" hides how LONG the account runs thin. Whole series, like t_low.
   const CUSHION=15000;

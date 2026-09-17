@@ -697,6 +697,24 @@ was still a cushion. One inflation assumption for the whole model, not two. Beca
 grows, a large floor bites harder than it used to: at $500,000 the 30-year break-even is 19.2%
 (it was 16.56% when the floor was flat).
 
+### The wire date is not the closing date
+
+⚠️ **`CLOSING_DATE` and `WIRE_DATE` are deliberately separate constants.** `CLOSING_DATE`
+(Sept 18) sets ownership, the loan start, the 13 days of prepaid interest to month end, the
+escrow and the Nov 1 first payment. `WIRE_DATE` (Sept 17) is *only* when the cash physically
+leaves the account. Moving the wire earlier must **not** drag the loan terms with it — if the
+closing itself ever moves, `NH_PREPAID_DAYS` has to move with it (Sept 18 → 13 days; a Sept 17
+closing would be 14, about $67.85 more).
+
+**The Sept 18 paycheck landed on the 16th**, two days early. Only that one cheque moved; the
+biweekly run from Oct 2 is untouched.
+
+⚠️ Those two changes interact, and the "Before the wire" tile had **both** assumptions baked in:
+it read the Sept 17 balance and *added `PAY10` by hand*, because the cheque used to arrive the
+same morning as the wire. With the cheque now landing on the 16th it is already in the balance,
+so the manual addition would have double-counted it. The tile is now simply the balance at the
+close of the day before `WIRE_DATE`, and its caption is derived rather than hardcoded.
+
 ### Cash to close is anchored to the lender's figure
 
 `nhCashToClose()` must equal **$109,504.92 at 22% down** — the figure from the lender, which is
