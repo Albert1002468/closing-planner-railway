@@ -609,8 +609,13 @@
                 <input type="number" id="rentescal" min="0" max="20" step="0.25" value="3">
               </div>
               <div class="ctl">
-                <label for="rentmgmt">Management %</label>
+                <label for="rentmgmt">Management % &mdash; monthly</label>
                 <input type="number" id="rentmgmt" min="0" max="30" step="0.5" value="10">
+              </div>
+              <div class="ctl">
+                <label for="rentlease">Leasing fee % &mdash; one month's rent, up front</label>
+                <input type="number" id="rentlease" min="0" max="200" step="5" value="50">
+                <span class="rends" id="leasesm">&nbsp;</span>
               </div>
               <div class="ctl">
                 <label for="rentvac">Vacancy &mdash; months/yr</label>
@@ -1002,7 +1007,7 @@ const RECAP_DEFAULT={basis:373210, rate:29.75};
 const RENT_TAX_DEFAULT=28.75;
 /* Landlord costs. Vacancy is not an expense — it is rent you never collect — so it reduces the
    Schedule E income line, while management and maintenance are deductions on top. */
-const LANDLORD_DEFAULT={mgmt:10, vacancyMo:1, maint:2500};
+const LANDLORD_DEFAULT={mgmt:10, vacancyMo:1, maint:2500, leasePct:50};  // leasePct = placement fee, % of ONE month's rent
 // Rent steps up on each LEASE anniversary, so a term under 13 months never sees one.
 const RENT_ESCAL_DEFAULT=3;
 
@@ -1463,8 +1468,14 @@ function buildEvents(sale, price, rent, home){
      escalation boundary of the full payments, and it is labelled rather than numbered. */
   if(rentPro) rentRows.unshift(
     Object.assign(mkRow(rentPro.d, -1, +(rent.amt*rentPro.frac).toFixed(2)), {pro:rentPro.frac}));
+  /* The placement fee the management company takes up front: a share of ONE FULL month's rent,
+     not of the prorated move-in payment, charged once when the tenant is placed. It is a
+     deductible management expense, so it joins the Schedule E `mgmt` bucket below. */
+  const leaseFee = rent? +(rent.amt*(rent.leasePct||0)/100).toFixed(2) : 0;
+  if(leaseFee>0) E(bumpWk(rent.start), -leaseFee,
+    `Leasing fee — ${rent.leasePct}% of one month's rent, paid up front`);
   const rentGross = +rentRows.reduce((a,r)=>a+r.amt,0).toFixed(2);
-  const rentCostTotal = +rentRows.reduce((a,r)=>a+r.cost,0).toFixed(2);
+  const rentCostTotal = +(rentRows.reduce((a,r)=>a+r.cost,0) + leaseFee).toFixed(2);
   rentRows.forEach(r=>{
     // Emitted cost-first so the newest-first table shows the rent above its costs on the day.
     if(r.cost>0) E(bumpWk(r.d), -r.cost,
@@ -1484,6 +1495,7 @@ function buildEvents(sale, price, rent, home){
     const yrs={};
     const BLANK={rent:0,int:0,tax:0,ins:0,dep:0,mgmt:0,maint:0};
     const add=(y,k,v)=>{ (yrs[y]=yrs[y]||{...BLANK})[k]+=v; };
+    if(leaseFee>0) add(YR(rent.start),'mgmt',leaseFee);   // deductible where it is paid
     rentRows.forEach(r=>{
       const y=YR(r.d);
       add(y,'rent',r.coll);         // vacancy is uncollected rent, not a deduction
@@ -1865,7 +1877,8 @@ function readRent(){
           escal:  numOr('rentescal',RENT_ESCAL_DEFAULT),
           mgmtPct:   numOr('rentmgmt',LANDLORD_DEFAULT.mgmt),
           vacancyMo: numOr('rentvac',LANDLORD_DEFAULT.vacancyMo),
-          maint:     digits('rentmaint',0,100000,LANDLORD_DEFAULT.maint)};
+          maint:     digits('rentmaint',0,100000,LANDLORD_DEFAULT.maint),
+          leasePct:  numOr('rentlease',LANDLORD_DEFAULT.leasePct)};
 }
 function readHome(){
   if(!document.getElementById('hown').checked) return {own:true};
@@ -2463,6 +2476,8 @@ function render(){
     + `${fmt0(Math.abs(keepEnd-oppEnd))} at ${nice(T1)}`;
   const rentNetCash = rent? +(rentTotal - rentCostTotal - rentIncTax).toFixed(2) : 0;
   set('t_rent', rent? fmt(rentNetCash):'—', rent?'posv':'');
+  document.getElementById('leasesm').textContent = rent
+    ? `${fmt(rent.amt*(rent.leasePct||0)/100)} once, at move-in` : '';
   document.getElementById('t_rentd').textContent = rent
     ? `${fmt0(rentTotal)} gross − ${fmt0(rentCostTotal)} landlord costs`
       + (rentIncTax? ` − ${fmt0(rentIncTax)} tax` : ' · paper loss, no tax')
@@ -2707,7 +2722,7 @@ document.getElementById('hown').addEventListener('change',e=>{
 document.getElementById('hbuy').addEventListener('change',e=>{
   document.getElementById('hbuyfields').hidden = !e.target.checked; markDirty(); previewDates();
 });
-['rentrate','renttax','rentmgmt','rentvac','rentescal','hescal','apprec','cashapy','downpct','inflpct','opproi']
+['rentrate','renttax','rentmgmt','rentlease','rentvac','rentescal','hescal','apprec','cashapy','downpct','inflpct','opproi']
   .forEach(id=>document.getElementById(id).addEventListener('input',markDirty));
 document.getElementById('priceover').addEventListener('change',e=>{
   document.getElementById('pricefields').hidden = !e.target.checked; markDirty();

@@ -722,6 +722,19 @@ still charges a buyout at the sale. On handover the contract is **not yours at a
 because the contract transferred rather than being settled. Two drafts remain (Aug 22, Sep 22)
 and the buyout fee is gone.
 
+**The management company takes two separate things**, and they are modelled separately:
+
+| | |
+|---|---|
+| Placement fee | `leasePct` (50%) of **one full month's rent** = $1,650, **once**, on the move-in day |
+| Management | `mgmtPct` (10%) of collected rent, **every month** |
+
+⚠️ The placement fee is a share of a **full** month's rent, not of the prorated move-in payment
+— it prices the tenant placement, not that month's income. It is charged **once at `rent.start`**,
+not per year, and it is a deductible management expense, so it joins the Schedule E `mgmt`
+bucket in the year it is paid. It also has to be added to `rentCostTotal` explicitly, since that
+figure is otherwise a sum over the monthly rows and the fee is not one of them.
+
 ⚠️⚠️ **The lease pushes the earliest sale past the relo deadline.** It ends 2027-10-02; the relo
 window closes 2027-07-20. Selling at the lease end costs **$32,523.21** in seller costs and voids
 the loss credit — **$27,086.11 less in hand** than a sale inside the window
