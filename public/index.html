@@ -622,9 +622,9 @@
                 <input type="number" id="rentvac" min="0" max="6" step="0.5" value="1">
               </div>
               <div class="ctl">
-                <label for="rentmaint">Maintenance /yr</label>
+                <label for="rentmaint">Maintenance reserve /yr</label>
                 <div class="moneyfld"><span>$</span>
-                  <input type="text" id="rentmaint" inputmode="numeric" autocomplete="off" value="2,500"
+                  <input type="text" id="rentmaint" inputmode="numeric" autocomplete="off" value="1,200"
                          aria-label="Annual maintenance reserve">
                 </div>
               </div>
@@ -1007,7 +1007,11 @@ const RECAP_DEFAULT={basis:373210, rate:29.75};
 const RENT_TAX_DEFAULT=28.75;
 /* Landlord costs. Vacancy is not an expense — it is rent you never collect — so it reduces the
    Schedule E income line, while management and maintenance are deductions on top. */
-const LANDLORD_DEFAULT={mgmt:10, vacancyMo:1, maint:2500, leasePct:50};  // leasePct = placement fee, % of ONE month's rent
+/* maint: the house was built mid-May 2025. Builder workmanship cover ran to ~May 2026 and
+   systems (plumbing/electrical/HVAC) to ~May 2027, which covers most of this lease — so the
+   reserve is $1,200/yr rather than the ~1%-of-value rule of thumb ($4,200). ⚠️ It does NOT rise
+   as the warranties lapse; revisit it for any term running past 2027. */
+const LANDLORD_DEFAULT={mgmt:10, vacancyMo:1, maint:1200, leasePct:50};  // leasePct = placement fee, % of ONE month's rent
 // Rent steps up on each LEASE anniversary, so a term under 13 months never sees one.
 const RENT_ESCAL_DEFAULT=3;
 
@@ -1454,8 +1458,11 @@ function buildEvents(sale, price, rent, home){
   /* One row per payment, because the rent escalates on each lease anniversary and the
      percentage-based costs move with it. Both the ledger and the Schedule E read these same
      rows, so they cannot drift apart. Maintenance is a flat annual reserve and does not step. */
-  const mkRow = (d,i,amt) => {
-    const vac  = +(amt*rent.vacancyMo/12).toFixed(2);
+  /* `noVac` for the move-in month: the tenant takes possession that month, so the unit is by
+     definition not vacant. The reserve is an allowance against FUTURE turnover, and charging it
+     on the day someone moves in is the one month it cannot apply to. */
+  const mkRow = (d,i,amt,noVac) => {
+    const vac  = noVac? 0 : +(amt*rent.vacancyMo/12).toFixed(2);
     const coll = +(amt-vac).toFixed(2);
     const mgmt = +(coll*rent.mgmtPct/100).toFixed(2);
     const maint= +(rent.maint/12*(amt/rent.amt)).toFixed(2);
@@ -1467,7 +1474,7 @@ function buildEvents(sale, price, rent, home){
   /* The prorated move-in month, prepended. It carries i=-1 so it never shifts the 12-month
      escalation boundary of the full payments, and it is labelled rather than numbered. */
   if(rentPro) rentRows.unshift(
-    Object.assign(mkRow(rentPro.d, -1, +(rent.amt*rentPro.frac).toFixed(2)), {pro:rentPro.frac}));
+    Object.assign(mkRow(rentPro.d, -1, +(rent.amt*rentPro.frac).toFixed(2), true), {pro:rentPro.frac}));
   /* The placement fee the management company takes up front: a share of ONE FULL month's rent,
      not of the prorated move-in payment, charged once when the tenant is placed. It is a
      deductible management expense, so it joins the Schedule E `mgmt` bucket below. */
@@ -1478,8 +1485,14 @@ function buildEvents(sale, price, rent, home){
   const rentCostTotal = +(rentRows.reduce((a,r)=>a+r.cost,0) + leaseFee).toFixed(2);
   rentRows.forEach(r=>{
     // Emitted cost-first so the newest-first table shows the rent above its costs on the day.
-    if(r.cost>0) E(bumpWk(r.d), -r.cost,
-      `Landlord costs (vacancy ${fmt(r.vac)} + management ${fmt(r.mgmt)} + maintenance ${fmt(r.maint)})`);
+    // Only name the parts that are actually charged — "vacancy $0.00" on the move-in month is noise.
+    if(r.cost>0){
+      const parts=[];
+      if(r.vac>0)   parts.push(`vacancy ${fmt(r.vac)}`);
+      if(r.mgmt>0)  parts.push(`management ${fmt(r.mgmt)}`);
+      if(r.maint>0) parts.push(`maintenance ${fmt(r.maint)}`);
+      E(bumpWk(r.d), -r.cost, `Landlord costs (${parts.join(' + ')})`);
+    }
     E(bumpWk(r.d), r.amt, r.pro
       ? `Rent — Midland home (move-in, ${Math.round(r.pro*monthLen(r.d))} of ${monthLen(r.d)} days)`
       : `Rent — Midland home (${r.i+1+(rentPro?1:0)} of ${rent.months})`

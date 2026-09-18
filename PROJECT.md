@@ -722,6 +722,16 @@ still charges a buyout at the sale. On handover the contract is **not yours at a
 because the contract transferred rather than being settled. Two drafts remain (Aug 22, Sep 22)
 and the buyout fee is gone.
 
+⚠️ **No vacancy in the move-in month.** `mkRow` takes a `noVac` flag and the prorated row sets
+it. The reserve is an allowance against *future* turnover; the month a tenant takes possession is
+the one month it cannot apply to. The cost label also drops zero components rather than printing
+"vacancy $0.00".
+
+**Maintenance reserve is $1,200/yr, not the ~1%-of-value rule of thumb ($4,200).** The house was
+built mid-May 2025: builder workmanship cover ran to ~May 2026 and systems (plumbing, electrical,
+HVAC) to ~May 2027, which covers most of this lease. ⚠️ It does **not** rise as the warranties
+lapse — revisit it for any term running past 2027.
+
 **The management company takes two separate things**, and they are modelled separately:
 
 | | |
