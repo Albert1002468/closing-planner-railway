@@ -722,15 +722,30 @@ still charges a buyout at the sale. On handover the contract is **not yours at a
 because the contract transferred rather than being settled. Two drafts remain (Aug 22, Sep 22)
 and the buyout fee is gone.
 
-⚠️ **No vacancy in the move-in month.** `mkRow` takes a `noVac` flag and the prorated row sets
-it. The reserve is an allowance against *future* turnover; the month a tenant takes possession is
-the one month it cannot apply to. The cost label also drops zero components rather than printing
-"vacancy $0.00".
+⚠️⚠️ **Vacancy is charged at TURNOVER, never as a monthly accrual.** It used to be billed every
+month as `amt * vacancyMo/12` — $275/mo against a unit with a *signed* tenant in it, $3,025 over
+a 12-month lease that cannot have a vacant day. `turnovers` now emits one lump at each 12-month
+boundary **inside** the term; the final boundary is not one, because the tenancy simply ends there
+(sale, or the window closing) and there is nothing to re-let. A 12-month lease therefore has **no
+vacancy cost at all**, which is the truth. A 60-month term gets four.
 
-**Maintenance reserve is $1,200/yr, not the ~1%-of-value rule of thumb ($4,200).** The house was
-built mid-May 2025: builder workmanship cover ran to ~May 2026 and systems (plumbing, electrical,
-HVAC) to ~May 2027, which covers most of this lease. ⚠️ It does **not** rise as the warranties
-lapse — revisit it for any term running past 2027.
+Two consequences worth knowing: rows keep a `vac` field (now always 0) so every downstream
+consumer is unchanged, and **management fees rise**, because `coll` is now the full rent — the
+company takes 10% of what is actually collected, and with no vacancy that is all of it ($330/mo
+against $302.50 before). Turnover vacancy is *uncollected rent*, not a deduction, so it reduces
+its own year's Schedule E income rather than being expensed.
+
+⚠️ **Maintenance ramps, it is not flat.** `maintPerYear(rent,d)` holds the reserve you set while
+the house is under builder warranty (`MAINT_WARRANTY_END`, ~May 2027, two years from the mid-May
+2025 build), then interpolates linearly to **1% of the house's value** over `MAINT_RAMP_YEARS`
+(10). Because the target tracks `priceOn(d)`, it keeps climbing with the house:
+
+| | 2026 | 2029 | 2032 | 2037 | 2056 |
+|---|---|---|---|---|---|
+| reserve/yr | $1,200 | $1,739 | $2,922 | $5,770 | $9,995 |
+
+A flat $1,200 was right for this lease and badly wrong for a 30-year hold — the old figure
+understated 2056 maintenance by a factor of eight.
 
 **The management company takes two separate things**, and they are modelled separately:
 

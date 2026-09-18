@@ -618,15 +618,17 @@
                 <span class="rends" id="leasesm">&nbsp;</span>
               </div>
               <div class="ctl">
-                <label for="rentvac">Vacancy &mdash; months/yr</label>
+                <label for="rentvac">Vacancy &mdash; months lost per turnover</label>
                 <input type="number" id="rentvac" min="0" max="6" step="0.5" value="1">
+                <span class="rends" id="vacsm">&nbsp;</span>
               </div>
               <div class="ctl">
-                <label for="rentmaint">Maintenance reserve /yr</label>
+                <label for="rentmaint">Maintenance reserve /yr &mdash; while under warranty</label>
                 <div class="moneyfld"><span>$</span>
                   <input type="text" id="rentmaint" inputmode="numeric" autocomplete="off" value="1,200"
                          aria-label="Annual maintenance reserve">
                 </div>
+                <span class="rends" id="maintsm">&nbsp;</span>
               </div>
               <div class="ctl">
                 <label for="rentbasis">Depreciation basis &mdash; building only</label>
@@ -1011,6 +1013,20 @@ const RENT_TAX_DEFAULT=28.75;
    systems (plumbing/electrical/HVAC) to ~May 2027, which covers most of this lease — so the
    reserve is $1,200/yr rather than the ~1%-of-value rule of thumb ($4,200). ⚠️ It does NOT rise
    as the warranties lapse; revisit it for any term running past 2027. */
+/* ⚠️ Maintenance is not flat. A house under builder warranty costs almost nothing to keep; once
+   that lapses it climbs toward the ~1%-of-value rule of thumb. Ramp linearly from the reserve
+   you set to 1% of the house's value over MAINT_RAMP_YEARS after the warranty ends — so a
+   12-month lease sees the low figure and a 30-year hold does not. */
+const MAINT_WARRANTY_END='2027-05-15';   // builder systems cover, 2 years from the mid-May 2025 build
+const MAINT_RAMP_YEARS=10, MAINT_MATURE_PCT=1.0;
+function maintPerYear(rent, d){
+  const base=rent.maint;
+  if(lt(d, MAINT_WARRANTY_END)) return base;
+  const mature=priceOn(d)*MAINT_MATURE_PCT/100;
+  if(mature<=base) return base;
+  const t=Math.min(1, yrsBetween(MAINT_WARRANTY_END,d)/MAINT_RAMP_YEARS);
+  return base+(mature-base)*t;
+}
 const LANDLORD_DEFAULT={mgmt:10, vacancyMo:1, maint:1200, leasePct:50};  // leasePct = placement fee, % of ONE month's rent
 // Rent steps up on each LEASE anniversary, so a term under 13 months never sees one.
 const RENT_ESCAL_DEFAULT=3;
@@ -1458,15 +1474,16 @@ function buildEvents(sale, price, rent, home){
   /* One row per payment, because the rent escalates on each lease anniversary and the
      percentage-based costs move with it. Both the ledger and the Schedule E read these same
      rows, so they cannot drift apart. Maintenance is a flat annual reserve and does not step. */
-  /* `noVac` for the move-in month: the tenant takes possession that month, so the unit is by
-     definition not vacant. The reserve is an allowance against FUTURE turnover, and charging it
-     on the day someone moves in is the one month it cannot apply to. */
-  const mkRow = (d,i,amt,noVac) => {
-    const vac  = noVac? 0 : +(amt*rent.vacancyMo/12).toFixed(2);
-    const coll = +(amt-vac).toFixed(2);
+  /* ⚠️ Vacancy is NOT a monthly accrual. It used to be charged every month as
+     `amt * vacancyMo/12`, which billed $275/mo against a unit with a SIGNED tenant in it —
+     $3,025 over a 12-month lease that cannot have a vacant day. Vacancy happens at TURNOVER, so
+     it is emitted as a lump at each renewal boundary instead (see `turnovers` below). Rows keep
+     a `vac` field, now always 0, so every downstream consumer is unchanged. */
+  const mkRow = (d,i,amt) => {
+    const coll = amt;
     const mgmt = +(coll*rent.mgmtPct/100).toFixed(2);
-    const maint= +(rent.maint/12*(amt/rent.amt)).toFixed(2);
-    return {d, i, amt, vac, coll, mgmt, maint, cost:+(vac+mgmt+maint).toFixed(2)};
+    const maint= +(maintPerYear(rent,d)/12*(amt/rent.amt)).toFixed(2);
+    return {d, i, amt, vac:0, coll, mgmt, maint, cost:+(mgmt+maint).toFixed(2)};
   };
   const rentRows = rentDates.map((d,i)=>{
     return mkRow(d, i, +(rent.amt*Math.pow(1+rent.escal/100, Math.floor(i/12))).toFixed(2));
@@ -1474,15 +1491,29 @@ function buildEvents(sale, price, rent, home){
   /* The prorated move-in month, prepended. It carries i=-1 so it never shifts the 12-month
      escalation boundary of the full payments, and it is labelled rather than numbered. */
   if(rentPro) rentRows.unshift(
-    Object.assign(mkRow(rentPro.d, -1, +(rent.amt*rentPro.frac).toFixed(2), true), {pro:rentPro.frac}));
+    Object.assign(mkRow(rentPro.d, -1, +(rent.amt*rentPro.frac).toFixed(2)), {pro:rentPro.frac}));
   /* The placement fee the management company takes up front: a share of ONE FULL month's rent,
      not of the prorated move-in payment, charged once when the tenant is placed. It is a
      deductible management expense, so it joins the Schedule E `mgmt` bucket below. */
   const leaseFee = rent? +(rent.amt*(rent.leasePct||0)/100).toFixed(2) : 0;
   if(leaseFee>0) E(bumpWk(rent.start), -leaseFee,
     `Leasing fee — ${rent.leasePct}% of one month's rent, paid up front`);
+  /* One turnover at each 12-month boundary INSIDE the term. The final boundary is not one: the
+     tenancy simply ends there (sale, or the window closing), so there is nothing to re-let. A
+     12-month lease therefore has no vacancy cost at all, which is the truth — the tenant is
+     under contract for the whole of it. */
+  const turnovers=[];
+  if(rent) for(let k=1; k*12 < rent.months; k++){
+    const d=addM(rent.start, k*12);
+    const amt=+(rent.amt*Math.pow(1+rent.escal/100,k)).toFixed(2);
+    const lost=+(amt*rent.vacancyMo).toFixed(2);
+    if(lost>0) turnovers.push({d, lost, amt});
+  }
+  turnovers.forEach(t=>E(bumpWk(t.d), -t.lost,
+    `Turnover vacancy — ${rent.vacancyMo} mo empty at ${fmt(t.amt)}`));
+  const turnoverTotal = +turnovers.reduce((a,t)=>a+t.lost,0).toFixed(2);
   const rentGross = +rentRows.reduce((a,r)=>a+r.amt,0).toFixed(2);
-  const rentCostTotal = +(rentRows.reduce((a,r)=>a+r.cost,0) + leaseFee).toFixed(2);
+  const rentCostTotal = +(rentRows.reduce((a,r)=>a+r.cost,0) + leaseFee + turnoverTotal).toFixed(2);
   rentRows.forEach(r=>{
     // Emitted cost-first so the newest-first table shows the rent above its costs on the day.
     // Only name the parts that are actually charged — "vacancy $0.00" on the move-in month is noise.
@@ -1509,6 +1540,8 @@ function buildEvents(sale, price, rent, home){
     const BLANK={rent:0,int:0,tax:0,ins:0,dep:0,mgmt:0,maint:0};
     const add=(y,k,v)=>{ (yrs[y]=yrs[y]||{...BLANK})[k]+=v; };
     if(leaseFee>0) add(YR(rent.start),'mgmt',leaseFee);   // deductible where it is paid
+    // Vacancy is uncollected rent, never a deduction — it reduces the income of its own year.
+    turnovers.forEach(t=>add(YR(t.d),'rent',-t.lost));
     rentRows.forEach(r=>{
       const y=YR(r.d);
       add(y,'rent',r.coll);         // vacancy is uncollected rent, not a deduction
@@ -2489,6 +2522,14 @@ function render(){
     + `${fmt0(Math.abs(keepEnd-oppEnd))} at ${nice(T1)}`;
   const rentNetCash = rent? +(rentTotal - rentCostTotal - rentIncTax).toFixed(2) : 0;
   set('t_rent', rent? fmt(rentNetCash):'—', rent?'posv':'');
+  document.getElementById('vacsm').textContent = rent
+    ? (rent.months>12 ? `${Math.floor((rent.months-1)/12)} turnover(s) in a ${rent.months}-month term`
+                      : 'none — the tenant is under contract for the whole term')
+    : '';
+  document.getElementById('maintsm').textContent = rent
+    ? `warranty to ${nice(MAINT_WARRANTY_END)}, then rising toward `
+      + `${fmt0(priceOn(T1)*MAINT_MATURE_PCT/100)}/yr by ${YR(T1)}`
+    : '';
   document.getElementById('leasesm').textContent = rent
     ? `${fmt(rent.amt*(rent.leasePct||0)/100)} once, at move-in` : '';
   document.getElementById('t_rentd').textContent = rent
