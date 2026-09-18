@@ -697,6 +697,37 @@ was still a cushion. One inflation assumption for the whole model, not two. Beca
 grows, a large floor bites harder than it used to: at $500,000 the 30-year break-even is 19.2%
 (it was 16.56% when the floor was flat).
 
+### The signed lease (rule 32)
+
+**A tenant is confirmed: 12 months from Oct 2 2026**, and they **assume the Vivint contract**.
+`RENT_DEFAULT` is now `{start:'2026-10-02', months:12}`.
+
+⚠️ **A mid-month move-in needs PRORATION**, and adding one without it loses money silently.
+`rentSchedule` used to take the first 1st *on or after* the start and bill `months` payments from
+there — so a 12-month lease starting the 2nd billed 12 payments from **Nov 1**, giving the tenant
+October free and running the lease to Nov 2027 instead of Oct. It now emits a prorated payment on
+the move-in day (30/31 of October = **$3,193.55**) plus `months - 1` full payments, and `end` is
+measured from the **start date**, not from the first full payment.
+
+- The prorated row carries `i = -1` so it never shifts the 12-month escalation boundary, and it
+  is labelled by days rather than numbered.
+- `rented(d)` keys off `rent.start`, **not** `rentDates[0]` — the tenant is in the house from
+  move-in, and that gates the utilities, Vivint and the relo reimbursement.
+- Depreciation counts the partial month (`rentDates.length + pro.frac`).
+
+⚠️ **The tenant assuming Vivint is not the same as the tenant merely being in the house.** The
+drafts were already suppressed by `!rented(d)`, but that only pauses them for the tenancy and
+still charges a buyout at the sale. On handover the contract is **not yours at all**:
+`vivHandover = rent.start` stops the drafts for good, and `buyout` is suppressed entirely,
+because the contract transferred rather than being settled. Two drafts remain (Aug 22, Sep 22)
+and the buyout fee is gone.
+
+⚠️⚠️ **The lease pushes the earliest sale past the relo deadline.** It ends 2027-10-02; the relo
+window closes 2027-07-20. Selling at the lease end costs **$32,523.21** in seller costs and voids
+the loss credit — **$27,086.11 less in hand** than a sale inside the window
+($73,302.92 vs $100,389.03). Unavoidable with a 12-month tenancy, but it should be a known
+trade, not a surprise.
+
 ### The wire date is not the closing date
 
 ⚠️ **`CLOSING_DATE` and `WIRE_DATE` are deliberately separate constants.** `CLOSING_DATE`

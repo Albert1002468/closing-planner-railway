@@ -591,11 +591,11 @@
             <div id="rentfields">
               <div class="ctl">
                 <label for="rentstart">Rent starts</label>
-                <input type="date" id="rentstart" min="2026-09-01" max="2030-06-01" value="2026-10-01">
+                <input type="date" id="rentstart" min="2026-09-01" max="2030-06-01" value="2026-10-02">
               </div>
               <div class="ctl">
                 <label for="rentterm">Term (months)</label>
-                <input type="number" id="rentterm" min="1" max="600" step="1" value="36">
+                <input type="number" id="rentterm" min="1" max="600" step="1" value="12">
               </div>
               <div class="ctl">
                 <label for="rentamt">Monthly rent &mdash; paid the 1st</label>
@@ -1048,7 +1048,7 @@ const RELO_DEADLINE='2027-07-20';
 const SELLER_COST_PCT=0.075;                // 6% commission + ~1.5% title/escrow/misc
 
 /* --- renting the Midland home out --- */
-const RENT_DEFAULT={start:'2026-10-01', months:36, amt:3300};
+const RENT_DEFAULT={start:'2026-10-02', months:12, amt:3300};   // signed: 1 year from Oct 2 2026
 
 /* --- renting somewhere yourself instead of closing on Sept 18 --- */
 const MYRENT_DEFAULT={start:'2026-09-18', months:12, amt:2200, util:120};
@@ -1203,12 +1203,23 @@ const midEscrowPlan = () => escrowPlan({
 
 /* Rent runs on the 1st of the month: the first 1st on or after the start date, then one a
    month for the term. `end` is the day the tenancy is up — the earliest a sale can close. */
+const monthLen = d => new Date(+d.slice(0,4), +d.slice(5,7), 0).getDate();
+/* Rent runs on the 1st. A move-in on any other day pays a PRORATED first month on the day they
+   move in, then full rent on the 1st for the remaining months.
+
+   ⚠️ Without the proration a 12-month lease starting the 2nd billed 12 payments from the NEXT
+   1st — giving the tenant the move-in month free AND running the lease a month past its real
+   end. `end` is now measured from the start date, not from the first full payment. */
 function rentSchedule(rent){
-  if(!rent) return {dates:[], end:null};
-  const first = rent.start.slice(8)==='01' ? rent.start : addM(rent.start.slice(0,8)+'01', 1);
+  if(!rent) return {dates:[], end:null, pro:null};
+  const onFirst = rent.start.slice(8)==='01';
+  const first = onFirst ? rent.start : addM(rent.start.slice(0,8)+'01', 1);
   const dates=[];
-  for(let i=0;i<rent.months;i++) dates.push(addM(first,i));
-  return {dates, end:addM(first,rent.months)};
+  const n = onFirst ? rent.months : rent.months-1;
+  for(let i=0;i<n;i++) dates.push(addM(first,i));
+  const L=monthLen(rent.start);
+  const pro = onFirst ? null : {d:rent.start, frac:+((L-(+rent.start.slice(8))+1)/L).toFixed(6)};
+  return {dates, end:addM(rent.start, rent.months), pro};
 }
 
 /* Car loan. One walk drives both the payment events and the payoff quote, so the two
@@ -1257,8 +1268,10 @@ function buildEvents(sale, price, rent, home){
     if(!amt) return;               // negative = a credit on that year's return
     (TAXDUE[taxYear]=TAXDUE[taxYear]||[]).push({label,amt:+amt.toFixed(2)});
   };
-  const {dates:rentDates, end:rentEnd}=rentSchedule(rent);
-  const rented = d => !!rent && d>=rentDates[0] && lt(d,rentEnd);   // tenant in the Midland house
+  const {dates:rentDates, end:rentEnd, pro:rentPro}=rentSchedule(rent);
+  // From MOVE-IN, not from the first full payment — this gates utilities, Vivint and the relo
+  // reimbursement, all of which stop the day the tenant is in the house.
+  const rented = d => !!rent && d>=rent.start && lt(d,rentEnd);
 
   // Your own housing: either the Sept 18 purchase, or a lease with an optional purchase later.
   const owning = home.own;
@@ -1417,11 +1430,15 @@ function buildEvents(sale, price, rent, home){
   // AutoFortiva: paid off in full 8/20/2026 — no further monthly drafts.
   E(AF_PAYOFF_DATE,-AF_PAYOFF_AMT,'AutoFortiva payoff (paid in full)');
 
-  // Vivint: negotiated $8.58/mo until the buyout. One week before the sale, 50% of the
-  // remaining contract (months left x $59.99) settles it, and the drafts stop.
-  const buyout = sale? addD(sale,-7) : null;
+  /* Vivint: negotiated $8.58/mo. ⚠️ The TENANT ASSUMES the contract at move-in, so from that
+     date it is not yours at all — the drafts stop for good (not just while they are in the
+     house) and there is no buyout, because the contract transfers rather than being settled.
+     Without a tenant it still buys out a week before the sale at 50% of the months remaining. */
+  const vivHandover = rent? rent.start : null;
+  const buyout = (sale && !vivHandover)? addD(sale,-7) : null;
   ['2026-08-22','2026-09-22','2026-10-22','2026-11-23','2026-12-22'].concat(monthly(22,'2027-01','2030-06'))
-   .forEach(d=>{ if((!buyout || lt(d,buyout)) && !rented(d) && vivintMonthsLeft(d)>0)
+   .forEach(d=>{ if((!buyout || lt(d,buyout)) && (!vivHandover || lt(d,vivHandover))
+                    && !rented(d) && vivintMonthsLeft(d)>0)
                    E(d,-VIVINT_LOW,'Vivint (negotiated rate)'); });
   let vivFee=0, vivMonthsLeft=0;
   if(buyout){
@@ -1432,22 +1449,30 @@ function buildEvents(sale, price, rent, home){
   /* One row per payment, because the rent escalates on each lease anniversary and the
      percentage-based costs move with it. Both the ledger and the Schedule E read these same
      rows, so they cannot drift apart. Maintenance is a flat annual reserve and does not step. */
-  const rentRows = rentDates.map((d,i)=>{
-    const amt  = +(rent.amt*Math.pow(1+rent.escal/100, Math.floor(i/12))).toFixed(2);
+  const mkRow = (d,i,amt) => {
     const vac  = +(amt*rent.vacancyMo/12).toFixed(2);
     const coll = +(amt-vac).toFixed(2);
     const mgmt = +(coll*rent.mgmtPct/100).toFixed(2);
-    const maint= +(rent.maint/12).toFixed(2);
+    const maint= +(rent.maint/12*(amt/rent.amt)).toFixed(2);
     return {d, i, amt, vac, coll, mgmt, maint, cost:+(vac+mgmt+maint).toFixed(2)};
+  };
+  const rentRows = rentDates.map((d,i)=>{
+    return mkRow(d, i, +(rent.amt*Math.pow(1+rent.escal/100, Math.floor(i/12))).toFixed(2));
   });
+  /* The prorated move-in month, prepended. It carries i=-1 so it never shifts the 12-month
+     escalation boundary of the full payments, and it is labelled rather than numbered. */
+  if(rentPro) rentRows.unshift(
+    Object.assign(mkRow(rentPro.d, -1, +(rent.amt*rentPro.frac).toFixed(2)), {pro:rentPro.frac}));
   const rentGross = +rentRows.reduce((a,r)=>a+r.amt,0).toFixed(2);
   const rentCostTotal = +rentRows.reduce((a,r)=>a+r.cost,0).toFixed(2);
   rentRows.forEach(r=>{
     // Emitted cost-first so the newest-first table shows the rent above its costs on the day.
     if(r.cost>0) E(bumpWk(r.d), -r.cost,
       `Landlord costs (vacancy ${fmt(r.vac)} + management ${fmt(r.mgmt)} + maintenance ${fmt(r.maint)})`);
-    E(bumpWk(r.d), r.amt, `Rent — Midland home (${r.i+1} of ${rent.months})`
-      + (r.amt!==rent.amt? ` · escalated ${rent.escal}%/yr` : ''));
+    E(bumpWk(r.d), r.amt, r.pro
+      ? `Rent — Midland home (move-in, ${Math.round(r.pro*monthLen(r.d))} of ${monthLen(r.d)} days)`
+      : `Rent — Midland home (${r.i+1+(rentPro?1:0)} of ${rent.months})`
+        + (r.amt!==rent.amt? ` · escalated ${rent.escal}%/yr` : ''));
   });
 
   // ---- Rental income tax (Schedule E). COLLECTED rent (gross less vacancy), then mortgage
@@ -1534,7 +1559,8 @@ function buildEvents(sale, price, rent, home){
     if(loss>0) E(addD(sale,14), loss, 'Relo loss-on-sale credit (half of loss, capped $25k)');
 
     // ---- gain, recapture and capital gains. MUST sit here: it needs reloOK/sellerCost. ----
-    if(rent && rentDates.length) recapDep = +(rent.basis/DEPREC_YEARS/12*rentDates.length).toFixed(2);
+    if(rent && rentDates.length)
+      recapDep = +(rent.basis/DEPREC_YEARS/12*(rentDates.length+(rentPro?rentPro.frac:0))).toFixed(2);
     const realized = +(price - sellerCost).toFixed(2);
     const gain = +(realized - (MID_BASIS - recapDep)).toFixed(2);
     // recapture is capped at the actual gain — a sale at a loss owes none
