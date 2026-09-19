@@ -321,6 +321,20 @@
   tr.recrowT.vp td{color:var(--vpos)}     /* came in over projection */
   tr.recrowT.vn td{color:var(--vneg)}     /* came in short */
   #evtable td.pos{color:var(--goodtext)}
+  /* Today in the ledger. Same ink as the chart's vertical today rule, so the two read as the
+     same marker in two places. A tinted row when today HAS transactions; a divider when it
+     does not, slotted between what is still to come and what has already happened. */
+  #evtable tr.today td{background:color-mix(in srgb,var(--ink-2) 9%,transparent)}
+  /* `details td` has ZERO left padding, so the accent bar lands on top of the date text.
+     Indent the cell past the bar; a two-row indent reads as emphasis, not misalignment. */
+  #evtable tr.today td:first-child{box-shadow:inset 3px 0 0 var(--ink-2);padding-left:9px}
+  .todaychip{display:inline-block;margin-left:6px;padding:0 5px;border-radius:999px;
+             border:1px solid var(--axis);font-size:8.5px;font-weight:700;letter-spacing:.07em;
+             text-transform:uppercase;color:var(--ink-2);vertical-align:1px}
+  #evtable tr.todaymark td{padding:5px 0;border:0;background:none}
+  .todayline{display:flex;align-items:center;gap:8px;white-space:nowrap;
+             font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2)}
+  .todayline::before,.todayline::after{content:'';flex:1;height:1px;background:var(--ink-2);opacity:.4}
   tr.mrule td{border-top:1px solid var(--axis)}
   .viewrow{margin:0}
   .viewrow select{min-width:120px;font-weight:600}
@@ -2625,13 +2639,17 @@ function render(){
   DATA.forEach(d=>{
     const ym=d.d.slice(0,7);
     const ds=dd(d.d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    // The chart already marks today with a vertical rule; the table should not make the reader
+    // work out where "now" is by reading dates.
+    const isToday = d.d===TODAY_ISO;
+    const chip = isToday? '<span class="todaychip">today</span>' : '';
     d.ev.forEach(e=>{
       run=+(run+e.a).toFixed(2);
-      rows.push({ym,a:e.a,h:`<tr><td>${ds}</td><td>${esc(e.l)}</td><td class="n${e.a>0?' pos':''}">${fmt(e.a)}</td><td class="n">${fmt(run)}</td></tr>`});
+      rows.push({ym,d:d.d,a:e.a,h:`<tr${isToday?' class="today"':''}><td>${ds}${chip}</td><td>${esc(e.l)}</td><td class="n${e.a>0?' pos':''}">${fmt(e.a)}</td><td class="n">${fmt(run)}</td></tr>`});
     });
     if(d.rec && d.rec.delta!==0){
       const note = d.rec.note? ` — “${esc(d.rec.note)}”` : '';
-      rows.push({ym,a:d.rec.delta,h:
+      rows.push({ym,d:d.d,a:d.rec.delta,h:
         `<tr class="recrowT ${d.rec.delta>0?'vp':'vn'}"><td>${ds}</td><td>RECONCILED — actual ${fmt(d.rec.actual)} vs projected ${fmt(d.rec.projected)}${note}</td><td class="n">${fmt(d.rec.delta)}</td><td class="n">${fmt(d.b)}</td></tr>`});
     }
     run=d.b;                             // resync (also applies a reconcile rebase)
@@ -2647,9 +2665,24 @@ function render(){
     TPAGE = PMONTHS.includes(curYM) ? curYM
           : (PMONTHS.find(mo=>mo>curYM) || PMONTHS[PMONTHS.length-1]);
   const page=rows.filter(r=>r.ym===TPAGE);
-  document.querySelector('#evtable tbody').innerHTML =
-    page.length? [...page].reverse().map(r=>r.h).join('')
-               : '<tr><td colspan="4" style="color:var(--muted)">No transactions this month.</td></tr>';
+  const desc=[...page].reverse();                       // newest first
+  let body;
+  if(!desc.length){
+    body='<tr><td colspan="4" style="color:var(--muted)">No transactions this month.</td></tr>';
+  } else if(TPAGE===curYM && !desc.some(r=>r.d===TODAY_ISO)){
+    /* Today lands in this month but has no line of its own. Slot a divider where it belongs in
+       the descending order — after everything still to come, before everything already past —
+       so the reader can still see the boundary. */
+    const at=desc.findIndex(r=>r.d<TODAY_ISO);
+    const i=at<0? desc.length : at;
+    const lab=dd(TODAY_ISO).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    body = desc.slice(0,i).map(r=>r.h).join('')
+         + `<tr class="todaymark"><td colspan="4"><span class="todayline">today · ${lab}</span></td></tr>`
+         + desc.slice(i).map(r=>r.h).join('');
+  } else {
+    body=desc.map(r=>r.h).join('');
+  }
+  document.querySelector('#evtable tbody').innerHTML=body;
   const pi=PMONTHS.indexOf(TPAGE);
   gid('pgsel').innerHTML=PMONTHS.map(mo=>
     `<option value="${mo}"${mo===TPAGE?' selected':''}>${dd(mo+'-01').toLocaleDateString('en-US',{month:'long',year:'numeric'})}</option>`).join('');

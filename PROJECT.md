@@ -697,6 +697,19 @@ was still a cushion. One inflation assumption for the whole model, not two. Beca
 grows, a large floor bites harder than it used to: at $500,000 the 30-year break-even is 19.2%
 (it was 16.56% when the floor was flat).
 
+### Today in the transactions table
+
+The chart marks today with a vertical rule; the table now does too, in the same `--ink-2` ink so
+the two read as one marker in two places.
+
+- Rows dated today get `.today` — a tint, a left accent bar, and a **TODAY** pill.
+- When today falls in the displayed month but has **no line of its own**, a `.todaymark` divider
+  is slotted where it belongs in the descending order: after everything still to come, before
+  everything already past.
+
+⚠️ `details td` has **zero left padding**, so an `inset` box-shadow accent lands on top of the
+date text. Today's first cell is indented 9px past the bar.
+
 ### The signed lease (rule 32)
 
 **A tenant is confirmed: 12 months from Oct 2 2026**, and they **assume the Vivint contract**.
