@@ -741,6 +741,30 @@ window no longer contains, and rebuilds the dropdown.
 preview (lease dates, the impossible-sale warning, the derived price) all read `T1` — deferring
 it would have the preview describing the old window. Only the expensive recompute is batched.
 
+### One message strip, in the sticky bar (rule 38)
+
+Every sheet message is built in **one place** inside `syncSaleDate` and rendered into `#setmsgs`,
+which lives in the sticky action bar — so it is visible from anywhere in the sheet rather than
+only when the relevant group happens to be scrolled into view.
+
+⚠️ It replaces **two** elements that announced the same thing. `relowarn` (under the sale date)
+and `rentwarn` (under the tenancy) both described the Jul 20 2027 deadline, in different
+wordings, and could show simultaneously. `relowarn` was additionally written from both
+`syncSaleDate` and `render()`.
+
+**Severity is carried by colour, and the distinction is the point:**
+
+| Class | Colour | Means |
+|---|---|---|
+| `ok` | green | inside the relo window — seller costs covered |
+| `info` | amber | allowed, and it costs you: past Jul 20 2027, or an early lease termination |
+| `warn` | red | **cannot happen** — the tenancy outruns the horizon, so no sale can close |
+
+The relo and early-termination messages are deliberately **amber, not red**: they describe a
+consequence of a legitimate choice, not an error. Red is reserved for a state the model cannot
+produce a sale from. Both are shortened to one line each, and because they are built on the
+live path they flip the moment the sale date crosses Jul 20 2027 in either direction.
+
 ### Two floors, because two different things shorten a tenancy
 
 ⚠️ **The slider and "rent through" floor at the CONTRACTED end** (`rent.start + 12 months`). The
