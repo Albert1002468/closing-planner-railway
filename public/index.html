@@ -642,7 +642,7 @@
               <div class="ctl">
                 <label for="rentend">Rent through</label>
                 <input type="date" id="rentend" value="2027-10-02">
-                <input type="range" id="rentmos" min="0" max="50" step="1" value="12"
+                <input type="range" id="rentmos" min="12" max="50" step="1" value="12"
                        aria-label="Lease length in months">
                 <span class="rends" id="termsm">&nbsp;</span>
               </div>
@@ -2028,11 +2028,14 @@ function syncSaleDate(rent, home, fromSaleDate){
      on screen — the hint read "12 months" while the field said a 24-month lease. */
   if(rent){
     const sch=rentSchedule(rent);
-    const cap=+document.getElementById('rentmos').max;
+    const $rm=document.getElementById('rentmos');
     document.getElementById('termsm').textContent =
       `${rent.months} months · ${sch.dates.length} full payments`
       + (sch.pro? ' after the prorated first' : '')
-      + ` · slider caps at ${cap} mo on this horizon`;
+      + ` · ${$rm.min}–${$rm.max} mo`
+      + (rent.months < LEASE_TERM_MONTHS
+          ? ' · cut short by the sale date'
+          : ` · ${LEASE_TERM_MONTHS} mo is the signed lease; sell earlier to end it sooner`);
     document.getElementById('vacsm').textContent =
       rent.months>12 ? `${Math.floor((rent.months-1)/12)} turnover(s) in a ${rent.months}-month term`
                      : 'none — the tenant is under contract for the whole term';
@@ -2087,14 +2090,29 @@ function syncSaleDate(rent, home, fromSaleDate){
    It clamps the slider's VALUE as well as its max, because narrowing the horizon can strand it
    past the new end. It deliberately does NOT rewrite `rentend`: silently shortening a lease the
    reader entered is worse than leaving it with the warning that explains it. */
+/* The tenant signed a 12-month lease, so that is the shortest term the READER may dial in. */
+const LEASE_TERM_MONTHS=12;
+
 function applyHorizonBounds(rent){
   const $rs=document.getElementById('rentstart'), $re=document.getElementById('rentend'),
         $sd=document.getElementById('saledate'),  $rm=document.getElementById('rentmos');
   $rs.max=T1; $re.max=T1; $sd.max=T1;
   if(rent){
-    $re.min=rent.start;   // a lease cannot end before it starts
-    $rm.max=String(Math.max(1, monthsBetween(rent.start, T1)));
+    /* ⚠️ TWO different floors, because two different things shorten a tenancy.
+         · Slider and "rent through": floored at the CONTRACTED end (start + 12 months). You
+           cannot unilaterally shorten a lease the tenant signed by dragging a control.
+         · Sale date: may go earlier. Selling is what actually forces an early termination, and
+           it drags the lease end down with it — floored only at the lease start.
+       When a sale HAS cut the term short, the slider's floor drops to the current value so it
+       can still display it. Without that the range input would silently coerce 6 back up to 12
+       and desync from the date. Dragging UP is always allowed, so this is never a dead end. */
+    const contracted = Math.min(LEASE_TERM_MONTHS, monthsBetween(rent.start, T1));
+    const cut = rent.months < contracted;
+    $re.min = cut? rent.start : addM(rent.start, contracted);
+    $rm.min = String(cut? rent.months : contracted);
+    $rm.max = String(Math.max(+$rm.min, monthsBetween(rent.start, T1)));
     if(+$rm.value > +$rm.max) $rm.value=$rm.max;
+    if(+$rm.value < +$rm.min) $rm.value=$rm.min;
   }
 }
 

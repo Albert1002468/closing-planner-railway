@@ -741,6 +741,27 @@ window no longer contains, and rebuilds the dropdown.
 preview (lease dates, the impossible-sale warning, the derived price) all read `T1` — deferring
 it would have the preview describing the old window. Only the expensive recompute is batched.
 
+### Two floors, because two different things shorten a tenancy
+
+⚠️ **The slider and "rent through" floor at the CONTRACTED end** (`rent.start + 12 months`). The
+tenant signed a 12-month lease, so the reader cannot unilaterally shorten it by dragging a
+control — the slider was `min=0` and the date floored at the lease *start*, which let exactly
+that happen.
+
+⚠️ **The sale date is the exception, and that is the point.** Selling is what actually forces an
+early termination, so it may go earlier, drags the lease end down with it, and charges the
+break fee. Its only floor is the lease start.
+
+⚠️ **When a sale has cut the term short, the slider's floor drops to the current value** so it
+can display it. A range input silently coerces a below-min value, so leaving `min` at 12 with
+`months = 6` would snap the slider back to 12 and desync it from the date. Dragging **up** is
+always allowed, so a cut lease is never a dead end — verified 6 → 24 re-floors to 12.
+
+| | slider | rent-through min |
+|---|---|---|
+| normal | 12–50 mo | 2027-10-02 |
+| after a sale cuts it to 6 mo | 6–50 mo | 2026-10-02 |
+
 ### Selling before the tenant moves in (rule 37)
 
 The lease end floors at **`rent.start`** — a lease cannot end before it begins. Dragging the
