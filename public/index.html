@@ -1882,13 +1882,17 @@ const nice = d => dd(d).toLocaleDateString('en-US',{month:'short',day:'numeric',
    render() so the sheet can keep the date honest on every keystroke while the expensive
    recompute stays batched behind Apply. render() calls this same function, so the live preview
    and the applied projection can never disagree about the date. */
-function syncSaleDate(rent, home){
+function syncSaleDate(rent, home, fromSaleDate){
   /* ⚠️ Choosing a sale date INSIDE the tenancy ends the tenancy — you cannot hand over a house
      with a tenant in it. So the lease end follows the sale date back, rather than the sale
      date being pushed forward off the tenant as it is in auto mode. `rent` is re-read because
-     shortening the lease changes the month count every later calculation depends on. */
+     shortening the lease changes the month count every later calculation depends on.
+
+     ⚠️ ONLY when the sale date is what moved (`fromSaleDate`). Running this on every preview
+     meant extending the lease snapped straight back to the sale date: the slider looked dead
+     in "on a date I choose" mode, because every nudge was undone in the same pass. */
   const $sdE=document.getElementById('saledate'), $reE=document.getElementById('rentend');
-  if(!SALE_AUTO && rent && $sdE.value && $reE.value
+  if(fromSaleDate && !SALE_AUTO && rent && $sdE.value && $reE.value
      && $sdE.value < $reE.value && $sdE.value > rent.start){
     $reE.value=$sdE.value;
     rent=readRent();
@@ -1973,7 +1977,32 @@ function syncSaleDate(rent, home){
     rlw.textContent = `The tenant is in place until ${nice(saleMin)}, past the end of this window `
       + `(${nice(T1)}) — so no sale can close inside it. Shorten the term, or widen the `
       + `horizon beyond ${HORIZONS[HORIZON].label}.`;
+  } else {
+    /* ⚠️ Must clear it HERE. Raising a warning on the live path and only clearing it in the
+       batched render() left the stale text on screen — slide the term past the horizon, slide
+       back, and it still named a date years after the tenancy now ends. Whoever raises a
+       message owns clearing it. render() re-raises the relo-cost variant below. */
+    rlw.hidden=true;
   }
+  /* ⚠️ Same trap: these annotate the fields being slid, so they cannot live in render(). */
+  const rw=document.getElementById('rentwarn');
+  if(rent){
+    const late = rentEndDate>RELO_DEADLINE;
+    rw.className = late? 'warn':'warn ok';
+    rw.textContent = late
+      ? `Tenancy runs to ${nice(rentEndDate)}, past the Jul 20, 2027 relo deadline. Selling after `
+        +`that costs you ~${fmt0(priceOn(rentEndDate)*SELLER_COST_PCT)} in seller closing costs `
+        +`and voids the loss-on-sale credit.`
+      : `Tenancy runs to ${nice(rentEndDate)} — you can still close inside the relo window.`;
+  } else rw.textContent='';
+  /* The derived price follows the sale date, so it moves with it. Sole owner of this element —
+     render() used to write it too, and two writers on different paths is how they drift. */
+  MID_VALUE_TODAY = digits('midvalue',50000,2000000,420000);
+  MID_APPREC = numOr('apprec',3)/100;
+  document.getElementById('pricederived').innerHTML =
+    fmt0(priceOn(sale || T1))
+    +`<span>${sale? 'implied by '+nice(sale) : 'value on '+nice(T1)+' — no sale set'}`
+    +` · ${MID_VALUE_TODAY.toLocaleString('en-US')} today at ${(MID_APPREC*100).toFixed(2)}%/yr</span>`;
   return {rent, rentEndDate, myEndDate, saleMin, noSalePossible, sale};
 }
 
@@ -1989,7 +2018,7 @@ function syncTermSlider(){
   $r.value=String(Math.min(+$r.max, monthsBetween(start,end)));
 }
 // Live date preview while the sheet is open: cheap DOM work only, no engine.
-const previewDates = () => { try{ syncSaleDate(readRent(), readHome()); }catch(e){} };
+const previewDates = (fromSaleDate) => { try{ syncSaleDate(readRent(), readHome(), fromSaleDate); }catch(e){} };
 
 /* The panel body. Split out of render() because it is only ever called when the panel is
    open, and because the horizon sweep is the expensive part of the whole app. */
@@ -2069,10 +2098,7 @@ function render(){
   const override = document.getElementById('priceover').checked;
   const priceDate = sale || T1;                 // unsold: value it at the end of the window
   const derived = priceOn(priceDate);
-  const price = override? priceVal() : derived;
-  document.getElementById('pricederived').innerHTML =
-    fmt0(derived)+`<span>${sale? 'implied by '+nice(sale) : 'value on '+nice(T1)+' — no sale set'}`
-    +` · ${MID_VALUE_TODAY.toLocaleString('en-US')} today at ${(MID_APPREC*100).toFixed(2)}%/yr</span>`;
+  const price = override? priceVal() : derived;   // syncSaleDate owns the #pricederived text
   const apy = numOr('cashapy',0)/100;
   // Down payment drives the cash wire, the loan, the P&I and the prepaid interest, so it has
   // to be set before buildSeries runs and the donut has to be redrawn from the same figures.
@@ -2519,16 +2545,6 @@ function render(){
              : `${(SELLER_COST_PCT*100).toFixed(1)}% of price — window expired`);
 
 
-  // Warnings. These are the whole point of the two features colliding, so say it plainly.
-  const rw=document.getElementById('rentwarn');
-  if(rent){
-    const late = rentEndDate>RELO_DEADLINE;
-    rw.className = late? 'warn':'warn ok';
-    rw.textContent = late
-      ? `Tenancy runs to ${nice(rentEndDate)}, past the Jul 20, 2027 relo deadline. Selling after that `
-        +`costs you ~${fmt0(price*SELLER_COST_PCT)} in seller closing costs and voids the loss-on-sale credit.`
-      : `Tenancy runs to ${nice(rentEndDate)} — you can still close inside the relo window.`;
-  }
   // syncSaleDate already raised the impossible-sale warning; this owns the relo-cost variant.
   const rlw=document.getElementById('relowarn');
   if(!noSalePossible){
@@ -2721,7 +2737,7 @@ $p.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();$p.blu
 $pr.addEventListener('input',()=>{showPrice(+$pr.value);markDirty();});
 /* Picking a date must also pull the lease end back live — previewDates() is what runs the
    clamp, so without it the form showed a 12-month lease next to a 6-month sale until Apply. */
-document.getElementById('saledate').addEventListener('input',()=>{SALE_AUTO=false;markDirty();previewDates();});
+document.getElementById('saledate').addEventListener('input',()=>{SALE_AUTO=false;markDirty();previewDates(true);});
 document.getElementById('oppwrap').addEventListener('toggle',render);
 /* One listener per field, in the right order: re-arm tracking FIRST, then preview, or the
    preview runs against the stale flag and has to be corrected by a second pass. */

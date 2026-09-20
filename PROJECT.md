@@ -724,6 +724,32 @@ Renting the Midland home is committed too, so the `renton` switch is gone and `r
 always returns a tenancy. The engine keeps its `rent === null` guards: the opportunity-cost
 comparison still needs a no-tenant scenario internally (`oppScenario(SALE_FLOOR, null, home)`).
 
+### Live vs batched: one owner per element
+
+⚠️⚠️ **Whoever raises a message owns clearing it.** `relowarn` was raised on the live path when
+no sale was possible, but only cleared inside the batched `render()`. Slide the term past the
+horizon and back and the warning stayed, still naming a date years after the tenancy now ended
+— *"the tenant is in place until Oct 2, 2036"* against a 12-month lease. `syncSaleDate` now has
+the `else` that hides it.
+
+**Three elements moved from `render()` onto the live path**, all the same bug class — they
+annotate fields the reader is actively dragging, so batching froze them:
+
+| Element | Was frozen at |
+|---|---|
+| `relowarn` | a stale date, never cleared |
+| `rentwarn` | "Tenancy runs to Oct 2, 2027" for every slider position |
+| `pricederived` | "$433,643 implied by Oct 2, 2027" regardless of the sale date |
+
+⚠️ `pricederived` had **two writers** after the move. Two writers on different paths is exactly
+how they drift, so `syncSaleDate` is now its sole owner and `render()` only computes `derived`
+for the engine.
+
+⚠️⚠️ **The lease-shortening clamp must fire ONLY when the sale date moved** (`fromSaleDate`).
+Running it on every preview meant extending the lease snapped straight back to the sale date —
+the slider looked completely dead in "on a date I choose" mode, because every nudge was undone
+in the same pass. `previewDates(true)` is passed only from the `saledate` listener.
+
 ### Shortening the tenancy, and the break fee (rule 35)
 
 **Choosing a sale date inside the tenancy ENDS the tenancy.** You cannot hand over a house with
