@@ -724,6 +724,23 @@ Renting the Midland home is committed too, so the `renton` switch is gone and `r
 always returns a tenancy. The engine keeps its `rent === null` guards: the opportunity-cost
 comparison still needs a no-tenant scenario internally (`oppScenario(SALE_FLOOR, null, home)`).
 
+### The horizon is a model input, not a chart view (rule 36)
+
+⚠️⚠️ **The horizon bounds the MODEL.** `T1` clips every event, so a 5-year horizon is not a zoom
+level — it is how far the projection exists. It used to be reachable *only* from the chart's
+view dropdown, which conflates "which slice to show" with "how far to run", and that dropdown
+sits **behind** the settings sheet. So sliding the lease past 2030 raised *"widen the horizon
+beyond 5 years"* with no way to do it from where the reader was standing: a warning naming a
+control they could not reach.
+
+There is now a **Projection horizon** control at the top of the sheet. Both routes go through
+`setHorizon(k)` so they cannot disagree — it moves `T1`, clamps a selected year that the new
+window no longer contains, and rebuilds the dropdown.
+
+⚠️ The sheet's buttons move `T1` **immediately** rather than waiting for Apply, because the live
+preview (lease dates, the impossible-sale warning, the derived price) all read `T1` — deferring
+it would have the preview describing the old window. Only the expensive recompute is batched.
+
 ### Live vs batched: one owner per element
 
 ⚠️⚠️ **Whoever raises a message owns clearing it.** `relowarn` was raised on the live path when

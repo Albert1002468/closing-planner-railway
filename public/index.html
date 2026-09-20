@@ -556,6 +556,21 @@
       <div class="controls">
 
         <section class="grp">
+          <h4 class="grph">How far to project</h4>
+          <div class="grpbody">
+            <div class="ctl wide">
+              <label id="horizlab">Projection horizon</label>
+              <div class="signrow">
+                <button type="button" class="signbtn" id="hz5"  aria-labelledby="horizlab">5 years</button>
+                <button type="button" class="signbtn" id="hz15" aria-labelledby="horizlab">15 years</button>
+                <button type="button" class="signbtn" id="hz30" aria-labelledby="horizlab">30 years</button>
+              </div>
+              <span class="rends" id="horizsm">&nbsp;</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="grp">
           <h4 class="grph">Selling the Midland home</h4>
           <div class="grpbody">
             <div class="ctl wide">
@@ -1945,6 +1960,12 @@ function syncSaleDate(rent, home, fromSaleDate){
   const sale = noSalePossible? null : ($sd.value || null);
   /* The note has to follow the mode: in auto the field is disabled, so "clear it" is advice the
      reader cannot act on. */
+  ['hz5','hz15','hz30'].forEach(id=>{
+    const on = {hz5:'h5',hz15:'h15',hz30:'h30'}[id]===HORIZON;
+    const b=document.getElementById(id);
+    b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on));
+  });
+  document.getElementById('horizsm').textContent = `projects through ${nice(T1)}`;
   document.getElementById('salenote').textContent = SALE_AUTO
     ? 'The closing date follows the end of the tenancy. Pick “On a date I choose” to set it yourself.'
     : 'Clear the closing date to model never selling it.';
@@ -1975,8 +1996,8 @@ function syncSaleDate(rent, home, fromSaleDate){
   if(noSalePossible){
     rlw.hidden=false;
     rlw.textContent = `The tenant is in place until ${nice(saleMin)}, past the end of this window `
-      + `(${nice(T1)}) — so no sale can close inside it. Shorten the term, or widen the `
-      + `horizon beyond ${HORIZONS[HORIZON].label}.`;
+      + `(${nice(T1)}) — so no sale can close inside it. Shorten the lease, or widen `
+      + `“Projection horizon” at the top of this sheet past ${HORIZONS[HORIZON].label}.`;
   } else {
     /* ⚠️ Must clear it HERE. Raising a warning on the live path and only clearing it in the
        batched render() left the stale text on screen — slide the term past the horizon, slide
@@ -2750,6 +2771,11 @@ document.getElementById('rentmos').addEventListener('input',e=>{
   document.getElementById('rentend').value=addM(start, +e.target.value);
   markDirty(); previewDates();
 });
+['hz5','hz15','hz30'].forEach(id=>document.getElementById(id).addEventListener('click',()=>{
+  /* T1 moves immediately so the live preview — lease dates, warnings, the derived price — is
+     honest about the new window. The expensive recompute still waits for Apply. */
+  if(setHorizon({hz5:'h5',hz15:'h15',hz30:'h30'}[id])){ markDirty(); previewDates(); }
+}));
 document.getElementById('saleauto').addEventListener('click',()=>{SALE_AUTO=true; markDirty(); previewDates();});
 document.getElementById('salepick').addEventListener('click',()=>{SALE_AUTO=false; markDirty(); previewDates();});
 ['rentrate','renttax','rentmgmt','rentlease','rentvac','rentbreak','rentescal','apprec','cashapy','downpct','inflpct','opproi']
@@ -2783,9 +2809,20 @@ function buildViews(){
     `<option value="${v}"${v===VIEW?' selected':''}>${v}</option>`).join('');
   $vw.innerHTML=`<optgroup label="Horizon">${hs}</optgroup><optgroup label="Single year">${ys}</optgroup>`;
 }
+/* The horizon bounds the MODEL — it sets T1, which clips every event — so it is reachable from
+   the sheet as well as the chart's view dropdown. Both routes go through here so they cannot
+   disagree. Narrowing can orphan the selected year, hence the clamp. */
+function setHorizon(k){
+  if(!HORIZONS[k] || k===HORIZON) return false;
+  HORIZON=k; T1=HORIZONS[k].end;
+  if(VIEW!=='span' && +VIEW>YR(T1)) VIEW=String(YR(T1));
+  buildViews();
+  if(VIEW!=='span') $vw.value=VIEW;
+  return true;
+}
 function setView(v){
   if(v==null) return;
-  if(HORIZONS[v]){ HORIZON=v; T1=HORIZONS[v].end; VIEW='span'; buildViews(); }
+  if(HORIZONS[v]){ setHorizon(v); VIEW='span'; buildViews(); }
   else { if(!VIEWS.includes(v)) return; VIEW=v; $vw.value=v; }
   const cur = VIEW==='span'? HORIZON : VIEW;
   const i=VIEWS.indexOf(cur);
