@@ -710,6 +710,36 @@ the two read as one marker in two places.
 ⚠️ `details td` has **zero left padding**, so an `inset` box-shadow accent lands on top of the
 date text. Today's first cell is indented 9px past the bar.
 
+### Sunset: rent-instead-of-buy (rule 33)
+
+The OKC purchase is committed, so the whole alternative-housing scenario is gone: the sheet
+group, the `hown`/`hbuy` switches, `MYRENT_DEFAULT`, `BUY_DEFAULT`, `BUY_LEAD_MONTHS`, the
+Housing tile, the `hwarn` block, the your-own-rent and later-purchase event blocks, and the
+renter-utilities run. `readHome()` is now `() => ({own:true})` — kept as a function returning a
+constant so `home` still threads through the engine and `netWorth` without churning every
+signature. `owning`, `myEnd`, `buyDate` and `ownedFrom` collapse to constants in `buildEvents`,
+and `myRentTotal`/`buyCC` stay in the return shape as zeros because the tiles read them.
+
+Renting the Midland home is committed too, so the `renton` switch is gone and `readRent()`
+always returns a tenancy. The engine keeps its `rent === null` guards: the opportunity-cost
+comparison still needs a no-tenant scenario internally (`oppScenario(SALE_FLOOR, null, home)`).
+
+### Entering the tenancy and the sale (rule 34)
+
+**Term in months became two dates.** The reader gives *Rent starts* and *Rent through*;
+`monthsBetween()` derives the month count the engine wants. Asking for a term in months made
+the reader do that arithmetic in their head against a start date on the 2nd.
+
+**`SALE_AUTO` is now a visible control** rather than hidden state inferred from typing: *As soon
+as the tenant leaves* (the field is **disabled**, because the date is derived) versus *On a date
+I choose* (the field unlocks). The mode also drives the note under it — "clear the closing date"
+is advice the reader cannot act on while the field is disabled.
+
+⚠️ **The lease-length hints live in `syncSaleDate`, not `render()`.** They are the feedback for
+the field being typed into, so batching them behind Apply left them contradicting the dates on
+screen — the hint read "12 months · 11 full payments" while the field said a 24-month lease.
+Anything that annotates a field the reader is editing belongs on the live path.
+
 ### The signed lease (rule 32)
 
 **A tenant is confirmed: 12 months from Oct 2 2026**, and they **assume the Vivint contract**.
