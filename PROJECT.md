@@ -741,6 +741,40 @@ window no longer contains, and rebuilds the dropdown.
 preview (lease dates, the impossible-sale warning, the derived price) all read `T1` — deferring
 it would have the preview describing the old window. Only the expensive recompute is batched.
 
+### Selling before the tenant moves in (rule 37)
+
+The lease end floors at **`rent.start`** — a lease cannot end before it begins. Dragging the
+sale date below it cancels the tenancy: `rentend` pins at Oct 2 2026, `monthsBetween` returns
+**0**, and `rentSchedule` short-circuits to no payments at all.
+
+⚠️ `monthsBetween` used to floor at **1**, and the clamp carried a `$sd > rent.start` guard that
+skipped the pre-start case entirely. Between them, selling 2026-09-25 left a full 12-month lease
+running and emitted **25 rental transactions on a house already sold** — a year of rent,
+landlord costs and a placement fee. `rentSchedule` also still produced the prorated move-in
+payment at zero months.
+
+⚠️ **`rentOK(d)` is the single guard**: nothing rental may land on or after the sale. The lease
+end normally equals the sale date and the rows stop on their own, but *normally* is not a
+guarantee — this makes it one. It covers the rent rows, landlord costs, turnovers and the
+placement fee, and the Vivint drafts carry the same test.
+
+⚠️ **`months === 0` is a break too.** Cancelling before move-in is the most expensive way to end
+a signed lease, not the cheapest — but `0 % 12` is 0, so it falls straight through the
+anniversary test unless said explicitly. The fee is dated at **the sale** when the sale comes
+first, not at the notional lease end, which used to put it *after* the closing.
+
+⚠️ **No placement fee if no tenant was placed** (`months > 0`), and **no Vivint handover either**
+— `vivHandover` now requires the tenancy to start before the sale, so selling first correctly
+falls back to buying the contract out.
+
+### The sheet's action bar
+
+Apply / close / reset are **icons in a sticky bar** (`.setfoot`), pinned to the scrollport so
+they are reachable from anywhere in a four-group sheet — on a phone the old footer meant
+scrolling the whole form to apply. Negative margins bleed the bar to the sheet's edges and
+`bottom:-18px` cancels the sheet's own padding so it sits flush. 46×46 targets, each with
+`title` and `aria-label`, since an icon alone says nothing to a screen reader.
+
 ### Every end control is bounded by the horizon
 
 `applyHorizonBounds(rent)` is the single place that derives them, so a new end date cannot be

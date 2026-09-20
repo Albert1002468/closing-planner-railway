@@ -274,6 +274,20 @@
   .spin p{margin:0;color:#fff;font-size:13px;letter-spacing:.02em}
   .dirtybadge{display:none;font-size:11.5px;color:var(--s4);font-weight:600;margin-left:10px}
   .dirtybadge.on{display:inline}
+  /* ⚠️ Sticky to the scrollport, so the actions are reachable from anywhere in a sheet that is
+     four groups long — on a phone the old footer meant scrolling the whole form to apply.
+     The negative margins bleed the bar to the sheet's edges so content cannot show beside it,
+     and `bottom:-18px` cancels the sheet's own bottom padding so it sits flush. */
+  .setfoot{position:sticky;bottom:-18px;z-index:3;display:flex;gap:10px;align-items:center;
+           margin:16px -18px -18px;padding:11px 18px 18px;
+           background:var(--surface-1);border-top:1px solid var(--grid)}
+  .actbtn{width:46px;height:46px;padding:0;display:inline-flex;align-items:center;
+          justify-content:center;border-radius:11px;background:var(--s1);color:#fff;border:0;
+          cursor:pointer;flex:none}
+  .actbtn.ghost{background:transparent;color:var(--ink-2);border:1px solid var(--axis)}
+  .actbtn svg{width:22px;height:22px}
+  .actbtn:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+  .actbtn:active{transform:translateY(1px)}
   .recrow button.wide{min-width:180px}
   @media (prefers-color-scheme: dark){
     :root:where(:not([data-theme="light"])) .modal{background:rgba(0,0,0,.66)}
@@ -628,7 +642,7 @@
               <div class="ctl">
                 <label for="rentend">Rent through</label>
                 <input type="date" id="rentend" value="2027-10-02">
-                <input type="range" id="rentmos" min="1" max="50" step="1" value="12"
+                <input type="range" id="rentmos" min="0" max="50" step="1" value="12"
                        aria-label="Lease length in months">
                 <span class="rends" id="termsm">&nbsp;</span>
               </div>
@@ -727,10 +741,23 @@
         </section>
 
       </div>
-      <div class="recrow">
-        <button id="setapply" class="wide">Update projection</button>
-        <button id="setdone" class="ghost">Close</button>
-        <button id="setreset" class="ghost">Reset to defaults</button>
+      <div class="setfoot">
+        <button id="setapply" class="actbtn" title="Update projection" aria-label="Update projection">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="4 12.5 9.5 18 20 6.5"/></svg>
+        </button>
+        <button id="setdone" class="actbtn ghost" title="Close without applying" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+               stroke-linecap="round" aria-hidden="true">
+            <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+        </button>
+        <button id="setreset" class="actbtn ghost" title="Reset every setting to its default"
+                aria-label="Reset to defaults">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><polyline points="20.5 3.5 20.5 9 15 9"/></svg>
+        </button>
         <span class="dirtybadge" id="setdirty">unapplied changes</span>
       </div>
     </div>
@@ -1202,6 +1229,9 @@ const monthLen = d => new Date(+d.slice(0,4), +d.slice(5,7), 0).getDate();
    end. `end` is now measured from the start date, not from the first full payment. */
 function rentSchedule(rent){
   if(!rent) return {dates:[], end:null, pro:null};
+  /* ⚠️ Zero months means the sale lands before the tenant moves in. Without this the prorated
+     move-in payment was still emitted below, billing rent on a house already sold. */
+  if(rent.months<=0) return {dates:[], end:rent.start, pro:null};
   const onFirst = rent.start.slice(8)==='01';
   const first = onFirst ? rent.start : addM(rent.start.slice(0,8)+'01', 1);
   const dates=[];
@@ -1416,10 +1446,14 @@ function buildEvents(sale, price, rent, home){
      date it is not yours at all — the drafts stop for good (not just while they are in the
      house) and there is no buyout, because the contract transfers rather than being settled.
      Without a tenant it still buys out a week before the sale at 50% of the months remaining. */
-  const vivHandover = rent? rent.start : null;
+  /* ⚠️ The handover only happens if the tenant actually moves in BEFORE the sale. Selling
+     first means nobody took the contract over, so it is still yours and still has to be bought
+     out — keying off `rent` alone credited a handover that never occurred. */
+  const vivHandover = (rent && rent.months>0 && (!sale || lt(rent.start, sale)))? rent.start : null;
   const buyout = (sale && !vivHandover)? addD(sale,-7) : null;
   ['2026-08-22','2026-09-22','2026-10-22','2026-11-23','2026-12-22'].concat(monthly(22,'2027-01','2030-06'))
    .forEach(d=>{ if((!buyout || lt(d,buyout)) && (!vivHandover || lt(d,vivHandover))
+                    && (!sale || lt(d,sale))       // sold: the system goes with the house
                     && !rented(d) && vivintMonthsLeft(d)>0)
                    E(d,-VIVINT_LOW,'Vivint (negotiated rate)'); });
   let vivFee=0, vivMonthsLeft=0;
@@ -1452,8 +1486,15 @@ function buildEvents(sale, price, rent, home){
   /* The placement fee the management company takes up front: a share of ONE FULL month's rent,
      not of the prorated move-in payment, charged once when the tenant is placed. It is a
      deductible management expense, so it joins the Schedule E `mgmt` bucket below. */
-  const leaseFee = rent? +(rent.amt*(rent.leasePct||0)/100).toFixed(2) : 0;
-  if(leaseFee>0) E(bumpWk(rent.start), -leaseFee,
+  /* ⚠️ ONE guard for every rental line. Once the house is sold there is no house to rent, so
+     nothing rental may land on or after the sale date. The lease end normally equals the sale
+     date and the rows stop on their own, but "normally" is not a guarantee — this is what
+     makes it one. A pre-move-in sale used to emit a full year of rent and landlord costs on a
+     house already gone. */
+  const rentOK = d => !sale || lt(d, sale);
+  // No tenant was ever placed if the lease is cancelled before move-in, so no placement fee.
+  const leaseFee = (rent && rent.months>0)? +(rent.amt*(rent.leasePct||0)/100).toFixed(2) : 0;
+  if(leaseFee>0 && rentOK(rent.start)) E(bumpWk(rent.start), -leaseFee,
     `Leasing fee — ${rent.leasePct}% of one month's rent, paid up front`);
   /* One turnover at each 12-month boundary INSIDE the term. The final boundary is not one: the
      tenancy simply ends there (sale, or the window closing), so there is nothing to re-let. A
@@ -1464,14 +1505,19 @@ function buildEvents(sale, price, rent, home){
      — and the landlord owes the tenant a termination fee. Renewing (24, 36 months) is free;
      stopping at 8 or 17 is not. */
   let breakFee=0, breakDate=null;
-  if(rent && rent.months%12!==0 && rent.breakMo>0){
+  /* ⚠️ `months === 0` is a break too — cancelling before the tenant moves in is the most
+     expensive way to end a signed lease, not the cheapest. `0 % 12` is 0, so it needs saying
+     explicitly or the case falls through the anniversary test. */
+  if(rent && rent.breakMo>0 && (rent.months===0 || rent.months%12!==0)){
     const k=Math.floor(rent.months/12);
     const amtThen=+(rent.amt*Math.pow(1+rent.escal/100,k)).toFixed(2);
     breakFee=+(amtThen*rent.breakMo).toFixed(2);
-    breakDate=rentEnd;
+    // Owed when the tenancy actually ends — which is the sale, if the sale comes first.
+    breakDate=(sale && lt(sale,rentEnd))? sale : rentEnd;
     E(bumpWk(breakDate), -breakFee,
       `Early lease termination — ${rent.breakMo} mo at ${fmt(amtThen)} `
-      +`(${rent.months%12} mo into a 12-month contract)`);
+      +(rent.months===0? '(cancelled before move-in)'
+                       : `(${rent.months%12} mo into a 12-month contract)`));
   }
   const turnovers=[];
   if(rent) for(let k=1; k*12 < rent.months; k++){
@@ -1480,12 +1526,13 @@ function buildEvents(sale, price, rent, home){
     const lost=+(amt*rent.vacancyMo).toFixed(2);
     if(lost>0) turnovers.push({d, lost, amt});
   }
-  turnovers.forEach(t=>E(bumpWk(t.d), -t.lost,
-    `Turnover vacancy — ${rent.vacancyMo} mo empty at ${fmt(t.amt)}`));
+  turnovers.forEach(t=>{ if(rentOK(t.d)) E(bumpWk(t.d), -t.lost,
+    `Turnover vacancy — ${rent.vacancyMo} mo empty at ${fmt(t.amt)}`); });
   const turnoverTotal = +turnovers.reduce((a,t)=>a+t.lost,0).toFixed(2);
   const rentGross = +rentRows.reduce((a,r)=>a+r.amt,0).toFixed(2);
   const rentCostTotal = +(rentRows.reduce((a,r)=>a+r.cost,0) + leaseFee + turnoverTotal + breakFee).toFixed(2);
   rentRows.forEach(r=>{
+    if(!rentOK(r.d)) return;                 // sold — there is no house to collect rent on
     // Emitted cost-first so the newest-first table shows the rent above its costs on the day.
     // Only name the parts that are actually charged — "vacancy $0.00" on the move-in month is noise.
     if(r.cost>0){
@@ -1859,7 +1906,7 @@ function digits(id,min,max,fallback){
 function monthsBetween(a,b){
   let m=(YR(b)-YR(a))*12 + (+b.slice(5,7) - +a.slice(5,7));
   if(+b.slice(8) < +a.slice(8)) m--;
-  return Math.max(1,m);
+  return Math.max(0,m);   // 0 = the lease is cancelled before the tenant ever moves in
 }
 /* Renting the Midland home is committed, so there is no on/off switch. The reader gives the
    two DATES the tenancy runs between; the month count the engine wants is derived from them.
@@ -1909,8 +1956,12 @@ function syncSaleDate(rent, home, fromSaleDate){
      in "on a date I choose" mode, because every nudge was undone in the same pass. */
   const $sdE=document.getElementById('saledate'), $reE=document.getElementById('rentend');
   if(fromSaleDate && !SALE_AUTO && rent && $sdE.value && $reE.value
-     && $sdE.value < $reE.value && $sdE.value > rent.start){
-    $reE.value=$sdE.value;
+     && $sdE.value < $reE.value){
+    /* ⚠️ Floored at the lease START. A sale before the tenant moves in cancels the tenancy; it
+       cannot end it before it began, and letting `rentend` go below the start produced a
+       negative term. The old `> rent.start` guard skipped this case entirely, leaving a full
+       12-month lease running against a sale that had already happened. */
+    $reE.value = lt($sdE.value, rent.start)? rent.start : $sdE.value;
     rent=readRent();
     syncTermSlider();
   }
@@ -2041,7 +2092,7 @@ function applyHorizonBounds(rent){
         $sd=document.getElementById('saledate'),  $rm=document.getElementById('rentmos');
   $rs.max=T1; $re.max=T1; $sd.max=T1;
   if(rent){
-    $re.min=addM(rent.start,1);
+    $re.min=rent.start;   // a lease cannot end before it starts
     $rm.max=String(Math.max(1, monthsBetween(rent.start, T1)));
     if(+$rm.value > +$rm.max) $rm.value=$rm.max;
   }
