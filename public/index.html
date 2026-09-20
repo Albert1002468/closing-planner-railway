@@ -613,6 +613,8 @@
               <div class="ctl">
                 <label for="rentend">Rent through</label>
                 <input type="date" id="rentend" value="2027-10-02">
+                <input type="range" id="rentmos" min="1" max="120" step="1" value="12"
+                       aria-label="Lease length in months">
                 <span class="rends" id="termsm">&nbsp;</span>
               </div>
               <div class="ctl">
@@ -634,6 +636,11 @@
                 <label for="rentlease">Leasing fee % &mdash; one month's rent, up front</label>
                 <input type="number" id="rentlease" min="0" max="200" step="5" value="50">
                 <span class="rends" id="leasesm">&nbsp;</span>
+              </div>
+              <div class="ctl">
+                <label for="rentbreak">Early-termination fee &mdash; months of rent</label>
+                <input type="number" id="rentbreak" min="0" max="12" step="0.5" value="2">
+                <span class="rends" id="breaksm">&nbsp;</span>
               </div>
               <div class="ctl">
                 <label for="rentvac">Vacancy &mdash; months lost per turnover</label>
@@ -972,7 +979,7 @@ function maintPerYear(rent, d){
   const t=Math.min(1, yrsBetween(MAINT_WARRANTY_END,d)/MAINT_RAMP_YEARS);
   return base+(mature-base)*t;
 }
-const LANDLORD_DEFAULT={mgmt:10, vacancyMo:1, maint:1200, leasePct:50};  // leasePct = placement fee, % of ONE month's rent
+const LANDLORD_DEFAULT={mgmt:10, vacancyMo:1, maint:1200, leasePct:50, breakMo:2};  // leasePct = placement fee, % of ONE month's rent
 // Rent steps up on each LEASE anniversary, so a term under 13 months never sees one.
 const RENT_ESCAL_DEFAULT=3;
 
@@ -1436,6 +1443,20 @@ function buildEvents(sale, price, rent, home){
      tenancy simply ends there (sale, or the window closing), so there is nothing to re-let. A
      12-month lease therefore has no vacancy cost at all, which is the truth — the tenant is
      under contract for the whole of it. */
+  /* ⚠️ Ending the tenancy mid-contract costs money. The tenancy is a chain of 12-month
+     contracts from `rent.start`, so a term that is NOT a whole number of years ends inside one
+     — and the landlord owes the tenant a termination fee. Renewing (24, 36 months) is free;
+     stopping at 8 or 17 is not. */
+  let breakFee=0, breakDate=null;
+  if(rent && rent.months%12!==0 && rent.breakMo>0){
+    const k=Math.floor(rent.months/12);
+    const amtThen=+(rent.amt*Math.pow(1+rent.escal/100,k)).toFixed(2);
+    breakFee=+(amtThen*rent.breakMo).toFixed(2);
+    breakDate=rentEnd;
+    E(bumpWk(breakDate), -breakFee,
+      `Early lease termination — ${rent.breakMo} mo at ${fmt(amtThen)} `
+      +`(${rent.months%12} mo into a 12-month contract)`);
+  }
   const turnovers=[];
   if(rent) for(let k=1; k*12 < rent.months; k++){
     const d=addM(rent.start, k*12);
@@ -1447,7 +1468,7 @@ function buildEvents(sale, price, rent, home){
     `Turnover vacancy — ${rent.vacancyMo} mo empty at ${fmt(t.amt)}`));
   const turnoverTotal = +turnovers.reduce((a,t)=>a+t.lost,0).toFixed(2);
   const rentGross = +rentRows.reduce((a,r)=>a+r.amt,0).toFixed(2);
-  const rentCostTotal = +(rentRows.reduce((a,r)=>a+r.cost,0) + leaseFee + turnoverTotal).toFixed(2);
+  const rentCostTotal = +(rentRows.reduce((a,r)=>a+r.cost,0) + leaseFee + turnoverTotal + breakFee).toFixed(2);
   rentRows.forEach(r=>{
     // Emitted cost-first so the newest-first table shows the rent above its costs on the day.
     // Only name the parts that are actually charged — "vacancy $0.00" on the move-in month is noise.
@@ -1474,6 +1495,7 @@ function buildEvents(sale, price, rent, home){
     const BLANK={rent:0,int:0,tax:0,ins:0,dep:0,mgmt:0,maint:0};
     const add=(y,k,v)=>{ (yrs[y]=yrs[y]||{...BLANK})[k]+=v; };
     if(leaseFee>0) add(YR(rent.start),'mgmt',leaseFee);   // deductible where it is paid
+    if(breakFee>0) add(YR(breakDate),'mgmt',breakFee);   // a cost of the rental, deductible too
     // Vacancy is uncollected rent, never a deduction — it reduces the income of its own year.
     turnovers.forEach(t=>add(YR(t.d),'rent',-t.lost));
     rentRows.forEach(r=>{
@@ -1840,7 +1862,8 @@ function readRent(){
           mgmtPct:   numOr('rentmgmt',LANDLORD_DEFAULT.mgmt),
           vacancyMo: numOr('rentvac',LANDLORD_DEFAULT.vacancyMo),
           maint:     digits('rentmaint',0,100000,LANDLORD_DEFAULT.maint),
-          leasePct:  numOr('rentlease',LANDLORD_DEFAULT.leasePct)};
+          leasePct:  numOr('rentlease',LANDLORD_DEFAULT.leasePct),
+          breakMo:   numOr('rentbreak',LANDLORD_DEFAULT.breakMo)};
 }
 /* The purchase is committed, so there is no longer a rent-instead-of-buy scenario. Kept as a
    function returning a constant: `home` is still threaded through the engine and netWorth, and
@@ -1860,6 +1883,17 @@ const nice = d => dd(d).toLocaleDateString('en-US',{month:'short',day:'numeric',
    recompute stays batched behind Apply. render() calls this same function, so the live preview
    and the applied projection can never disagree about the date. */
 function syncSaleDate(rent, home){
+  /* ⚠️ Choosing a sale date INSIDE the tenancy ends the tenancy — you cannot hand over a house
+     with a tenant in it. So the lease end follows the sale date back, rather than the sale
+     date being pushed forward off the tenant as it is in auto mode. `rent` is re-read because
+     shortening the lease changes the month count every later calculation depends on. */
+  const $sdE=document.getElementById('saledate'), $reE=document.getElementById('rentend');
+  if(!SALE_AUTO && rent && $sdE.value && $reE.value
+     && $sdE.value < $reE.value && $sdE.value > rent.start){
+    $reE.value=$sdE.value;
+    rent=readRent();
+    syncTermSlider();
+  }
   const rentEndDate = rent? rentSchedule(rent).end : null;
   const myEndDate = null;
   // The house cannot be sold out from under a tenant: the sale can only close once the term is up.
@@ -1924,6 +1958,12 @@ function syncSaleDate(rent, home){
     document.getElementById('vacsm').textContent =
       rent.months>12 ? `${Math.floor((rent.months-1)/12)} turnover(s) in a ${rent.months}-month term`
                      : 'none — the tenant is under contract for the whole term';
+    const into=rent.months%12;
+    document.getElementById('breaksm').textContent = into===0
+      ? 'none — the term ends on a contract anniversary'
+      : `${fmt(rent.amt*Math.pow(1+rent.escal/100,Math.floor(rent.months/12))*rent.breakMo)} `
+        +`— ending ${into} mo into a 12-month contract`;
+    syncTermSlider();
   }
   /* The impossible-sale warning needs no engine figures, so it is raised here and the reader
      sees it immediately. render() owns the relo-cost variant, which needs sellerCost. */
@@ -1934,9 +1974,20 @@ function syncSaleDate(rent, home){
       + `(${nice(T1)}) — so no sale can close inside it. Shorten the term, or widen the `
       + `horizon beyond ${HORIZONS[HORIZON].label}.`;
   }
-  return {rentEndDate, myEndDate, saleMin, noSalePossible, sale};
+  return {rent, rentEndDate, myEndDate, saleMin, noSalePossible, sale};
 }
 
+/* The slider and the date are two views of one value. `syncTermSlider` pushes the date into
+   the slider; the slider's own handler pushes the other way. The slider caps at 120 months
+   because a 360-stop control is unusable — the date field can still go further, and the slider
+   simply pins at its maximum when it does. */
+function syncTermSlider(){
+  const $r=document.getElementById('rentmos');
+  const start=document.getElementById('rentstart').value || RENT_DEFAULT.start;
+  const end=document.getElementById('rentend').value;
+  if(!end) return;
+  $r.value=String(Math.min(+$r.max, monthsBetween(start,end)));
+}
 // Live date preview while the sheet is open: cheap DOM work only, no engine.
 const previewDates = () => { try{ syncSaleDate(readRent(), readHome()); }catch(e){} };
 
@@ -2004,9 +2055,11 @@ function fillOppPanel(rent, home, rates){
 }
 
 function render(){
-  const rent = readRent();
+  let rent = readRent();
   const home = readHome();
-  const {rentEndDate, myEndDate, saleMin, noSalePossible, sale:sale0} = syncSaleDate(rent, home);
+  const sdOut = syncSaleDate(rent, home);
+  rent = sdOut.rent;            // shortened if the sale date landed inside the tenancy
+  const {rentEndDate, myEndDate, saleMin, noSalePossible, sale:sale0} = sdOut;
   const $sd=document.getElementById('saledate');
   let sale = sale0;
   if(sale && sale>T1) sale=null;
@@ -2666,17 +2719,24 @@ $p.addEventListener('input',()=>{$pr.value=priceVal();markDirty();});
 $p.addEventListener('blur',()=>{const v=priceVal();showPrice(v);$pr.value=v;markDirty();});
 $p.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();$p.blur();} });
 $pr.addEventListener('input',()=>{showPrice(+$pr.value);markDirty();});
-document.getElementById('saledate').addEventListener('input',()=>{SALE_AUTO=false;markDirty();});
+/* Picking a date must also pull the lease end back live — previewDates() is what runs the
+   clamp, so without it the form showed a 12-month lease next to a 6-month sale until Apply. */
+document.getElementById('saledate').addEventListener('input',()=>{SALE_AUTO=false;markDirty();previewDates();});
 document.getElementById('oppwrap').addEventListener('toggle',render);
 /* One listener per field, in the right order: re-arm tracking FIRST, then preview, or the
    preview runs against the stale flag and has to be corrected by a second pass. */
 // Changing the lease says when the tenant leaves, so the sale date starts tracking it again.
 // Changing the tenancy dates re-derives the sale date, when the reader has not fixed one.
 ['rentstart','rentend'].forEach(id=>
-  document.getElementById(id).addEventListener('input',()=>{markDirty();previewDates();}));
+  document.getElementById(id).addEventListener('input',()=>{syncTermSlider();markDirty();previewDates();}));
+document.getElementById('rentmos').addEventListener('input',e=>{
+  const start=document.getElementById('rentstart').value || RENT_DEFAULT.start;
+  document.getElementById('rentend').value=addM(start, +e.target.value);
+  markDirty(); previewDates();
+});
 document.getElementById('saleauto').addEventListener('click',()=>{SALE_AUTO=true; markDirty(); previewDates();});
 document.getElementById('salepick').addEventListener('click',()=>{SALE_AUTO=false; markDirty(); previewDates();});
-['rentrate','renttax','rentmgmt','rentlease','rentvac','rentescal','apprec','cashapy','downpct','inflpct','opproi']
+['rentrate','renttax','rentmgmt','rentlease','rentvac','rentbreak','rentescal','apprec','cashapy','downpct','inflpct','opproi']
   .forEach(id=>document.getElementById(id).addEventListener('input',markDirty));
 document.getElementById('priceover').addEventListener('change',e=>{
   document.getElementById('pricefields').hidden = !e.target.checked; markDirty();

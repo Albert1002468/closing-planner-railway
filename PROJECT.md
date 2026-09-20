@@ -724,6 +724,36 @@ Renting the Midland home is committed too, so the `renton` switch is gone and `r
 always returns a tenancy. The engine keeps its `rent === null` guards: the opportunity-cost
 comparison still needs a no-tenant scenario internally (`oppScenario(SALE_FLOOR, null, home)`).
 
+### Shortening the tenancy, and the break fee (rule 35)
+
+**Choosing a sale date inside the tenancy ENDS the tenancy.** You cannot hand over a house with
+a tenant in it, so in *On a date I choose* mode the lease end follows the sale date **back** —
+the opposite of auto mode, where the sale date is pushed forward off the tenant. A *later* sale
+deliberately does not extend the lease: picking a date in 2028 leaves the lease where it is and
+the house simply sits empty until closing.
+
+⚠️ `syncSaleDate` **re-reads `rent`** after shortening and hands it back, and `render()` uses the
+returned object — the month count drives every later calculation, so a stale `rent` would model
+a 12-month tenancy against a 6-month sale. `rent` is `let` in `render()` for exactly this.
+
+⚠️ The clamp lives in `previewDates()`, so the `saledate` listener has to call it. Without that
+the form showed a 12-month lease next to a 6-month sale until Apply.
+
+**The break fee.** The tenancy is a chain of 12-month contracts from `rent.start`, so
+`rent.months % 12 !== 0` means it ends *inside* one and the landlord owes a termination fee —
+`breakMo` (default 2) months of the rent then in force. Renewing to 24 or 36 months is free;
+stopping at 6, 17 or 30 is not. The fee is a cost of the rental, so it is deductible and joins
+the Schedule E `mgmt` bucket, and it is added to `rentCostTotal` explicitly like the placement
+fee.
+
+**The term is a slider and a date, two views of one value.** `syncTermSlider()` pushes the date
+into the slider; the slider's handler pushes the other way via `addM(start, months)`. ⚠️ The
+slider caps at **120 months** because a 360-stop control is unusable — the date field can still
+go past it, and the slider pins at its maximum when it does.
+
+Everything already built still applies as the term moves: proration on the move-in month,
+turnover vacancy at each internal 12-month boundary, and the ramping maintenance reserve.
+
 ### Entering the tenancy and the sale (rule 34)
 
 **Term in months became two dates.** The reader gives *Rent starts* and *Rent through*;
