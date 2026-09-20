@@ -741,6 +741,26 @@ window no longer contains, and rebuilds the dropdown.
 preview (lease dates, the impossible-sale warning, the derived price) all read `T1` — deferring
 it would have the preview describing the old window. Only the expensive recompute is batched.
 
+### Every end control is bounded by the horizon
+
+`applyHorizonBounds(rent)` is the single place that derives them, so a new end date cannot be
+added and forgotten:
+
+| Control | Bound |
+|---|---|
+| `rentend`, `rentstart`, `saledate` (max) | `T1` |
+| `rentend` (min) | `addM(rent.start, 1)` |
+| `rentmos` (slider max) | `monthsBetween(rent.start, T1)` |
+
+The slider's max is no longer a fixed 120 — it is **50 / 182 / 362 months** at the 5/15/30-year
+horizons, and the hint says so ("slider caps at 362 mo on this horizon") rather than leaving the
+reader to wonder why it stops.
+
+⚠️ It clamps the slider's **value** as well as its max, because narrowing the horizon strands it
+past the new end. ⚠️ It deliberately does **not** rewrite `rentend`: silently shortening a lease
+the reader entered is worse than leaving it out of range with the warning that explains it. The
+`max` attribute stops *new* out-of-range entry; an existing value stays and is flagged.
+
 ### Live vs batched: one owner per element
 
 ⚠️⚠️ **Whoever raises a message owns clearing it.** `relowarn` was raised on the live path when

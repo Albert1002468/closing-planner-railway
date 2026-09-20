@@ -628,7 +628,7 @@
               <div class="ctl">
                 <label for="rentend">Rent through</label>
                 <input type="date" id="rentend" value="2027-10-02">
-                <input type="range" id="rentmos" min="1" max="120" step="1" value="12"
+                <input type="range" id="rentmos" min="1" max="50" step="1" value="12"
                        aria-label="Lease length in months">
                 <span class="rends" id="termsm">&nbsp;</span>
               </div>
@@ -1925,7 +1925,7 @@ function syncSaleDate(rent, home, fromSaleDate){
      range collapses to T1 and `disabled` plus the warning carry the meaning. */
   $sd.min = noSalePossible? T1 : saleMin;
   $sd.max = T1;
-  ['rentstart','rentend'].forEach(id=>document.getElementById(id).max=T1);
+  applyHorizonBounds(rent);
   /* The sale date FOLLOWS the tenancy in both directions while `SALE_AUTO` holds, and stops the
      moment the reader types a date of their own. Editing the lease (term or start) re-arms it,
      since changing when the tenant leaves is a statement about when the house can sell.
@@ -1976,10 +1976,11 @@ function syncSaleDate(rent, home, fromSaleDate){
      on screen — the hint read "12 months" while the field said a 24-month lease. */
   if(rent){
     const sch=rentSchedule(rent);
-    document.getElementById('rentend').min=addM(rent.start,1);
+    const cap=+document.getElementById('rentmos').max;
     document.getElementById('termsm').textContent =
       `${rent.months} months · ${sch.dates.length} full payments`
-      + (sch.pro? ' after the prorated first' : '');
+      + (sch.pro? ' after the prorated first' : '')
+      + ` · slider caps at ${cap} mo on this horizon`;
     document.getElementById('vacsm').textContent =
       rent.months>12 ? `${Math.floor((rent.months-1)/12)} turnover(s) in a ${rent.months}-month term`
                      : 'none — the tenant is under contract for the whole term';
@@ -2027,10 +2028,27 @@ function syncSaleDate(rent, home, fromSaleDate){
   return {rent, rentEndDate, myEndDate, saleMin, noSalePossible, sale};
 }
 
+/* ⚠️ Every END control in the sheet is bounded by the horizon. The model does not exist past
+   T1, so offering a date — or a month on the slider — beyond it offers a lease the projection
+   cannot hold. One function so a new end date cannot be added and forgotten.
+
+   It clamps the slider's VALUE as well as its max, because narrowing the horizon can strand it
+   past the new end. It deliberately does NOT rewrite `rentend`: silently shortening a lease the
+   reader entered is worse than leaving it with the warning that explains it. */
+function applyHorizonBounds(rent){
+  const $rs=document.getElementById('rentstart'), $re=document.getElementById('rentend'),
+        $sd=document.getElementById('saledate'),  $rm=document.getElementById('rentmos');
+  $rs.max=T1; $re.max=T1; $sd.max=T1;
+  if(rent){
+    $re.min=addM(rent.start,1);
+    $rm.max=String(Math.max(1, monthsBetween(rent.start, T1)));
+    if(+$rm.value > +$rm.max) $rm.value=$rm.max;
+  }
+}
+
 /* The slider and the date are two views of one value. `syncTermSlider` pushes the date into
-   the slider; the slider's own handler pushes the other way. The slider caps at 120 months
-   because a 360-stop control is unusable — the date field can still go further, and the slider
-   simply pins at its maximum when it does. */
+   the slider; the slider's own handler pushes the other way. Its max comes from
+   `applyHorizonBounds`, so it pins at whatever the horizon allows rather than a fixed number. */
 function syncTermSlider(){
   const $r=document.getElementById('rentmos');
   const start=document.getElementById('rentstart').value || RENT_DEFAULT.start;
