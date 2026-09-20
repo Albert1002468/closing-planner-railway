@@ -761,6 +761,24 @@ past the new end. ⚠️ It deliberately does **not** rewrite `rentend`: silentl
 the reader entered is worse than leaving it out of range with the warning that explains it. The
 `max` attribute stops *new* out-of-range entry; an existing value stays and is flagged.
 
+### Date inputs need `change`, not just `input`
+
+⚠️⚠️ **Every date field listens on BOTH `input` and `change`** (`onDateEdit`). iOS Safari renders
+`<input type="date">` as a wheel in a sheet: it fires **`change` on dismissal and may never fire
+`input` at all**. Listening on `input` alone meant the lease-shortening clamp never ran on a
+phone — picking a sale date inside the tenancy left the lease at 12 months with **no
+early-termination fee**, while the identical action worked on desktop. Any code driven from a
+date field has to be reachable by both events, and a desktop-only test will not catch it.
+
+### Reset to defaults
+
+`FORM_DEFAULTS` snapshots every `#setmodal input` **before anything can touch the form**, so
+"default" means the values the document shipped with rather than whatever is on screen. Reset
+restores them, then rebuilds the state that is *derived* rather than stored: `pricefields`
+visibility, `SALE_AUTO`, `SALE_BEFORE_RENT`, `LAST_SALE_MIN` and the horizon. It confirms first,
+and it deliberately does **not** touch reconciliations — those are recorded history, not
+settings.
+
 ### Live vs batched: one owner per element
 
 ⚠️⚠️ **Whoever raises a message owns clearing it.** `relowarn` was raised on the live path when

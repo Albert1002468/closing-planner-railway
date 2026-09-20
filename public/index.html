@@ -730,6 +730,7 @@
       <div class="recrow">
         <button id="setapply" class="wide">Update projection</button>
         <button id="setdone" class="ghost">Close</button>
+        <button id="setreset" class="ghost">Reset to defaults</button>
         <span class="dirtybadge" id="setdirty">unapplied changes</span>
       </div>
     </div>
@@ -2122,6 +2123,30 @@ function fillOppPanel(rent, home, rates){
     +`${fmt0(priceOn(SALE_FLOOR))} for the sell column to mean anything.`;
 }
 
+/* Captured before anything can touch the form, so "default" means the values the document
+   shipped with — not whatever happens to be on screen when the reader hits reset. */
+const FORM_DEFAULTS=(()=>{ const m={};
+  document.querySelectorAll('#setmodal input').forEach(el=>{
+    if(el.id) m[el.id] = el.type==='checkbox'? el.checked : el.value; });
+  return m; })();
+const DEFAULT_HORIZON=HORIZON;
+
+function resetForm(){
+  if(!confirm('Reset every setting in this sheet back to its default?\n\n'
+    +'This does not touch your reconciliations.')) return;
+  document.querySelectorAll('#setmodal input').forEach(el=>{
+    if(!(el.id in FORM_DEFAULTS)) return;
+    if(el.type==='checkbox') el.checked=FORM_DEFAULTS[el.id];
+    else el.value=FORM_DEFAULTS[el.id];
+  });
+  // Everything derived from the form, not stored in it.
+  document.getElementById('pricefields').hidden = !document.getElementById('priceover').checked;
+  SALE_AUTO=true; SALE_BEFORE_RENT=null; LAST_SALE_MIN=null;
+  setHorizon(DEFAULT_HORIZON);
+  markDirty(); previewDates();
+  applyChanges(false);          // show it immediately; the sheet stays open
+}
+
 function render(){
   let rent = readRent();
   const home = readHome();
@@ -2776,14 +2801,21 @@ $p.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();$p.blu
 $pr.addEventListener('input',()=>{showPrice(+$pr.value);markDirty();});
 /* Picking a date must also pull the lease end back live — previewDates() is what runs the
    clamp, so without it the form showed a 12-month lease next to a 6-month sale until Apply. */
-document.getElementById('saledate').addEventListener('input',()=>{SALE_AUTO=false;markDirty();previewDates(true);});
+/* ⚠️ BOTH `input` and `change`, on every date field. iOS Safari's native date picker is a wheel
+   in a sheet: it fires `change` when dismissed and may never fire `input` at all. Listening on
+   `input` alone meant the whole clamp never ran on a phone — pick a sale date inside the
+   tenancy and the lease stayed at 12 months with no early-termination fee, while the same
+   action worked on desktop. */
+const onDateEdit=(id,fn)=>{ const el=document.getElementById(id);
+  el.addEventListener('input',fn); el.addEventListener('change',fn); };
+onDateEdit('saledate',()=>{SALE_AUTO=false;markDirty();previewDates(true);});
 document.getElementById('oppwrap').addEventListener('toggle',render);
 /* One listener per field, in the right order: re-arm tracking FIRST, then preview, or the
    preview runs against the stale flag and has to be corrected by a second pass. */
 // Changing the lease says when the tenant leaves, so the sale date starts tracking it again.
 // Changing the tenancy dates re-derives the sale date, when the reader has not fixed one.
 ['rentstart','rentend'].forEach(id=>
-  document.getElementById(id).addEventListener('input',()=>{syncTermSlider();markDirty();previewDates();}));
+  onDateEdit(id,()=>{syncTermSlider();markDirty();previewDates();}));
 document.getElementById('rentmos').addEventListener('input',e=>{
   const start=document.getElementById('rentstart').value || RENT_DEFAULT.start;
   document.getElementById('rentend').value=addM(start, +e.target.value);
@@ -2879,6 +2911,7 @@ const openSet =()=>{$set.hidden=false; document.body.style.overflow='hidden'; sh
 const closeSet=()=>{$set.hidden=true;  document.body.style.overflow='';};
 document.getElementById('setbtn').addEventListener('click',openSet);
 document.getElementById('setapply').addEventListener('click',()=>applyChanges(true));
+document.getElementById('setreset').addEventListener('click',resetForm);
 document.getElementById('setdone').addEventListener('click',()=>applyChanges(true));
 $set.addEventListener('mousedown',e=>{ if(e.target===$set) applyChanges(true); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$set.hidden) applyChanges(true); });
