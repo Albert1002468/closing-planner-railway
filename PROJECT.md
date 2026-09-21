@@ -741,6 +741,44 @@ window no longer contains, and rebuilds the dropdown.
 preview (lease dates, the impossible-sale warning, the derived price) all read `T1` — deferring
 it would have the preview describing the old window. Only the expensive recompute is batched.
 
+### The signed lease — 2103 Raleigh Point (rule 40)
+
+**Sept 25 2026 → Sept 30 2027**, $3,300/mo due the 1st, **no increases during the term**,
+$660 prorated at move-in, $3,300 deposit.
+
+⚠️ **`rentSchedule` is driven by the two contract DATES, not a month count.** `readRent` carries
+the raw `end` through and the schedule counts the 1sts *inside* the term: a $660 stub for
+Sept 25–30, then twelve full payments Oct 2026 → Sep 2027. **$40,260 total.**
+
+The old `months - 1` rule assumed the stub REPLACED the first month. That is right for a lease
+ending on its start day-of-month (Oct 2 → Oct 2) and **wrong here** — it billed 11 full months
+and lost **$3,300** of the term. Counting the 1sts is right either way, and it handles a
+mid-month end correctly too: rent falls due on the 1st for the whole month, so a lease ending
+Oct 2 still owes all of October.
+
+**The deposit is held, not earned** — in at signing, back out at move-out, net zero over the
+lease but real cash in the account meanwhile. ⚠️ The refund must **not** go through `rentOK`:
+the tenancy normally ends *on* the sale date and `rentOK` excludes that day, which swallowed
+the refund entirely and left the deposit looking like income.
+
+**Already correct, confirmed against the contract:** the tenant pays all utilities (suppressed
+by `!rented(d)`), management runs through the property manager (10% monthly + the 50% placement
+fee), and escalation never fires inside a 12-month term, matching "no increases".
+
+**Not modelled, and deliberately so:** late fees ($50 + $10/day), returned-payment fees ($35),
+holdover at 3× rent, the unauthorised-pet penalty and the keybox charge are all contingent on
+tenant behaviour. Yard care, filters and move-out cleaning are the tenant's. The landlord's
+repair obligations are narrowed to **HVAC, water heater and structural leaks** — which is
+exactly what the ramping maintenance reserve is for, since those are the items whose builder
+warranty lapses around May 2027.
+
+⚠️ **Two things the contract does NOT settle, still assumptions:**
+- **Northwest Passage HOA dues.** The tenant follows the rules and reimburses fines, but dues
+  are the owner's and the amount is not in the lease — **they are missing from the model.**
+- **The landlord breaking the lease.** The only break figure in the contract is 50% of one
+  month for a tenant leaving with a replacement. Nothing covers the landlord ending it to sell,
+  so `breakMo = 2` remains a placeholder.
+
 ### Duplicate housing needs two payments in one month (rule 39)
 
 Per the BVO moving coach: the relo interest reimbursement pays for **duplicate housing**, which

@@ -646,11 +646,11 @@
             <div id="rentfields">
               <div class="ctl">
                 <label for="rentstart">Rent starts</label>
-                <input type="date" id="rentstart" min="2026-09-01" max="2030-06-01" value="2026-10-02">
+                <input type="date" id="rentstart" min="2026-09-01" max="2030-06-01" value="2026-09-25">
               </div>
               <div class="ctl">
                 <label for="rentend">Rent through</label>
-                <input type="date" id="rentend" value="2027-10-02">
+                <input type="date" id="rentend" value="2027-09-30">
                 <input type="range" id="rentmos" min="12" max="50" step="1" value="12"
                        aria-label="Lease length in months">
                 <span class="rends" id="termsm">&nbsp;</span>
@@ -1079,7 +1079,10 @@ const RELO_DEADLINE='2027-07-20';
 const SELLER_COST_PCT=0.075;                // 6% commission + ~1.5% title/escrow/misc
 
 /* --- renting the Midland home out --- */
-const RENT_DEFAULT={start:'2026-10-02', months:12, amt:3300};   // signed: 1 year from Oct 2 2026
+/* Signed lease, 2103 Raleigh Point: Sept 25 2026 – Sept 30 2027, $3,300/mo due the 1st, no
+   increases during the term, $660 prorated at move-in, $3,300 deposit at signing. */
+const RENT_DEFAULT={start:'2026-09-25', end:'2027-09-30', months:12, amt:3300};
+const RENT_DEPOSIT=3300.00;
 
 /* --- renting somewhere yourself instead of closing on Sept 18 --- */
 // A later purchase: relo absorbs the buyer closing costs only inside the window.
@@ -1240,17 +1243,24 @@ const monthLen = d => new Date(+d.slice(0,4), +d.slice(5,7), 0).getDate();
    end. `end` is now measured from the start date, not from the first full payment. */
 function rentSchedule(rent){
   if(!rent) return {dates:[], end:null, pro:null};
-  /* ⚠️ Zero months means the sale lands before the tenant moves in. Without this the prorated
-     move-in payment was still emitted below, billing rent on a house already sold. */
-  if(rent.months<=0) return {dates:[], end:rent.start, pro:null};
+  /* ⚠️ Driven by the contract's two DATES, not a month count. The signed lease runs
+     Sept 25 2026 → Sept 30 2027: a $660 stub for Sept 25–30, then a full $3,300 on the 1st of
+     every month whose 1st falls inside the term — Oct 2026 through Sep 2027, twelve of them.
+
+     The old `months - 1` rule assumed the stub REPLACED the first month. That is right for a
+     lease ending on its start day-of-month and wrong here: it billed 11 full months and lost
+     $3,300 of the term. Counting the 1sts inside the term is right either way, and it handles
+     a mid-month end correctly too — rent falls due on the 1st for the whole month, so a lease
+     ending Oct 2 still owes all of October. */
+  const end = rent.end || addM(rent.start, rent.months);
+  if(!lt(rent.start, end)) return {dates:[], end:rent.start, pro:null};   // cancelled pre-move-in
   const onFirst = rent.start.slice(8)==='01';
   const first = onFirst ? rent.start : addM(rent.start.slice(0,8)+'01', 1);
   const dates=[];
-  const n = onFirst ? rent.months : rent.months-1;
-  for(let i=0;i<n;i++) dates.push(addM(first,i));
+  for(let d=first; lt(d,end); d=addM(d,1)) dates.push(d);
   const L=monthLen(rent.start);
   const pro = onFirst ? null : {d:rent.start, frac:+((L-(+rent.start.slice(8))+1)/L).toFixed(6)};
-  return {dates, end:addM(rent.start, rent.months), pro};
+  return {dates, end, pro};
 }
 
 /* Car loan. One walk drives both the payment events and the payoff quote, so the two
@@ -1509,6 +1519,16 @@ function buildEvents(sale, price, rent, home){
      makes it one. A pre-move-in sale used to emit a full year of rent and landlord costs on a
      house already gone. */
   const rentOK = d => !sale || lt(d, sale);
+  /* The deposit is held, not earned — in at signing, back out at move-out. Net zero across the
+     lease, but it is real cash in the account meanwhile and the autumn trough is tight. */
+  if(rent && rentDates.length && RENT_DEPOSIT>0){
+    if(rentOK(rent.start)) E(bumpWk(rent.start), RENT_DEPOSIT, 'Security deposit received (held)');
+    /* ⚠️ NOT through rentOK. The tenancy normally ends ON the sale date, and rentOK excludes
+       that day — which swallowed the refund entirely and left the deposit looking like income.
+       It comes back whenever the tenancy ends, sale or no sale. */
+    const depBack = (sale && lt(sale,rentEnd))? sale : rentEnd;
+    E(bumpWk(depBack), -RENT_DEPOSIT, 'Security deposit returned');
+  }
   // No tenant was ever placed if the lease is cancelled before move-in, so no placement fee.
   const leaseFee = (rent && rent.months>0)? +(rent.amt*(rent.leasePct||0)/100).toFixed(2) : 0;
   if(leaseFee>0 && rentOK(rent.start)) E(bumpWk(rent.start), -leaseFee,
@@ -1561,7 +1581,7 @@ function buildEvents(sale, price, rent, home){
     }
     E(bumpWk(r.d), r.amt, r.pro
       ? `Rent — Midland home (move-in, ${Math.round(r.pro*monthLen(r.d))} of ${monthLen(r.d)} days)`
-      : `Rent — Midland home (${r.i+1+(rentPro?1:0)} of ${rent.months})`
+      : `Rent — Midland home (${r.i+1} of ${rentDates.length})`
         + (r.amt!==rent.amt? ` · escalated ${rent.escal}%/yr` : ''));
   });
 
@@ -1930,9 +1950,8 @@ function monthsBetween(a,b){
    Asking for "term in months" made the reader do that arithmetic in their head. */
 function readRent(){
   const start = document.getElementById('rentstart').value || RENT_DEFAULT.start;
-  const end   = document.getElementById('rentend').value
-             || addM(RENT_DEFAULT.start, RENT_DEFAULT.months);
-  return {start,
+  const end   = document.getElementById('rentend').value || RENT_DEFAULT.end;
+  return {start, end,
           months: monthsBetween(start, end),
           amt:    digits('rentamt',1,20000,RENT_DEFAULT.amt),
           basis:  digits('rentbasis',0,2000000,RECAP_DEFAULT.basis),
