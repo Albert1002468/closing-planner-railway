@@ -1378,6 +1378,8 @@ function buildEvents(sale, price, rent, home){
   // ---- sale-dependent ----
   const sched = mortgageSchedule();
   const ESC = midEscrowPlan();
+  // The months the OKC loan actually drafts in — a Midland payment only doubles up with one.
+  const nhPayMonths = new Set(nhDates().map(d=>d.slice(0,7)));
   let reimbCount=0;
   sched.forEach(r=>{
     const active = !sale || lt(r.draft, sale);
@@ -1386,12 +1388,16 @@ function buildEvents(sale, price, rent, home){
       E(r.draft,-ESC.plan[r.draft],
         `PennyMac mortgage (P&I ${fmt(MTG_PI)} + escrow ${fmt(pl.esc)}`
         +`${pl.pmi? ' + PMI '+fmt(pl.pmi):''}${pl.short? ', incl. shortage '+fmt(pl.short):''})`);
-      /* Reimbursement needs ALL of: you are carrying two mortgages (so not while renting a
-         place yourself), the Midland house is genuinely vacant and on the market (a tenant
-         disqualifies it), it is one of the first two payments, and it falls inside the relo
-         window. Months already reimbursed while the house sat empty are not clawed back —
-         the test is per payment, not retroactive. */
-      if(!rented(r.draft) && r.draft>='2026-10-01'
+      /* Reimbursement needs ALL of: TWO ACTUAL PAYMENTS IN THE SAME CALENDAR MONTH, the
+         Midland house genuinely vacant and on the market (a tenant disqualifies it), one of
+         the first two such months, and inside the relo window. Months already reimbursed
+         while the house sat empty are not clawed back — the test is per payment.
+
+         ⚠️ "Duplicate housing" is what the BVO coach actually pays for, and it means both
+         mortgages drafting in the same month — not merely owning two houses. The OKC loan
+         does not draft until Nov 2 2026, so October carries one payment and does not qualify,
+         which the old `>= 2026-10-01` test wrongly allowed. */
+      if(!rented(r.draft) && nhPayMonths.has(r.draft.slice(0,7))
          && reimbCount<2 && addD(r.draft,1)<=RELO_DEADLINE){
         E(addD(r.draft,1), r.int, 'Relo interest reimbursement');
         reimbCount++;

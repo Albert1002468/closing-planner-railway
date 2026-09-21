@@ -741,6 +741,24 @@ window no longer contains, and rebuilds the dropdown.
 preview (lease dates, the impossible-sale warning, the derived price) all read `T1` — deferring
 it would have the preview describing the old window. Only the expensive recompute is batched.
 
+### Duplicate housing needs two payments in one month (rule 39)
+
+Per the BVO moving coach: the relo interest reimbursement pays for **duplicate housing**, which
+means **both mortgages drafting in the same calendar month** — not merely owning two houses.
+`nhPayMonths` is the set of months the OKC loan actually drafts in, and a Midland payment only
+qualifies if its month is in that set.
+
+⚠️ The OKC loan does not draft until **Nov 2 2026**, so October carries one payment and does not
+qualify. The old `r.draft >= '2026-10-01'` test wrongly allowed it, claiming **$1,505.59** that
+was never owed.
+
+⚠️⚠️ **In the plan as it stands the benefit is unreachable, and that is correct.** It needs the
+house *vacant* (a tenant disqualifies it) AND two payments in one month. The tenancy starts
+Oct 2 2026 and the second mortgage starts Nov 2 2026, so the two conditions never overlap:
+October is vacant but single-payment, November onward is double-payment but tenanted. With the
+house left empty instead it would pay Nov and Dec 2026, $3,002.76 — which is what the relo
+benefit is worth if the tenancy is given up.
+
 ### One message strip, in the sticky bar (rule 38)
 
 Every sheet message is built in **one place** inside `syncSaleDate` and rendered into `#setmsgs`,
