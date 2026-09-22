@@ -1046,6 +1046,15 @@ the house is under builder warranty (`MAINT_WARRANTY_END`, ~May 2027, two years 
 A flat $1,200 was right for this lease and badly wrong for a 30-year hold — the old figure
 understated 2056 maintenance by a factor of eight.
 
+⚠️ **Management, vacancy and maintenance all default to ZERO.** They are reconciled from the
+real statements rather than projected — a reserve is a guess, and a reconcile is a fact. The
+leasing fee stays at 50% because it is a contractual amount with a known date, not an estimate,
+and so does the HOA at $500.
+
+⚠️ **A zero reserve must STAY zero.** `maintPerYear` returns early on `base <= 0`; without that
+the ramp still climbed toward 1% of value once the builder warranty lapsed, so setting the
+reserve to 0 would have quietly reintroduced ~$4k/yr of projected maintenance from mid-2027.
+
 **The management company takes two separate things**, and they are modelled separately:
 
 | | |

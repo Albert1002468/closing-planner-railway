@@ -668,7 +668,7 @@
               </div>
               <div class="ctl">
                 <label for="rentmgmt">Management % &mdash; monthly</label>
-                <input type="number" id="rentmgmt" min="0" max="30" step="0.5" value="10">
+                <input type="number" id="rentmgmt" min="0" max="30" step="0.5" value="0">
               </div>
               <div class="ctl">
                 <label for="rentlease">Leasing fee % &mdash; one month's rent, up front</label>
@@ -682,13 +682,13 @@
               </div>
               <div class="ctl">
                 <label for="rentvac">Vacancy &mdash; months lost per turnover</label>
-                <input type="number" id="rentvac" min="0" max="6" step="0.5" value="1">
+                <input type="number" id="rentvac" min="0" max="6" step="0.5" value="0">
                 <span class="rends" id="vacsm">&nbsp;</span>
               </div>
               <div class="ctl">
                 <label for="rentmaint">Maintenance reserve /yr &mdash; while under warranty</label>
                 <div class="moneyfld"><span>$</span>
-                  <input type="text" id="rentmaint" inputmode="numeric" autocomplete="off" value="1,200"
+                  <input type="text" id="rentmaint" inputmode="numeric" autocomplete="off" value="0"
                          aria-label="Annual maintenance reserve">
                 </div>
                 <span class="rends" id="maintsm">&nbsp;</span>
@@ -1027,13 +1027,20 @@ const MAINT_WARRANTY_END='2027-05-15';   // builder systems cover, 2 years from 
 const MAINT_RAMP_YEARS=10, MAINT_MATURE_PCT=1.0;
 function maintPerYear(rent, d){
   const base=rent.maint;
+  /* ⚠️ Zero means zero. Without this the ramp still climbed toward 1% of value once the
+     warranty lapsed, so setting the reserve to 0 to reconcile actuals would have quietly
+     reintroduced $4k/yr of projected maintenance from mid-2027. */
+  if(base<=0) return 0;
   if(lt(d, MAINT_WARRANTY_END)) return base;
   const mature=priceOn(d)*MAINT_MATURE_PCT/100;
   if(mature<=base) return base;
   const t=Math.min(1, yrsBetween(MAINT_WARRANTY_END,d)/MAINT_RAMP_YEARS);
   return base+(mature-base)*t;
 }
-const LANDLORD_DEFAULT={mgmt:10, vacancyMo:1, maint:1200, leasePct:50, breakMo:2};  // leasePct = placement fee, % of ONE month's rent
+/* ⚠️ Management, vacancy and maintenance all default to ZERO: these are reconciled from the
+   real statements rather than projected. The leasing fee stays at 50% because it is a known
+   contractual amount with a known date, not an estimate. */
+const LANDLORD_DEFAULT={mgmt:0, vacancyMo:0, maint:0, leasePct:50, breakMo:2};  // leasePct = placement fee, % of ONE month's rent
 // Rent steps up on each LEASE anniversary, so a term under 13 months never sees one.
 const RENT_ESCAL_DEFAULT=3;
 
