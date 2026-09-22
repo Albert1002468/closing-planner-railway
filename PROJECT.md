@@ -1210,6 +1210,33 @@ rebases everything after it. Projecting 7% instead would bake an assumption into
 use for cash-flow planning. Raise it when you want to ask the opportunity-cost question; the
 break-even panel solves for its own rate regardless and is unaffected by the default.
 
+### Facts are constants, not inputs (rule 45)
+
+⚠️ **An input invites editing something that is not the reader's to change, and a wrong edit is
+silent.** These moved out of the sheet and into named constants:
+
+| Was an input | Now | Because |
+|---|---|---|
+| Monthly rent | `LEASE.rent` | the signed lease says it |
+| Management %, leasing fee % | `MGMT_PCT`, `LEASE_FEE_PCT` | the management agreement says it |
+| Depreciation basis | `DEPREC_BASIS` | the assessor's improvements line |
+| Recapture %, rental income tax % | `RECAP_RATE`, `RENT_TAX_RATE` | statutory |
+| Early-termination fee | `BREAK_MONTHS` | ⚠️ the one **assumption** in the group |
+| OKC down payment % | `DOWN_PCT` | the loan is signed and the wire is sent |
+| Vacancy months | `VACANCY_MONTHS` | reconciled, not projected |
+
+**Only two inputs remain in the rent group: rent escalation and the maintenance reserve.** Both
+are genuine forward judgements — what renewals will bear, and what the house will cost to keep.
+
+⚠️ **This un-zeroes management.** It had been set to 0 to be reconciled, but 10% of collected
+rent is contractual and deterministic — it belongs in the projection, and reconciling rebases
+rather than adds, so there is no double count. Maintenance and vacancy stay at 0 because they
+are genuinely unknown. Five-year net worth moves $532,799 → $518,901 as a result.
+
+Everything that stopped being editable is surfaced read-only on `#contractcard`, including the
+manager's cut, the tax rates and the termination assumption — the facts still have to be
+visible, they just must not be typed over.
+
 ### The tenancy is derived, not typed (rule 44)
 
 ⚠️ **`rentstart`, `rentend` and the term slider are gone.** The reader chooses *when the house

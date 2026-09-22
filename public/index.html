@@ -607,34 +607,8 @@
               <div class="contract wide" id="contractcard"></div>
               <p class="grpnote wide" id="termsm"></p>
               <div class="ctl">
-                <label for="rentamt">Monthly rent &mdash; paid the 1st</label>
-                <div class="moneyfld"><span>$</span>
-                  <input type="text" id="rentamt" inputmode="numeric" autocomplete="off" value="3,300"
-                         aria-label="Monthly rent in dollars">
-                </div>
-              </div>
-              <div class="ctl">
                 <label for="rentescal">Rent increase %/yr</label>
                 <input type="number" id="rentescal" min="0" max="20" step="0.25" value="3">
-              </div>
-              <div class="ctl">
-                <label for="rentmgmt">Management % &mdash; monthly</label>
-                <input type="number" id="rentmgmt" min="0" max="30" step="0.5" value="0">
-              </div>
-              <div class="ctl">
-                <label for="rentlease">Leasing fee % &mdash; one month's rent, up front</label>
-                <input type="number" id="rentlease" min="0" max="200" step="5" value="50">
-                <span class="rends" id="leasesm">&nbsp;</span>
-              </div>
-              <div class="ctl">
-                <label for="rentbreak">Early-termination fee &mdash; months of rent</label>
-                <input type="number" id="rentbreak" min="0" max="12" step="0.5" value="2">
-                <span class="rends" id="breaksm">&nbsp;</span>
-              </div>
-              <div class="ctl">
-                <label for="rentvac">Vacancy &mdash; months lost per turnover</label>
-                <input type="number" id="rentvac" min="0" max="6" step="0.5" value="0">
-                <span class="rends" id="vacsm">&nbsp;</span>
               </div>
               <div class="ctl">
                 <label for="rentmaint">Maintenance reserve /yr &mdash; while under warranty</label>
@@ -643,21 +617,6 @@
                          aria-label="Annual maintenance reserve">
                 </div>
                 <span class="rends" id="maintsm">&nbsp;</span>
-              </div>
-              <div class="ctl">
-                <label for="rentbasis">Depreciation basis &mdash; building only</label>
-                <div class="moneyfld"><span>$</span>
-                  <input type="text" id="rentbasis" inputmode="numeric" autocomplete="off" value="373,210"
-                         aria-label="Building basis for depreciation">
-                </div>
-              </div>
-              <div class="ctl">
-                <label for="rentrate">Recapture tax %</label>
-                <input type="number" id="rentrate" min="0" max="60" step="0.05" value="29.75">
-              </div>
-              <div class="ctl">
-                <label for="renttax">Rental income tax %</label>
-                <input type="number" id="renttax" min="0" max="60" step="0.05" value="28.75">
               </div>
             </div>
           </div>
@@ -681,11 +640,6 @@
             <div class="ctl">
               <label for="opproi">Investment return %/yr &mdash; above the floor</label>
               <input type="number" id="opproi" min="0" max="60" step="0.25" value="0">
-            </div>
-            <div class="ctl">
-              <label for="downpct">OKC down payment %</label>
-              <input type="number" id="downpct" min="0" max="100" step="0.5" value="22">
-              <span class="rends" id="downsm">&nbsp;</span>
             </div>
             <div class="ctl wide">
               <label for="liqfloor">Keep liquid &mdash; floor in today's dollars</label>
@@ -794,7 +748,7 @@ const fmt0 = n => (n<0?'-':'') + '$' + Math.abs(n).toLocaleString('en-US',{maxim
 const CLOSING_DATE='2026-09-18';
 const WIRE_DATE   ='2026-09-17';
 const NH_PRICE=529900, NH_RATE=0.0599, NH_TERM=360, NH_PREPAID_DAYS=13;
-let DOWN_PCT=22;                       // set from the input each render
+const DOWN_PCT=22;                     // signed: 22% down, wired Sept 17 2026
 const nhDown  = () => +(NH_PRICE*DOWN_PCT/100).toFixed(2);
 const nhLoan  = () => +(NH_PRICE-nhDown()).toFixed(2);
 const nhPI    = () => { const i=NH_RATE/12, L=nhLoan();
@@ -917,7 +871,14 @@ const yearsAhead = () => { const a=[]; for(let y=2027;y<=YR(T1);y++) a.push(Stri
    even though the house is in Texas, and Texas levies nothing to credit against. */
 const DEPREC_YEARS=27.5;
 // Basis is the improvements line from the Midland CAD assessment — land is not depreciable.
-const RECAP_DEFAULT={basis:373210, rate:29.75};
+/* Facts, not preferences — see readRent. Basis is the assessor's improvements line; the rates
+   are statutory (25% federal §1250 + 4.75% OK, and the combined marginal rate on rental
+   income). ⚠️ BREAK_MONTHS is the one ASSUMPTION in here: the lease names no landlord-side
+   termination figure, so two months is a placeholder pending the manager. */
+const DEPREC_BASIS=373210, RECAP_RATE=29.75, RENT_TAX_RATE=28.75;
+const MGMT_PCT=10, LEASE_FEE_PCT=50, BREAK_MONTHS=2, VACANCY_MONTHS=0;
+const MAINT_DEFAULT=0;
+const RECAP_DEFAULT={basis:DEPREC_BASIS, rate:RECAP_RATE};
 // Rental profit is ordinary income. 24% federal + 4.75% Oklahoma for a single filer at this
 // income; drop to 26.75% if you file jointly and land in the 22% bracket.
 const RENT_TAX_DEFAULT=28.75;
@@ -1921,18 +1882,22 @@ function leaseEndFor(saleDate){
 function readRent(){
   const start = LEASE.start;
   const end   = leaseEndFor(document.getElementById('saledate').value);
+  /* ⚠️ Only the two genuine judgement calls are inputs. Everything else here is a FACT — the
+     lease says the rent, the management agreement says the percentages, the assessor says the
+     basis, the tax code says the rates. An input invites editing something that is not the
+     reader's to change, and a wrong edit is silent. */
   return {start, end,
           months: monthsBetween(start, end),
-          amt:    digits('rentamt',1,20000,RENT_DEFAULT.amt),
-          basis:  digits('rentbasis',0,2000000,RECAP_DEFAULT.basis),
-          rate:   numOr('rentrate',RECAP_DEFAULT.rate),
-          taxRate:numOr('renttax',RENT_TAX_DEFAULT),
+          amt:       LEASE.rent,
+          basis:     DEPREC_BASIS,
+          rate:      RECAP_RATE,
+          taxRate:   RENT_TAX_RATE,
+          mgmtPct:   MGMT_PCT,
+          leasePct:  LEASE_FEE_PCT,
+          breakMo:   BREAK_MONTHS,
+          vacancyMo: VACANCY_MONTHS,
           escal:  numOr('rentescal',RENT_ESCAL_DEFAULT),
-          mgmtPct:   numOr('rentmgmt',LANDLORD_DEFAULT.mgmt),
-          vacancyMo: numOr('rentvac',LANDLORD_DEFAULT.vacancyMo),
-          maint:     digits('rentmaint',0,100000,LANDLORD_DEFAULT.maint),
-          leasePct:  numOr('rentlease',LANDLORD_DEFAULT.leasePct),
-          breakMo:   numOr('rentbreak',LANDLORD_DEFAULT.breakMo)};
+          maint:  digits('rentmaint',0,100000,MAINT_DEFAULT)};
 }
 /* The purchase is committed, so there is no longer a rent-instead-of-buy scenario. Kept as a
    function returning a constant: `home` is still threaded through the engine and netWorth, and
@@ -2019,6 +1984,12 @@ function syncSaleDate(rent, home, fromSaleDate){
     +`<dt>Tenants</dt><dd>${esc(LEASE.tenants)}</dd>`
     +`<dt>Manager</dt><dd>${esc(LEASE.manager)}</dd>`
     +`<dt>Notice</dt><dd>${LEASE.notice} days either side, else month-to-month</dd>`
+    +`<dt>Manager's cut</dt><dd>${MGMT_PCT}% monthly · ${LEASE_FEE_PCT}% of a month to place `
+      +`a tenant</dd>`
+    +`<dt>If you exit early</dt><dd>${fmt0(LEASE.rent*BREAK_MONTHS)} `
+      +`(${BREAK_MONTHS} mo — assumed, not in the lease)</dd>`
+    +`<dt>Tax</dt><dd>${RENT_TAX_RATE}% on rental income · ${RECAP_RATE}% recapture on `
+      +`${fmt0(DEPREC_BASIS)} of basis</dd>`
     +`</dl><p class="tiny">Tenants pay all utilities, yard care and filters, and carry $100k `
     +`liability. You cover HVAC, water heater and structural leaks. HOA dues are yours; the `
     +`tenants follow the rules and repay any fines. Holdover is 3× rent.</p>`;
@@ -2035,13 +2006,8 @@ function syncSaleDate(rent, home, fromSaleDate){
       + `${rent.months} month${rent.months===1?'':'s'}, `
       + `${sch.dates.length} full payment${sch.dates.length===1?'':'s'}`
       + (sch.pro? ' after the prorated first' : '')
-      + (early? ' · <b>ends before the signed term</b>' : '');
-    document.getElementById('vacsm').textContent =
-      rent.months>12 ? `${Math.floor((rent.months-1)/12)} turnover(s) in a ${rent.months}-month term`
-                     : 'none — the tenant is under contract for the whole term';
-    document.getElementById('breaksm').textContent = !early
-      ? `none — the signed term to ${nice(LEASE.end)} is served in full`
-      : `${fmt(rent.amt*rent.breakMo)} — out ${nice(sch.end)}, ${monthsBetween(sch.end,LEASE.end)} mo early`;
+      + (early? ` · <b>ends ${monthsBetween(sch.end,LEASE.end)} mo before the signed term — `
+                 +`${fmt0(rent.amt*rent.breakMo)} termination fee</b>` : '');
   }
   /* The impossible-sale warning needs no engine figures, so it is raised here and the reader
      sees it immediately. render() owns the relo-cost variant, which needs sellerCost. */
@@ -2243,9 +2209,7 @@ function render(){
   /* ONE rate spec, used by the main projection and by both comparison scenarios. Operating cash
      up to the floor earns the bank rate; only the surplus above it earns the investment rate. */
   const RATES = {cash:apy, invest:OPP_ROI, floor:LIQ_FLOOR};
-  DOWN_PCT = numOr('downpct',22);
-  document.getElementById('downsm').textContent =
-    `${fmt0(nhDown())} down · loan ${fmt0(nhLoan())} · P&I ${fmt(nhPI())}`;
+  // DOWN_PCT is fixed: the loan is signed and the wire is sent. Not an input any more.
   /* The closing is done, so the subtitle describes what the model IS now: a daily balance out
      to the horizon, and the state of the Midland house that drives most of it. */
   document.getElementById('subhead').textContent =
@@ -2659,8 +2623,6 @@ function render(){
     ? `warranty to ${nice(MAINT_WARRANTY_END)}, then rising toward `
       + `${fmt0(priceOn(T1)*MAINT_MATURE_PCT/100)}/yr by ${YR(T1)}`
     : '';
-  document.getElementById('leasesm').textContent = rent
-    ? `${fmt(rent.amt*(rent.leasePct||0)/100)} once, with the first full month` : '';
   document.getElementById('t_rentd').textContent = rent
     ? `${fmt0(rentTotal)} gross − ${fmt0(rentCostTotal)} landlord costs`
       + (rentIncTax? ` − ${fmt0(rentIncTax)} tax` : ' · paper loss, no tax')
@@ -2886,21 +2848,17 @@ document.getElementById('oppwrap').addEventListener('toggle',render);
 }));
 [['salenever','never'],['saleauto','auto'],['salepick','pick']].forEach(([id,m])=>
   document.getElementById(id).addEventListener('click',()=>{SALE_MODE=m; markDirty(); previewDates();}));
-['rentrate','renttax','rentmgmt','rentlease','rentvac','rentbreak','rentescal','apprec','cashapy','downpct','inflpct','opproi']
+['rentescal','apprec','cashapy','inflpct','opproi']
   .forEach(id=>document.getElementById(id).addEventListener('input',markDirty));
 document.getElementById('priceover').addEventListener('change',e=>{
   document.getElementById('pricefields').hidden = !e.target.checked; markDirty();
 });
-['rentbasis','midvalue','rentmaint','liqfloor'].forEach(id=>{
-  const el=document.getElementById(id), max=(id==='rentbasis'||id==='midvalue')?2000000:100000;
+['midvalue','rentmaint','liqfloor'].forEach(id=>{
+  const el=document.getElementById(id), max=(id==='midvalue')?2000000:100000;
   el.addEventListener('input',markDirty);
   el.addEventListener('blur',()=>{el.value=digits(id,0,max,0).toLocaleString('en-US');markDirty();});
   el.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();el.blur();} });
 });
-const $ra=document.getElementById('rentamt');
-$ra.addEventListener('input',markDirty);
-$ra.addEventListener('blur',()=>{$ra.value=digits('rentamt',1,20000,RENT_DEFAULT.amt).toLocaleString('en-US');markDirty();});
-$ra.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();$ra.blur();} });
 /* One select carries two different things: the HORIZON (how far the model runs) and the
    WINDOW (what slice of it the chart shows). Picking a horizon rebuilds the year list, since
    a 30-year model has 31 of them. Picking a year keeps whatever horizon is loaded. */
