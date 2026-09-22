@@ -460,7 +460,7 @@
       <span><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale</span>
       <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
       <span><span class="sw" style="background:var(--s7);height:3px;border-radius:0"></span>buying power (2026 $)</span>
-      <span id="keyoppwrap" hidden><span class="sw" style="background:var(--s8);height:3px;border-radius:0"></span><span id="keyopp">sell Midland now</span></span>
+      <span id="keyoppwrap" hidden><span class="sw" style="background:var(--s8);height:3px;border-radius:0"></span><span id="keyopp">sell at lease end</span></span>
     </div>
 
     <details id="tblwrap">
@@ -499,7 +499,7 @@
         <p class="oppnote" id="oppintro"></p>
         <div class="opptw"><table id="opptable"><thead><tr><th>Horizon</th>
           <th style="text-align:right">Keep &amp; rent</th>
-          <th style="text-align:right">Sell now &amp; invest</th>
+          <th style="text-align:right">Sell at lease end</th>
           <th style="text-align:right">Difference</th>
           <th style="text-align:right">Break-even</th></tr></thead><tbody></tbody></table></div>
         <p class="oppnote" id="oppexitintro"></p>
@@ -1732,6 +1732,16 @@ function oppNW(sc, home, rates){
    The same trap the configured-term bug hit before `rent.end` existed. */
 const keepRent = (rent, months) => ({...rent, months, end: addM(rent.start, months)});
 
+/* ⚠️ The sell side honours the SIGNED LEASE and sells at its end — it is not "sell today".
+   With a tenant under contract you cannot hand the house over now, and pretending you could
+   compared the tenancy against an option that does not exist. Both scenarios therefore run the
+   same tenancy up to Sept 30 2027 and diverge only after it, which is the decision actually in
+   front of the reader: re-let, or get out when the lease is up. */
+function oppExitDate(rent){
+  const e = rent? rentSchedule(rent).end : null;
+  return (e && e>SALE_FLOOR)? e : SALE_FLOOR;
+}
+
 /* keep-minus-sell is monotonically DECREASING in the rate: the selling side is holding more
    cash earlier, so every extra point of return is worth more to it. Monotone is what makes
    bisection safe here - on a non-monotone difference it would land on an arbitrary root. */
@@ -1760,7 +1770,7 @@ function oppAcrossHorizons(rent, home, rates){
         ? Math.max(1,(YR(T1)-YR(rent.start))*12 + (+T1.slice(5,7) - +rent.start.slice(5,7)) + 1)
         : 0;
       const keepSc=oppScenario(null, rent? keepRent(rent,months) : null, home);
-      const sellSc=oppScenario(SALE_FLOOR, null, home);
+      const sellSc=oppScenario(oppExitDate(rent), rent, home);
       out.push({key:k, label:HORIZONS[k].label, end:T1,
                 keep:oppNW(keepSc,home,rates), sell:oppNW(sellSc,home,rates),
                 be:breakEvenROI(keepSc,sellSc,home,rates)});
@@ -2110,31 +2120,49 @@ function fillOppPanel(rent, home, rates){
     +`fund. That rate is this panel's own assumption — it is deliberately NOT your `
     +`<b>${(numOr('cashapy',0)).toFixed(2)}% cash APY</b>, which is what a bank account pays and `
     +`what the chart's two balance lines both use. `
-    +`<b>Keep &amp; rent</b> never sells and stays tenanted the whole way. <b>Sell now &amp; `
-    +`invest</b> sells ${esc(nice(SALE_FLOOR))} and never has a tenant. The break-even column is the `
-    +`return at which the two finish level: beat it and selling wins.`;
+    +`<b>Keep &amp; rent</b> re-lets and never sells. <b>Sell at lease end</b> runs the same `
+    +`signed tenancy, then sells ${esc(nice(oppExitDate(rent)))} and invests the proceeds — both `
+    +`sides are identical until then, so the comparison is only about what happens after the `
+    +`lease is up. The break-even column is the return at which they finish level.`;
 
   // The exits. Every figure comes from the engine, so the relo window and the loss credit are
   // whatever the rest of the model already says they are.
-  const exits=[{d:SALE_FLOOR,l:'Sell now'},
-               {d:RELO_DEADLINE,l:'Last day of the relo window'},
-               {d:addD(RELO_DEADLINE,1),l:'One day later'}];
-  const rs=rent? rentSchedule({...rent}).end : null;
-  if(rs && rs<=T1) exits.push({d:rs,l:`After the ${rent.months}-month lease`});
+  /* ⚠️ Anything before the lease end BREAKS the lease, so it is priced with the tenancy in
+     place and the break fee included — comparing it against the lease-end exit on proceeds
+     alone would make the early dates look better than they are. Sorted by date so the relo
+     cliff still lands between consecutive rows. */
+  const leaseEnd = oppExitDate(rent);
+  const exits=[{d:leaseEnd, l:'When the lease ends'},
+               {d:RELO_DEADLINE, l:'Last day of the relo window'},
+               {d:addD(RELO_DEADLINE,1), l:'One day later'},
+               {d:SALE_FLOOR, l:'Today'}]
+    .filter(x=>x.d<=T1)
+    .sort((a,b)=>a.d<b.d? -1 : a.d>b.d? 1 : 0);
+  /* ⚠️ The lease-shortening clamp lives in syncSaleDate, i.e. in the UI — `buildEvents` will
+     happily model a 12-month tenancy against a sale six months in. So the tenancy has to be
+     cut to each exit date HERE, or `months % 12` stays 0 and the early rows quietly show no
+     break fee at all, which is exactly what makes them look cheap. */
+  const rentTo = d => {
+    if(!rent || !lt(d, rent.end)) return rent;
+    const e = lt(d, rent.start)? rent.start : d;
+    return {...rent, end:e, months:monthsBetween(rent.start, e)};
+  };
   let prev=null;
   document.getElementById('oppexits').querySelector('tbody').innerHTML = exits.map(x=>{
-    if(x.d>T1) return '';
-    const b=buildEvents(x.d, priceOn(x.d), null, home);
-    const hand=b.proceeds+b.loss;
+    const b=buildEvents(x.d, priceOn(x.d), rentTo(x.d), home);
+    const brk=b.ev.filter(e=>/Early lease termination/.test(e.l)).reduce((a,e)=>a+e.a,0);
+    const hand=b.proceeds+b.loss+brk;
     const cliff = prev!==null && hand < prev-5000;
     prev=hand;
-    return `<tr class="${cliff?'cliff':''}"><td>${esc(x.l)}</td><td>${esc(nice(x.d))}</td>`
+    return `<tr class="${cliff?'cliff':''}"><td>${esc(x.l)}`
+      +(brk? `<span style="color:var(--s4)"> · breaks the lease, ${fmt0(-brk)}</span>`:'')
+      +`</td><td>${esc(nice(x.d))}</td>`
       +`<td class="num">${b.sellerCost? '−'+fmt0(b.sellerCost) : '<span class="oppwin">covered</span>'}</td>`
       +`<td class="num">${b.loss? fmt0(b.loss):'—'}</td>`
       +`<td class="num"><b>${fmt0(hand)}</b></td></tr>`;
   }).join('');
-  const a=buildEvents(RELO_DEADLINE, priceOn(RELO_DEADLINE), null, home);
-  const bq=buildEvents(addD(RELO_DEADLINE,1), priceOn(addD(RELO_DEADLINE,1)), null, home);
+  const a=buildEvents(RELO_DEADLINE, priceOn(RELO_DEADLINE), rentTo(RELO_DEADLINE), home);
+  const bq=buildEvents(addD(RELO_DEADLINE,1), priceOn(addD(RELO_DEADLINE,1)), rentTo(addD(RELO_DEADLINE,1)), home);
   document.getElementById('oppexitintro').innerHTML =
     `If you do sell, <b>when</b> is worth more than the break-even rate. Crossing `
     +`${esc(nice(RELO_DEADLINE))} costs <b>${fmt0((a.proceeds+a.loss)-(bq.proceeds+bq.loss))}</b> `
@@ -2239,7 +2267,7 @@ function render(){
                                     DOWN_PCT,INFL_PCT,T1,sale,price,RECON]);
   if(OPPC.key!==oppKeyStr){
     const keepSc=oppScenario(null, rent? keepRent(rent,oppMonths) : null, home);
-    const sellSc=oppScenario(SALE_FLOOR, null, home);
+    const sellSc=oppScenario(oppExitDate(rent), rent, home);
     OPPC={key:oppKeyStr, keepSc, sellSc,
           be:breakEvenROI(keepSc,sellSc,home,RATES),
           keepEnd:oppNW(keepSc,home,RATES), sellEnd:oppNW(sellSc,home,RATES),
@@ -2441,7 +2469,7 @@ function render(){
     if(oppVD.length===n){
       const g2=oppVD[i].b-d.b;
       h+=`<div style="color:var(--s8);font-size:11px;margin:-1px 0 4px">`
-        +`${fmt(oppVD[i].b)} if sold now · `
+        +`${fmt(oppVD[i].b)} if sold at lease end · `
         +`<b>${g2>=0?'+':'−'}${fmt(Math.abs(g2)).replace('$','$')}</b> ${g2>=0?'ahead':'behind'}</div>`;
     }
     if(d.ev.length) h+='<ul>'+d.ev.map(e=>`<li><span>${e.l}</span><span>${fmt(e.a)}</span></li>`).join('')+'</ul>';
@@ -2655,7 +2683,7 @@ function render(){
     : OPPBE.rate===null ? `keeping wins below ${(OPP_MAX*100).toFixed(0)}%`
     : `break-even ${(OPPBE.rate*100).toFixed(1)}%`;
   document.getElementById('keyoppwrap').hidden = !oppShown;
-  document.getElementById('keyopp').textContent = 'sell Midland now';
+  document.getElementById('keyopp').textContent = 'sell at lease end';
   document.getElementById('liqsm').textContent =
     `earns ${(apy*100).toFixed(2)}% below the floor, ${(OPP_ROI*100).toFixed(2)}% above · `
     + `floor grows with inflation to ${fmt0(LIQ_FLOOR*inflAt(T1))} by ${YR(T1)}`;

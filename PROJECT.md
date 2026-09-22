@@ -1210,6 +1210,34 @@ rebases everything after it. Projecting 7% instead would bake an assumption into
 use for cash-flow planning. Raise it when you want to ask the opportunity-cost question; the
 break-even panel solves for its own rate regardless and is unaffected by the default.
 
+### The exit is the lease end, not today (rule 42)
+
+⚠️ **The sell side honours the signed lease and sells at its end.** "Sell today" is not an
+option the reader has — there is a tenant under contract — so comparing the tenancy against it
+compared against something that does not exist. Both scenarios now run the **same** tenancy to
+Sept 30 2027 and diverge only after it, which is the decision actually in front of them:
+re-let, or get out when the lease is up. `oppExitDate(rent)` is the one definition, used by
+`render()` and `oppAcrossHorizons` alike.
+
+The keep side rents **continuously to the horizon** — `keepRent(rent, oppMonths)` moves both
+`months` and `end`.
+
+⚠️ **The exits table has to cut the tenancy to each exit date itself.** The lease-shortening
+clamp lives in `syncSaleDate`, i.e. in the UI, so `buildEvents` will happily model a 12-month
+tenancy against a sale six months in — `months % 12` stays 0 and **no break fee appears**,
+which is exactly what made the early exits look cheap. `rentTo(d)` shortens it, and the rows
+now name the fee.
+
+This changes the answer. Selling inside the relo window beats waiting for the lease to end even
+after paying to break it:
+
+| Exit | | In hand |
+|---|---|---|
+| Today | breaks the lease, $6,600 | $79,100 |
+| **Last day of the relo window** | breaks the lease, $6,600 | **$93,789** |
+| One day later | breaks the lease, $6,600 | $61,444 |
+| When the lease ends | — | $71,223 |
+
 ### Reading the comparison, and the live date preview
 
 ⚠️ **The comparison line's gap is not visible to the eye, and that is a scale problem, not a
