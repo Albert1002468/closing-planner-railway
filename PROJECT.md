@@ -741,6 +741,22 @@ window no longer contains, and rebuilds the dropdown.
 preview (lease dates, the impossible-sale warning, the derived price) all read `T1` — deferring
 it would have the preview describing the old window. Only the expensive recompute is batched.
 
+### Vivint: paid out, never bought out (rule 41)
+
+⚠️ **The negotiated $8.58 is over — the rate is $57.77/mo, the tenants are NOT taking the
+contract over, and it is never bought out.** Cancelling costs 50% of everything remaining, due
+immediately, so paying it monthly to the end of the 60-month term is the cheaper path. That
+means the drafts survive **both the tenancy and the sale**: it is a contract on you, not on the
+house. All three of the old suppressions — `vivHandover`, `!rented(d)` and the sale test — are
+gone, along with the buyout.
+
+⚠️ **The rate STEPS at `VIVINT_RATE_FROM` (2026-09-22); it does not replace.** The Aug 22 2026
+draft really was $8.58 and may already be reconciled — rewriting it because a later rate
+changed would be the model editing history. 45 drafts, $2,550.46 total, ending Apr 2030.
+
+`vivFee`/`vivMonthsLeft` are kept in the return shape as zeros so downstream consumers do not
+have to change.
+
 ### The signed lease — 2103 Raleigh Point (rule 40)
 
 **Sept 25 2026 → Sept 30 2027**, $3,300/mo due the 1st, **no increases during the term**,

@@ -966,7 +966,16 @@ const PAY10=3830.28, PAY5=3557.15;
 const MTG_BAL_AFTER_AUG = 336756.31;        // stated principal after Aug payment
 const MTG_RATE = 0.05375, MI = MTG_RATE/12, MTG_PI = 2131.90, MTG_PMT = 2318.72;
 const AF_PAYOFF_DATE='2026-08-20', AF_PAYOFF_AMT=1436.90;  // AutoFortiva settled in full, no further drafts
-const VIVINT_RATE=59.99, VIVINT_LOW=8.58;                 // contract rate vs the negotiated rate now being paid
+/* ⚠️ The negotiated $8.58 is over: the rate is back to $57.77/mo, the tenants are NOT taking
+   the contract over, and it is never bought out. Cancelling costs 50% of everything left,
+   immediately, so paying it out monthly to the end of the 60-month term is the cheaper path —
+   which means the drafts survive both the tenancy AND the sale. It is a contract on you, not
+   on the house. */
+const VIVINT_RATE=59.99, VIVINT_LOW=8.58, VIVINT_MO=57.77;
+/* ⚠️ The rate STEPS, it does not replace. The Aug 22 2026 draft really was $8.58 and may
+   already be reconciled; rewriting it because a later rate changed would be the model editing
+   history. Drafts before this date keep the negotiated rate. */
+const VIVINT_RATE_FROM='2026-09-22';
 const VIVINT_START='2025-06-21', VIVINT_TERM=60;
 
 /* --- new-home payment: escrow steps up Jan 1 2027 for the reassessed property tax --- */
@@ -1498,19 +1507,15 @@ function buildEvents(sale, price, rent, home){
   /* ⚠️ The handover only happens if the tenant actually moves in BEFORE the sale. Selling
      first means nobody took the contract over, so it is still yours and still has to be bought
      out — keying off `rent` alone credited a handover that never occurred. */
-  const vivHandover = (rent && rent.months>0 && (!sale || lt(rent.start, sale)))? rent.start : null;
-  const buyout = (sale && !vivHandover)? addD(sale,-7) : null;
+  // Runs to the end of the term whatever happens to the house or the tenancy.
   ['2026-08-22','2026-09-22','2026-10-22','2026-11-23','2026-12-22'].concat(monthly(22,'2027-01','2030-06'))
-   .forEach(d=>{ if((!buyout || lt(d,buyout)) && (!vivHandover || lt(d,vivHandover))
-                    && (!sale || lt(d,sale))       // sold: the system goes with the house
-                    && !rented(d) && vivintMonthsLeft(d)>0)
-                   E(d,-VIVINT_LOW,'Vivint (negotiated rate)'); });
-  let vivFee=0, vivMonthsLeft=0;
-  if(buyout){
-    vivMonthsLeft = vivintMonthsLeft(buyout);
-    vivFee = +(vivMonthsLeft*VIVINT_RATE*0.5).toFixed(2);
-    if(vivFee>0) E(buyout,-vivFee,`Vivint contract buyout (50% of ${vivMonthsLeft} mo x ${fmt(VIVINT_RATE)})`);
-  }
+   .forEach(d=>{ if(vivintMonthsLeft(d)>0)
+                   E(d, -(lt(d,VIVINT_RATE_FROM)? VIVINT_LOW : VIVINT_MO),
+                     lt(d,VIVINT_RATE_FROM)? 'Vivint (negotiated rate)' : 'Vivint security'); });
+  /* Kept in the shape only so downstream consumers do not have to change; there is no buyout
+     any more. The alternative — 50% of everything remaining, due at once — is what makes
+     paying it out the cheaper option. */
+  const vivFee=0, vivMonthsLeft=0;
   /* One row per payment, because the rent escalates on each lease anniversary and the
      percentage-based costs move with it. Both the ledger and the Schedule E read these same
      rows, so they cannot drift apart. Maintenance is a flat annual reserve and does not step. */
