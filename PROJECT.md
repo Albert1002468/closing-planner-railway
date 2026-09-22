@@ -1210,6 +1210,37 @@ rebases everything after it. Projecting 7% instead would bake an assumption into
 use for cash-flow planning. Raise it when you want to ask the opportunity-cost question; the
 break-even panel solves for its own rate regardless and is unaffected by the default.
 
+### The default plan: hold it and keep letting (rule 43)
+
+**Sale mode is three-way and defaults to `'never'`** — `never` (hold and keep letting) ·
+`auto` (follow the tenancy) · `pick` (a typed date). The plan is to hold the house, so the
+model says so rather than inventing a sale on the last day of the window. In `'never'` the
+closing date is cleared; an empty date is already "no sale" to every downstream guard.
+
+**The lease end defaults to the horizon and RIDES it.** `setHorizon` moves `rentend` whenever
+it is sitting exactly on the old `T1` — widening the window should lengthen the tenancy rather
+than strand it years short. A date the reader typed is never moved.
+
+⚠️ `RENT_DEFAULT.end` (Sept 30 2027, the signed term) and the form's starting value (the
+horizon) differ **on purpose**: the signed term still drives the 12-month slider floor and the
+break fee, while the form starts on "let for the whole window".
+
+⚠️⚠️ **A tenancy running to `T1` has NOT been broken.** The break fee now requires
+`lt(rentEnd, T1)`. Without it the default plan was charged a termination fee purely because
+51 months is 3 into a contract year — the projection stopping is not an event anyone pays for.
+The sheet hint and the message strip carry the same test.
+
+**`OPP_EXIT` is fixed at Oct 1 2027**, the day after the signed term, and is deliberately *not*
+derived from the lease: the comparison asks "what if I got out once the signed term is served",
+and that date must not move when the tenancy is extended — extending it is the very thing being
+compared against. Every label names the date rather than saying "lease end".
+
+| Horizon | Keep & rent | Sell Oct 1, 2027 | Break-even |
+|---|---|---|---|
+| 5 years | $532,799 | $426,217 | over 60% |
+| 15 years | $2,155,363 | $1,668,572 | 46.5% |
+| 30 years | $5,842,409 | $4,424,399 | 45.1% |
+
 ### The exit is the lease end, not today (rule 42)
 
 ⚠️ **The sell side honours the signed lease and sells at its end.** "Sell today" is not an
