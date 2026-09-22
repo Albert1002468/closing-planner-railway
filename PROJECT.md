@@ -771,9 +771,20 @@ repair obligations are narrowed to **HVAC, water heater and structural leaks** �
 exactly what the ramping maintenance reserve is for, since those are the items whose builder
 warranty lapses around May 2027.
 
-⚠️ **Two things the contract does NOT settle, still assumptions:**
-- **Northwest Passage HOA dues.** The tenant follows the rules and reimburses fines, but dues
-  are the owner's and the amount is not in the lease — **they are missing from the model.**
+**Northwest Passage HOA: $500/yr, and it is the OWNER's.** ⚠️ The lease makes the tenant follow
+the HOA's rules and reimburse any fines — that is not the same as paying dues. The HOA's
+contract is with the property owner and it bills you whoever lives there. Billed annually on
+Jan 15, inflated like every other cost, and charged only while you still own the house.
+
+It is deliberately **not** in `rentCostTotal`, for the same reason property tax and insurance
+are not: you pay it rented or empty. It *is* deductible on Schedule E for the years the house
+is actually let.
+
+Measured A/B at $0 vs $500: ending balance $268,230.00 → $267,873.75, a net **−$356.25**, not
+−$500. The difference is the suspended passive loss growing by $500 and releasing at the sale
+at 28.75%. Over a never-sold 30-year run it bills 30 times, $500 rising to $1,178.28.
+
+⚠️ **One thing the contract does NOT settle, still an assumption:**
 - **The landlord breaking the lease.** The only break figure in the contract is 50% of one
   month for a tenant leaving with a replacement. Nothing covers the landlord ending it to sell,
   so `breakMo = 2` remains a placeholder.

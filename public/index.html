@@ -1057,6 +1057,11 @@ let MID_APPREC        = 0.03;         // appraised value tracks the market; set 
        disbursement blows the account open, and the annual analysis resets the payment from the
        following June with the shortage spread over 12 months. --- */
 const MID_INS        = 1329.00;       // annual homeowners premium
+/* Northwest Passage HOA. ⚠️ An OWNER cost, not a tenant one: the lease makes the tenant follow
+   the rules and reimburse any fines, but the HOA's contract is with the owner and it bills you
+   whoever lives there. Not part of `rentCostTotal` for the same reason property tax and
+   insurance are not — you pay it rented or empty. */
+const HOA_ANNUAL = 500.00, HOA_MONTH = 1, HOA_DAY = 15;
 const MID_PMI        = 28.75;         // monthly PMI — removable, >20% equity already
 const MID_PMI_OFF    = '2026-11-01';  // first payment without it; needs a written request
 const MID_LAND_TAX   = 567.84;        // 2025 land-only assessment
@@ -1430,6 +1435,15 @@ function buildEvents(sale, price, rent, home){
     arr.forEach(([d,a])=>{ if((!sale || lt(d,sale)) && !rented(d)) E(d,-a,lab); });
   });
   if(sale) E(addD(sale,10),-150.00,'Final Midland utility bills (prorated)');
+  // HOA dues, billed annually for as long as you own the house.
+  const hoaDates=[];
+  for(let y=2026; y<=YR(T1); y++){
+    const d=bumpWk(`${y}-${String(HOA_MONTH).padStart(2,'0')}-${String(HOA_DAY).padStart(2,'0')}`);
+    if(d>=T0 && (!sale || lt(d,sale))){
+      hoaDates.push(d);
+      E(d, -HOA_ANNUAL*inflAt(d), 'Northwest Passage HOA dues');
+    }
+  }
   // ---- Midland property tax. Charged for the whole calendar year you owned it, since the
   //      bill arrives in full regardless of when this projection happens to start. On a sale
   //      it prorates Jan 1 -> closing and settles out of the proceeds. ----
@@ -1587,6 +1601,8 @@ function buildEvents(sale, price, rent, home){
     const add=(y,k,v)=>{ (yrs[y]=yrs[y]||{...BLANK})[k]+=v; };
     if(leaseFee>0) add(YR(rent.start),'mgmt',leaseFee);   // deductible where it is paid
     if(breakFee>0) add(YR(breakDate),'mgmt',breakFee);   // a cost of the rental, deductible too
+    // HOA dues are deductible for the years the house is actually let.
+    hoaDates.forEach(d=>{ if(rented(d)) add(YR(d),'maint',+(HOA_ANNUAL*inflAt(d)).toFixed(2)); });
     // Vacancy is uncollected rent, never a deduction — it reduces the income of its own year.
     turnovers.forEach(t=>add(YR(t.d),'rent',-t.lost));
     rentRows.forEach(r=>{
