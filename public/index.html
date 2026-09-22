@@ -1536,8 +1536,12 @@ function buildEvents(sale, price, rent, home){
   const rentOK = d => !sale || lt(d, sale);
   // No tenant was ever placed if the lease is cancelled before move-in, so no placement fee.
   const leaseFee = (rent && rent.months>0)? +(rent.amt*(rent.leasePct||0)/100).toFixed(2) : 0;
-  if(leaseFee>0 && rentOK(rent.start)) E(bumpWk(rent.start), -leaseFee,
-    `Leasing fee — ${rent.leasePct}% of one month's rent, paid up front`);
+  /* ⚠️ Taken out of the FIRST FULL month, not the prorated move-in stub — the management
+     company bills it with the first monthly statement, so Oct 1 here rather than Sept 25.
+     Derived from `rentDates[0]` rather than hardcoded, so it follows the lease if it moves. */
+  const leaseFeeDate = (rentDates[0] || (rent && rent.start));
+  if(leaseFee>0 && leaseFeeDate && rentOK(leaseFeeDate)) E(bumpWk(leaseFeeDate), -leaseFee,
+    `Leasing fee — ${rent.leasePct}% of one month's rent`);
   /* One turnover at each 12-month boundary INSIDE the term. The final boundary is not one: the
      tenancy simply ends there (sale, or the window closing), so there is nothing to re-let. A
      12-month lease therefore has no vacancy cost at all, which is the truth — the tenant is
@@ -1599,7 +1603,7 @@ function buildEvents(sale, price, rent, home){
     const yrs={};
     const BLANK={rent:0,int:0,tax:0,ins:0,dep:0,mgmt:0,maint:0};
     const add=(y,k,v)=>{ (yrs[y]=yrs[y]||{...BLANK})[k]+=v; };
-    if(leaseFee>0) add(YR(rent.start),'mgmt',leaseFee);   // deductible where it is paid
+    if(leaseFee>0) add(YR(leaseFeeDate),'mgmt',leaseFee);   // deductible where it is paid
     if(breakFee>0) add(YR(breakDate),'mgmt',breakFee);   // a cost of the rental, deductible too
     // HOA dues are deductible for the years the house is actually let.
     hoaDates.forEach(d=>{ if(rented(d)) add(YR(d),'maint',+(HOA_ANNUAL*inflAt(d)).toFixed(2)); });
@@ -2694,7 +2698,7 @@ function render(){
       + `${fmt0(priceOn(T1)*MAINT_MATURE_PCT/100)}/yr by ${YR(T1)}`
     : '';
   document.getElementById('leasesm').textContent = rent
-    ? `${fmt(rent.amt*(rent.leasePct||0)/100)} once, at move-in` : '';
+    ? `${fmt(rent.amt*(rent.leasePct||0)/100)} once, with the first full month` : '';
   document.getElementById('t_rentd').textContent = rent
     ? `${fmt0(rentTotal)} gross − ${fmt0(rentCostTotal)} landlord costs`
       + (rentIncTax? ` − ${fmt0(rentIncTax)} tax` : ' · paper loss, no tax')

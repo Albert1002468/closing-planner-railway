@@ -1050,13 +1050,15 @@ understated 2056 maintenance by a factor of eight.
 
 | | |
 |---|---|
-| Placement fee | `leasePct` (50%) of **one full month's rent** = $1,650, **once**, on the move-in day |
+| Placement fee | `leasePct` (50%) of **one full month's rent** = $1,650, **once**, with the first full month |
 | Management | `mgmtPct` (10%) of collected rent, **every month** |
 
 ⚠️ The placement fee is a share of a **full** month's rent, not of the prorated move-in payment
-— it prices the tenant placement, not that month's income. It is charged **once at `rent.start`**,
-not per year, and it is a deductible management expense, so it joins the Schedule E `mgmt`
-bucket in the year it is paid. It also has to be added to `rentCostTotal` explicitly, since that
+— it prices the tenant placement, not that month's income. ⚠️ It is taken out of the **first
+full month** (Oct 1), not the move-in stub (Sept 25): the management company bills it with the
+first monthly statement. The date is `rentDates[0]`, derived rather than hardcoded, so it
+follows the lease if the dates move. Charged once, not per year, and deductible, so it joins
+the Schedule E `mgmt` bucket in the year it is paid. It also has to be added to `rentCostTotal` explicitly, since that
 figure is otherwise a sum over the monthly rows and the fee is not one of them.
 
 ⚠️⚠️ **The lease pushes the earliest sale past the relo deadline.** It ends 2027-10-02; the relo
