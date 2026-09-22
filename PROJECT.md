@@ -756,10 +756,9 @@ and lost **$3,300** of the term. Counting the 1sts is right either way, and it h
 mid-month end correctly too: rent falls due on the 1st for the whole month, so a lease ending
 Oct 2 still owes all of October.
 
-**The deposit is held, not earned** — in at signing, back out at move-out, net zero over the
-lease but real cash in the account meanwhile. ⚠️ The refund must **not** go through `rentOK`:
-the tenancy normally ends *on* the sale date and `rentOK` excludes that day, which swallowed
-the refund entirely and left the deposit looking like income.
+⚠️ **The $3,300 deposit is deliberately NOT modelled.** The property manager holds it, so it
+never reaches this account. Running it through as cash in and back out flattered the autumn
+trough by $3,300 — the low point read −$7,515 instead of the true −$9,855.
 
 **Already correct, confirmed against the contract:** the tenant pays all utilities (suppressed
 by `!rented(d)`), management runs through the property manager (10% monthly + the 50% placement

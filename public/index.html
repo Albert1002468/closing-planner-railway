@@ -1080,9 +1080,10 @@ const SELLER_COST_PCT=0.075;                // 6% commission + ~1.5% title/escro
 
 /* --- renting the Midland home out --- */
 /* Signed lease, 2103 Raleigh Point: Sept 25 2026 – Sept 30 2027, $3,300/mo due the 1st, no
-   increases during the term, $660 prorated at move-in, $3,300 deposit at signing. */
+   increases during the term, $660 prorated at move-in. */
 const RENT_DEFAULT={start:'2026-09-25', end:'2027-09-30', months:12, amt:3300};
-const RENT_DEPOSIT=3300.00;
+/* ⚠️ The $3,300 deposit is NOT modelled: the property manager holds it, so it never reaches
+   this account. Modelling it as cash in and back out flattered the autumn trough by $3,300. */
 
 /* --- renting somewhere yourself instead of closing on Sept 18 --- */
 // A later purchase: relo absorbs the buyer closing costs only inside the window.
@@ -1519,16 +1520,6 @@ function buildEvents(sale, price, rent, home){
      makes it one. A pre-move-in sale used to emit a full year of rent and landlord costs on a
      house already gone. */
   const rentOK = d => !sale || lt(d, sale);
-  /* The deposit is held, not earned — in at signing, back out at move-out. Net zero across the
-     lease, but it is real cash in the account meanwhile and the autumn trough is tight. */
-  if(rent && rentDates.length && RENT_DEPOSIT>0){
-    if(rentOK(rent.start)) E(bumpWk(rent.start), RENT_DEPOSIT, 'Security deposit received (held)');
-    /* ⚠️ NOT through rentOK. The tenancy normally ends ON the sale date, and rentOK excludes
-       that day — which swallowed the refund entirely and left the deposit looking like income.
-       It comes back whenever the tenancy ends, sale or no sale. */
-    const depBack = (sale && lt(sale,rentEnd))? sale : rentEnd;
-    E(bumpWk(depBack), -RENT_DEPOSIT, 'Security deposit returned');
-  }
   // No tenant was ever placed if the lease is cancelled before move-in, so no placement fee.
   const leaseFee = (rent && rent.months>0)? +(rent.amt*(rent.leasePct||0)/100).toFixed(2) : 0;
   if(leaseFee>0 && rentOK(rent.start)) E(bumpWk(rent.start), -leaseFee,
