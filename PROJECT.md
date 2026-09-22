@@ -1210,6 +1210,30 @@ rebases everything after it. Projecting 7% instead would bake an assumption into
 use for cash-flow planning. Raise it when you want to ask the opportunity-cost question; the
 break-even panel solves for its own rate regardless and is unaffected by the default.
 
+### The tenancy is derived, not typed (rule 44)
+
+⚠️ **`rentstart`, `rentend` and the term slider are gone.** The reader chooses *when the house
+is sold* and `leaseEndFor(saleDate)` derives the tenancy from it:
+
+| Sale mode | Tenancy runs to |
+|---|---|
+| **Never — keep renting** | `T1`, the horizon |
+| **When the tenant leaves** | `LEASE.end` (Sept 30 2027), and the sale closes then |
+| **On a date I choose** | the chosen date, floored at the lease start and capped at `T1` |
+
+Two date fields that could disagree with the sale date were a way to enter states the world
+cannot be in — a 12-month tenancy against a sale six months in. Only one date is entered now,
+so they cannot contradict. The clamp inside `syncSaleDate` went with them, as did
+`syncTermSlider`, `oppMonths` and most of `applyHorizonBounds`.
+
+⚠️ **"Early" now means before the CONTRACTED end**, which is what the lease says — not a
+12-month anniversary of an extended tenancy. Renting past Sept 30 2027 is month-to-month under
+the holdover clause, so stopping then costs nothing; stopping before it costs `breakMo` months.
+
+`LEASE` holds the contract as data (address, parties, term, rent, deposit, manager, notice) and
+`#contractcard` renders it read-only at the top of the rent group — the facts have to live
+somewhere now that the dates are no longer editable fields.
+
 ### The default plan: hold it and keep letting (rule 43)
 
 **Sale mode is three-way and defaults to `'never'`** — `never` (hold and keep letting) ·

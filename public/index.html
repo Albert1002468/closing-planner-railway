@@ -82,6 +82,15 @@
   .opptw{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:14px}
   .opptw table{margin-bottom:0}
   #opptable,#oppexits{min-width:430px}
+  /* The signed contract, read-only. Facts, not inputs — the tenancy dates are driven by the
+     sale mode now, and nothing here is editable. */
+  .contract{border:1px solid var(--grid);border-radius:10px;padding:11px 12px;background:var(--surface-1)}
+  .contract h5{margin:0 0 7px;font-size:11px;font-weight:700;letter-spacing:.06em;
+               text-transform:uppercase;color:var(--ink-2)}
+  .contract dl{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;margin:0;font-size:12px}
+  .contract dt{color:var(--muted)}
+  .contract dd{margin:0;color:var(--ink);font-variant-numeric:tabular-nums}
+  .contract .tiny{margin:8px 0 0;font-size:11px;line-height:1.5;color:var(--muted)}
   .oppnote{font-size:12.5px;line-height:1.55;color:var(--ink-2);margin:2px 0 12px}
   .oppnote b{color:var(--ink)}
   #opptable,#oppexits{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px}
@@ -595,17 +604,8 @@
           <h4 class="grph">Renting it out</h4>
           <div class="grpbody">
             <div id="rentfields">
-              <div class="ctl">
-                <label for="rentstart">Rent starts</label>
-                <input type="date" id="rentstart" min="2026-09-01" max="2030-06-01" value="2026-09-25">
-              </div>
-              <div class="ctl">
-                <label for="rentend">Rent through</label>
-                <input type="date" id="rentend" value="2030-12-31">
-                <input type="range" id="rentmos" min="12" max="50" step="1" value="12"
-                       aria-label="Lease length in months">
-                <span class="rends" id="termsm">&nbsp;</span>
-              </div>
+              <div class="contract wide" id="contractcard"></div>
+              <p class="grpnote wide" id="termsm"></p>
               <div class="ctl">
                 <label for="rentamt">Monthly rent &mdash; paid the 1st</label>
                 <div class="moneyfld"><span>$</span>
@@ -1001,10 +1001,16 @@ const SELLER_COST_PCT=0.075;                // 6% commission + ~1.5% title/escro
 /* --- renting the Midland home out --- */
 /* Signed lease, 2103 Raleigh Point: Sept 25 2026 – Sept 30 2027, $3,300/mo due the 1st, no
    increases during the term, $660 prorated at move-in. */
-/* ⚠️ `end` is the SIGNED term and is what the contract says; `LEASE_DEFAULT_END` is what the
-   form starts on — the horizon, because the plan is to hold and keep letting. They differ on
-   purpose: the signed term still drives the 12-month floor and the break fee. */
-const RENT_DEFAULT={start:'2026-09-25', end:'2027-09-30', months:12, amt:3300};
+/* The signed lease, as facts. ⚠️ The tenancy the model runs is DERIVED from the sale mode, not
+   typed: hold forever and it runs to the horizon; sell and it ends at the sale. Only `end` here
+   is the contractual term, and its sole job is to decide whether an exit is early. */
+const LEASE={
+  address:'2103 Raleigh Point', start:'2026-09-25', end:'2027-09-30',
+  rent:3300, deposit:3300, prorated:660,
+  landlords:'You and Hailea', tenants:'Michaelle Guzman, Danica Guzman, Hunter Sharp',
+  manager:'Brandon Beckett', notice:60
+};
+const RENT_DEFAULT={start:LEASE.start, end:LEASE.end, months:12, amt:LEASE.rent};
 /* ⚠️ The $3,300 deposit is NOT modelled: the property manager holds it, so it never reaches
    this account. Modelling it as cash in and back out flattered the autumn trough by $3,300. */
 
@@ -1472,8 +1478,11 @@ function buildEvents(sale, price, rent, home){
      been broken — the projection stopped, which is not an event anyone pays for. Without this
      the default "rent to the horizon" plan was charged a termination fee purely because
      51 months is 3 into a contract year. */
-  const tenancyEnds = rent && lt(rentEnd, T1);
-  if(rent && rent.breakMo>0 && tenancyEnds && (rent.months===0 || rent.months%12!==0)){
+  /* ⚠️ "Early" now means before the CONTRACTED end, which is what the lease actually says —
+     not a 12-month anniversary of an extended tenancy. Renting past Sept 30 2027 is
+     month-to-month under the holdover clause, so stopping then costs nothing. */
+  const endsEarly = rent && lt(rentEnd, LEASE.end) && lt(rentEnd, T1);
+  if(rent && rent.breakMo>0 && endsEarly){
     const k=Math.floor(rent.months/12);
     const amtThen=+(rent.amt*Math.pow(1+rent.escal/100,k)).toFixed(2);
     breakFee=+(amtThen*rent.breakMo).toFixed(2);
@@ -1482,7 +1491,7 @@ function buildEvents(sale, price, rent, home){
     E(bumpWk(breakDate), -breakFee,
       `Early lease termination — ${rent.breakMo} mo at ${fmt(amtThen)} `
       +(rent.months===0? '(cancelled before move-in)'
-                       : `(${rent.months%12} mo into a 12-month contract)`));
+                       : `(out ${nice(rentEnd)}, contract ran to ${nice(LEASE.end)})`));
   }
   const turnovers=[];
   if(rent) for(let k=1; k*12 < rent.months; k++){
@@ -1740,7 +1749,7 @@ function oppNW(sc, home, rates){
    tenancy at its contractual 12 months — the comparison then modelled "rent for a year, then
    hold an empty house to the horizon", and reported that SELLING wins outright at any return.
    The same trap the configured-term bug hit before `rent.end` existed. */
-const keepRent = (rent, months) => ({...rent, months, end: addM(rent.start, months)});
+const keepRent = (rent, end) => ({...rent, end, months: monthsBetween(rent.start, end)});
 
 /* ⚠️ The sell side honours the SIGNED LEASE and sells at its end — it is not "sell today".
    With a tenant under contract you cannot hand the house over now, and pretending you could
@@ -1783,7 +1792,7 @@ function oppAcrossHorizons(rent, home, rates){
       const months = rent
         ? Math.max(1,(YR(T1)-YR(rent.start))*12 + (+T1.slice(5,7) - +rent.start.slice(5,7)) + 1)
         : 0;
-      const keepSc=oppScenario(null, rent? keepRent(rent,months) : null, home);
+      const keepSc=oppScenario(null, rent? keepRent(rent,T1) : null, home);
       const sellSc=oppScenario(oppExitDate(rent), rent, home);
       out.push({key:k, label:HORIZONS[k].label, end:T1,
                 keep:oppNW(keepSc,home,rates), sell:oppNW(sellSc,home,rates),
@@ -1899,9 +1908,19 @@ function monthsBetween(a,b){
 /* Renting the Midland home is committed, so there is no on/off switch. The reader gives the
    two DATES the tenancy runs between; the month count the engine wants is derived from them.
    Asking for "term in months" made the reader do that arithmetic in their head. */
+/* ⚠️ The tenancy is DERIVED, never typed. The reader chooses when the house is sold and the
+   lease follows: hold it and the tenant stays to the end of the window; sell and they leave at
+   the sale. Two date fields that could disagree with the sale date were a way to enter states
+   the world cannot be in. */
+function leaseEndFor(saleDate){
+  if(SALE_MODE==='never') return T1;
+  if(SALE_MODE==='auto')  return LEASE.end;
+  if(!saleDate) return T1;
+  return lt(saleDate, LEASE.start)? LEASE.start : (saleDate>T1? T1 : saleDate);
+}
 function readRent(){
-  const start = document.getElementById('rentstart').value || RENT_DEFAULT.start;
-  const end   = document.getElementById('rentend').value || RENT_DEFAULT.end;
+  const start = LEASE.start;
+  const end   = leaseEndFor(document.getElementById('saledate').value);
   return {start, end,
           months: monthsBetween(start, end),
           amt:    digits('rentamt',1,20000,RENT_DEFAULT.amt),
@@ -1936,25 +1955,8 @@ const nice = d => dd(d).toLocaleDateString('en-US',{month:'short',day:'numeric',
    recompute stays batched behind Apply. render() calls this same function, so the live preview
    and the applied projection can never disagree about the date. */
 function syncSaleDate(rent, home, fromSaleDate){
-  /* ⚠️ Choosing a sale date INSIDE the tenancy ends the tenancy — you cannot hand over a house
-     with a tenant in it. So the lease end follows the sale date back, rather than the sale
-     date being pushed forward off the tenant as it is in auto mode. `rent` is re-read because
-     shortening the lease changes the month count every later calculation depends on.
-
-     ⚠️ ONLY when the sale date is what moved (`fromSaleDate`). Running this on every preview
-     meant extending the lease snapped straight back to the sale date: the slider looked dead
-     in "on a date I choose" mode, because every nudge was undone in the same pass. */
-  const $sdE=document.getElementById('saledate'), $reE=document.getElementById('rentend');
-  if(fromSaleDate && SALE_MODE==='pick' && rent && $sdE.value && $reE.value
-     && $sdE.value < $reE.value){
-    /* ⚠️ Floored at the lease START. A sale before the tenant moves in cancels the tenancy; it
-       cannot end it before it began, and letting `rentend` go below the start produced a
-       negative term. The old `> rent.start` guard skipped this case entirely, leaving a full
-       12-month lease running against a sale that had already happened. */
-    $reE.value = lt($sdE.value, rent.start)? rent.start : $sdE.value;
-    rent=readRent();
-    syncTermSlider();
-  }
+  /* The lease follows the sale date through `leaseEndFor`, so there is nothing to clamp here
+     any more — the two can no longer disagree because only one of them is entered. */
   const rentEndDate = rent? rentSchedule(rent).end : null;
   const myEndDate = null;
   // The house cannot be sold out from under a tenant: the sale can only close once the term is up.
@@ -1978,19 +1980,11 @@ function syncSaleDate(rent, home, fromSaleDate){
   if(SALE_MODE==='never'){
     $sd.value='';                       // an empty date IS "never sold" downstream
   } else if(SALE_MODE==='auto'){
-    if(saleMin>SALE_FLOOR){
-      if(SALE_BEFORE_RENT===null) SALE_BEFORE_RENT=$sd.value;
-      // Outside the horizon there is nothing valid to show; hold the value and let the warning
-      // speak. Widening the horizon re-derives it from saleMin on the very next render.
-      if(!noSalePossible) $sd.value=saleMin;
-    } else {
-      if(SALE_BEFORE_RENT) $sd.value=SALE_BEFORE_RENT;
-      SALE_BEFORE_RENT=null;
-    }
+    // The tenant leaves when the signed term is up, and the sale closes then.
+    $sd.value = LEASE.end>T1? T1 : LEASE.end;
   } else if($sd.value){
-    // A typed date is only ever pushed FORWARD, off a tenant, or back inside the horizon.
-    if(!noSalePossible && $sd.value<saleMin) $sd.value=saleMin;
     if($sd.value>T1) $sd.value=T1;
+    if(lt($sd.value, SALE_FLOOR)) $sd.value=SALE_FLOOR;
   }
   LAST_SALE_MIN=saleMin;
   /* The "never sold in window" switch is gone. Clearing the date models it instead — an empty
@@ -2015,6 +2009,19 @@ function syncSaleDate(rent, home, fromSaleDate){
     SALE_MODE==='never' ? 'The house is held and kept let for the whole window — no sale is modelled.'
   : SALE_MODE==='auto'  ? 'The closing date follows the end of the tenancy.'
   :                       'Type a date. Choosing one inside the tenancy ends the lease early.';
+  const cc=document.getElementById('contractcard');
+  if(cc) cc.innerHTML =
+    `<h5>Signed lease — ${esc(LEASE.address)}</h5><dl>`
+    +`<dt>Term</dt><dd>${esc(nice(LEASE.start))} → ${esc(nice(LEASE.end))}</dd>`
+    +`<dt>Rent</dt><dd>${fmt(LEASE.rent)}/mo on the 1st · no increases in term</dd>`
+    +`<dt>Move-in</dt><dd>${fmt(LEASE.prorated)} prorated · ${fmt(LEASE.deposit)} deposit `
+      +`(held by the manager)</dd>`
+    +`<dt>Tenants</dt><dd>${esc(LEASE.tenants)}</dd>`
+    +`<dt>Manager</dt><dd>${esc(LEASE.manager)}</dd>`
+    +`<dt>Notice</dt><dd>${LEASE.notice} days either side, else month-to-month</dd>`
+    +`</dl><p class="tiny">Tenants pay all utilities, yard care and filters, and carry $100k `
+    +`liability. You cover HVAC, water heater and structural leaks. HOA dues are yours; the `
+    +`tenants follow the rules and repay any fines. Holdover is 3× rent.</p>`;
   document.getElementById('saleday').textContent =
     sale? dd(sale).toLocaleDateString('en-US',{weekday:'long'}) : 'no sale modeled';
   /* ⚠️ The lease-length hints live HERE, not in render(). They are the feedback for the field
@@ -2022,25 +2029,19 @@ function syncSaleDate(rent, home, fromSaleDate){
      on screen — the hint read "12 months" while the field said a 24-month lease. */
   if(rent){
     const sch=rentSchedule(rent);
-    const $rm=document.getElementById('rentmos');
-    document.getElementById('termsm').textContent =
-      `${rent.months} months · ${sch.dates.length} full payments`
+    const early = lt(sch.end, LEASE.end);
+    document.getElementById('termsm').innerHTML =
+      `Tenancy runs <b>${esc(nice(rent.start))} → ${esc(nice(sch.end))}</b> — `
+      + `${rent.months} month${rent.months===1?'':'s'}, `
+      + `${sch.dates.length} full payment${sch.dates.length===1?'':'s'}`
       + (sch.pro? ' after the prorated first' : '')
-      + ` · ${$rm.min}–${$rm.max} mo`
-      + (rent.months < LEASE_TERM_MONTHS
-          ? ' · cut short by the sale date'
-          : ` · ${LEASE_TERM_MONTHS} mo is the signed lease; sell earlier to end it sooner`);
+      + (early? ' · <b>ends before the signed term</b>' : '');
     document.getElementById('vacsm').textContent =
       rent.months>12 ? `${Math.floor((rent.months-1)/12)} turnover(s) in a ${rent.months}-month term`
                      : 'none — the tenant is under contract for the whole term';
-    const into=rent.months%12;
-    const endsInside=lt(rentSchedule(rent).end, T1);
-    document.getElementById('breaksm').textContent =
-      !endsInside ? 'none — the tenancy runs to the end of the window'
-      : into===0  ? 'none — the term ends on a contract anniversary'
-      : `${fmt(rent.amt*Math.pow(1+rent.escal/100,Math.floor(rent.months/12))*rent.breakMo)} `
-        +`— ending ${into} mo into a 12-month contract`;
-    syncTermSlider();
+    document.getElementById('breaksm').textContent = !early
+      ? `none — the signed term to ${nice(LEASE.end)} is served in full`
+      : `${fmt(rent.amt*rent.breakMo)} — out ${nice(sch.end)}, ${monthsBetween(sch.end,LEASE.end)} mo early`;
   }
   /* The impossible-sale warning needs no engine figures, so it is raised here and the reader
      sees it immediately. render() owns the relo-cost variant, which needs sellerCost. */
@@ -2061,11 +2062,12 @@ function syncSaleDate(rent, home, fromSaleDate){
                 +`are yours, loss credit void.`]
       : ['ok',   `Closes inside the relo window — seller costs covered.`]);
   }
-  if(rent && rent.months<LEASE_TERM_MONTHS && rent.breakMo>0 && lt(rentEndDate,T1)){
+  if(rent && rent.breakMo>0 && lt(rentEndDate, LEASE.end) && lt(rentEndDate,T1)){
     const fee=rent.amt*Math.pow(1+rent.escal/100, Math.floor(rent.months/12))*rent.breakMo;
     msgs.push(['info', rent.months===0
       ? `Lease cancelled before move-in — ${fmt0(fee)} termination fee.`
-      : `Lease ends ${LEASE_TERM_MONTHS-rent.months} mo early — ${fmt0(fee)} termination fee.`]);
+      : `Out ${nice(rentEndDate)}, ${monthsBetween(rentEndDate,LEASE.end)} mo before the signed `
+        +`term ends — ${fmt0(fee)} termination fee.`]);
   }
   document.getElementById('setmsgs').innerHTML =
     msgs.map(([k,t])=>`<p class="${k}">${esc(t)}</p>`).join('');
@@ -2084,10 +2086,9 @@ function syncSaleDate(rent, home, fromSaleDate){
 const LEASE_TERM_MONTHS=12;
 
 function applyHorizonBounds(rent){
-  const $rs=document.getElementById('rentstart'), $re=document.getElementById('rentend'),
-        $sd=document.getElementById('saledate'),  $rm=document.getElementById('rentmos');
-  $rs.max=T1; $re.max=T1; $sd.max=T1;
-  if(rent){
+  const $sd=document.getElementById('saledate');
+  $sd.max=T1;
+  if(false){
     /* ⚠️ TWO different floors, because two different things shorten a tenancy.
          · Slider and "rent through": floored at the CONTRACTED end (start + 12 months). You
            cannot unilaterally shorten a lease the tenant signed by dragging a control.
@@ -2106,16 +2107,6 @@ function applyHorizonBounds(rent){
   }
 }
 
-/* The slider and the date are two views of one value. `syncTermSlider` pushes the date into
-   the slider; the slider's own handler pushes the other way. Its max comes from
-   `applyHorizonBounds`, so it pins at whatever the horizon allows rather than a fixed number. */
-function syncTermSlider(){
-  const $r=document.getElementById('rentmos');
-  const start=document.getElementById('rentstart').value || RENT_DEFAULT.start;
-  const end=document.getElementById('rentend').value;
-  if(!end) return;
-  $r.value=String(Math.min(+$r.max, monthsBetween(start,end)));
-}
 // Live date preview while the sheet is open: cheap DOM work only, no engine.
 const previewDates = (fromSaleDate) => { try{ syncSaleDate(readRent(), readHome(), fromSaleDate); }catch(e){} };
 
@@ -2282,9 +2273,6 @@ function render(){
   /* ⚠️ The keep side must stay rented for the WHOLE window. Passing the configured term meant
      "rent it 36 months, then hold an empty house for 27 years paying every bill with no
      income" — a scenario nobody is choosing, which made selling look far better than it is. */
-  const oppMonths = rent
-    ? Math.max(1,(YR(T1)-YR(rent.start))*12 + (+T1.slice(5,7) - +rent.start.slice(5,7)) + 1)
-    : 0;
   /* Cached on everything it actually depends on — and VIEW is deliberately NOT in the key.
      Switching the chart window is still a live render, so without this, picking a year would
      rebuild two scenarios and re-run a 24-step bisection to produce a number that cannot have
@@ -2292,7 +2280,7 @@ function render(){
   const oppKeyStr = JSON.stringify([rent,home,RATES,MID_VALUE_TODAY,MID_APPREC,
                                     DOWN_PCT,INFL_PCT,T1,sale,price,RECON]);
   if(OPPC.key!==oppKeyStr){
-    const keepSc=oppScenario(null, rent? keepRent(rent,oppMonths) : null, home);
+    const keepSc=oppScenario(null, rent? keepRent(rent,T1) : null, home);
     const sellSc=oppScenario(oppExitDate(rent), rent, home);
     OPPC={key:oppKeyStr, keepSc, sellSc,
           be:breakEvenROI(keepSc,sellSc,home,RATES),
@@ -2891,13 +2879,6 @@ document.getElementById('oppwrap').addEventListener('toggle',render);
    preview runs against the stale flag and has to be corrected by a second pass. */
 // Changing the lease says when the tenant leaves, so the sale date starts tracking it again.
 // Changing the tenancy dates re-derives the sale date, when the reader has not fixed one.
-['rentstart','rentend'].forEach(id=>
-  onDateEdit(id,()=>{syncTermSlider();markDirty();previewDates();}));
-document.getElementById('rentmos').addEventListener('input',e=>{
-  const start=document.getElementById('rentstart').value || RENT_DEFAULT.start;
-  document.getElementById('rentend').value=addM(start, +e.target.value);
-  markDirty(); previewDates();
-});
 ['hz5','hz15','hz30'].forEach(id=>document.getElementById(id).addEventListener('click',()=>{
   /* T1 moves immediately so the live preview — lease dates, warnings, the derived price — is
      honest about the new window. The expensive recompute still waits for Apply. */
@@ -2941,13 +2922,7 @@ function buildViews(){
    disagree. Narrowing can orphan the selected year, hence the clamp. */
 function setHorizon(k){
   if(!HORIZONS[k] || k===HORIZON) return false;
-  const prevT1=T1;
   HORIZON=k; T1=HORIZONS[k].end;
-  /* A lease end sitting exactly on the old horizon is "riding" it — the default is to let the
-     house for the whole window, so widening the window should lengthen the tenancy rather than
-     leave it stranded years short. A date the reader typed is never moved. */
-  const $re=document.getElementById('rentend');
-  if($re && $re.value===prevT1) $re.value=T1;
   if(VIEW!=='span' && +VIEW>YR(T1)) VIEW=String(YR(T1));
   buildViews();
   if(VIEW!=='span') $vw.value=VIEW;
