@@ -741,6 +741,29 @@ window no longer contains, and rebuilds the dropdown.
 preview (lease dates, the impossible-sale warning, the derived price) all read `T1` — deferring
 it would have the preview describing the old window. Only the expensive recompute is batched.
 
+### Retired: the closing-cost donut
+
+The OKC purchase closed Sept 18 2026, so a breakdown of a wire already sent is history, not a
+plan. The accordion, the SVG, the legend and `drawDonut()` are gone, along with ~36 lines of
+CSS that nothing else used (`.pos` was the donut wrapper — the chart's tooltip anchors on
+`.tlouter`, so it was safe).
+
+⚠️ **`closingSlices`, `credits`, `CREDIT_TOTAL` and `nhCashToClose` all STAY.** The engine still
+needs them to size the Sept 17 wire, and `DOWN_PCT` still drives the loan, the P&I and the
+prepaid interest. Only the *drawing* retired.
+
+The page is now **Cash Flow Planner**, and both subtitles stopped describing the closing as
+upcoming: the first names the window, the tenancy and the sale, the second reports the closing
+in the past tense.
+
+⚠️⚠️ **Adding `rent.end` silently broke the opportunity-cost comparison, and the symptom was
+subtle** — the break-even read "any" at every horizon, i.e. selling wins outright. `oppScenario`
+extends the keep-and-rent side by overriding `months`, but `rentSchedule` now prefers
+`rent.end`, so the tenancy stayed at its contractual 12 months and the comparison modelled
+*"rent for a year, then hold an empty house to the horizon"*. `keepRent(rent, months)` moves
+**both**. This is the same trap the configured-term bug hit before `rent.end` existed: anything
+that lengthens a tenancy has to move every field that bounds it.
+
 ### Vivint: paid out, never bought out (rule 41)
 
 ⚠️ **The negotiated $8.58 is over — the rate is $57.77/mo, the tenants are NOT taking the

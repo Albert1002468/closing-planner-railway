@@ -1,4 +1,4 @@
-# Closing & Home-Sale Planner
+# Cash Flow Planner
 
 Cash-flow planner for the Sept 18, 2026 closing and the Midland home sale, with
 permanent daily reconciliation.
