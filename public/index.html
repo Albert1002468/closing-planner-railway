@@ -657,7 +657,17 @@
   .foot{margin-top:18px}
 
   /* ---- sheets ---- */
-  .modal{background:rgba(10,10,12,.32);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+  /* ⚠️ A page-coloured frost, not a dark dim. iOS paints the status-bar strip itself and nothing
+     on the page can dim or blur it, so a dark backdrop stopped in a hard line under the clock.
+     Frosting toward the page colour ends up the colour the strip already is. `:root` lifts this
+     over the older dark-mode dim. */
+  :root .modal{background:color-mix(in srgb,var(--page) 62%,transparent);
+         -webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2)}
+  .sheet{box-shadow:0 1px 0 var(--ring),0 24px 70px rgba(0,0,0,.22),0 4px 16px rgba(0,0,0,.08)}
+  :root .spin{background:color-mix(in srgb,var(--page) 70%,transparent);
+         -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+  .spinring{border-color:color-mix(in srgb,var(--ink) 16%,transparent);border-top-color:var(--ink)}
+  .spin p{color:var(--ink-2)}
   .sheet{border:0;border-radius:24px;padding:22px;box-shadow:0 30px 90px rgba(0,0,0,.25);
          animation:sheetin .22s cubic-bezier(.2,.8,.2,1)}
   @keyframes sheetin{from{transform:translateY(16px);opacity:0}}
@@ -3257,10 +3267,11 @@ function sheetDrag(modal, close){
   let y0=null, dy=0, on=false, lastY=0, lastT=0, vel=0;
   const put=(y,animate)=>{
     sheet.style.transition = animate? 'transform .26s cubic-bezier(.2,.8,.2,1)' : 'none';
-    modal.style.transition = animate? 'background-color .26s' : 'none';
+    modal.style.transition = animate? 'background .26s' : 'none';
     sheet.style.transform = y? `translateY(${y}px)` : '';
     const f = 1 - Math.min(1, y/Math.max(1,sheet.offsetHeight));
-    modal.style.backgroundColor = y? `rgba(10,10,12,${(.32*f).toFixed(3)})` : '';
+    // The frost thins as the sheet is pulled away (same page-coloured veil as the CSS).
+    modal.style.background = y? `color-mix(in srgb,var(--page) ${(62*f).toFixed(1)}%,transparent)` : '';
   };
   sheet.addEventListener('touchstart',e=>{
     y0=null;
