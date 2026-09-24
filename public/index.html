@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0e3a5c">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
   :root, .viz-root {
     color-scheme: light;
@@ -367,16 +367,16 @@
     radial-gradient(700px 360px at 100% 0,color-mix(in srgb,#22c58b 7%,transparent),transparent 70%),
     var(--page)}
   body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:var(--backdrop)}
-  /* The status-bar scrim. Content scrolled up used to slide under the clock and battery and sit
-     there, overlapping them. This is the SAME backdrop, same size and position, so it lines up
-     pixel for pixel — masked to show only across the safe-area inset and fading out just below
-     it. Scrolled content disappears under it the way it does in a native app. Above the page,
-     below the sheets (60) so a dimmed modal still covers it. */
-  body::after{content:'';position:fixed;inset:0;z-index:55;pointer-events:none;background:var(--backdrop);
-    -webkit-mask-image:linear-gradient(to bottom,#000 0,#000 env(safe-area-inset-top,0px),
-                                        transparent calc(env(safe-area-inset-top,0px) + 14px));
-            mask-image:linear-gradient(to bottom,#000 0,#000 env(safe-area-inset-top,0px),
-                                        transparent calc(env(safe-area-inset-top,0px) + 14px))}
+  /* The status-bar band. ⚠️ With the "default" status-bar style iOS lays the page out BELOW the
+     status bar and reports a zero inset, so nothing fixed can reach up there while scrolled
+     content still shows through it — which is why the header slid under the clock. "black-
+     translucent" hands the page the whole screen instead, but iOS then always draws the clock in
+     WHITE, so the band is the icon's navy (readable white-on-navy in both themes) with the
+     icon's gradient as a hairline. Scrolled content disappears beneath it. Zero height anywhere
+     there is no inset, so desktop and browsers never see it. */
+  body::after{content:'';position:fixed;top:0;left:0;right:0;z-index:55;pointer-events:none;
+    height:env(safe-area-inset-top,0px);
+    background:var(--grad) left bottom/100% 2px no-repeat,linear-gradient(180deg,#0e3a5c,#0b2f4b)}
   /* viewport-fit=cover lets the fixed backdrop run up behind the status bar and camera island
      in the home-screen app; the content itself is pushed clear of them by the safe-area insets. */
   .viz-root{background:transparent;padding-top:calc(26px + env(safe-area-inset-top,0px));
