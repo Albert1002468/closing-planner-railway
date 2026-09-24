@@ -2709,8 +2709,6 @@ const FORM_DEFAULTS=(()=>{ const m={};
 const DEFAULT_HORIZON=HORIZON;
 
 function resetForm(){
-  if(!confirm('Reset every setting in this sheet back to its default?\n\n'
-    +'This does not touch your reconciliations.')) return;
   document.querySelectorAll('#setmodal input').forEach(el=>{
     if(!(el.id in FORM_DEFAULTS)) return;
     if(el.type==='checkbox') el.checked=FORM_DEFAULTS[el.id];
