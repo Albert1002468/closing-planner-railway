@@ -110,6 +110,8 @@
   #opptable td.num,#oppexits td.num{text-align:right;font-variant-numeric:tabular-nums}
   #opptable tr.now td{background:color-mix(in srgb,var(--s1) 7%,transparent)}
   #oppexits tr.cliff td{background:color-mix(in srgb,var(--crit) 8%,transparent)}
+  #oppexits tr.berow td{background:color-mix(in srgb,var(--good) 8%,transparent)}
+  #oppexits{min-width:520px}
   .oppwin{color:var(--goodtext);font-weight:600}
   .opplose{color:var(--crit);font-weight:600}
   .secic{display:flex;color:var(--muted)}
@@ -901,7 +903,8 @@
         <div class="opptw"><table id="oppexits"><thead><tr><th>Exit</th><th>Date</th>
           <th style="text-align:right">Seller costs</th>
           <th style="text-align:right">Loss credit</th>
-          <th style="text-align:right">In hand</th></tr></thead><tbody></tbody></table></div>
+          <th style="text-align:right">In hand</th>
+          <th style="text-align:right" title="In hand, deflated to today's dollars at your inflation rate">Today's $</th></tr></thead><tbody></tbody></table></div>
         <p class="oppnote" id="oppcaveat"></p>
       </div>
     </details>
@@ -2559,42 +2562,70 @@ function fillOppPanel(rent, home, rates){
      place and the break fee included — comparing it against the lease-end exit on proceeds
      alone would make the early dates look better than they are. Sorted by date so the relo
      cliff still lands between consecutive rows. */
-  const leaseEnd = rent? rentSchedule(rent).end : SALE_FLOOR;
-  const exits=[{d:leaseEnd, l:'When the tenancy ends'},
-               {d:OPP_EXIT, l:'Once the signed term is served'},
-               {d:RELO_DEADLINE, l:'Last day of the relo window'},
-               {d:addD(RELO_DEADLINE,1), l:'One day later'},
-               {d:SALE_FLOOR, l:'Today'}]
-    .filter((x,i,arr)=>x.d<=T1 && arr.findIndex(y=>y.d===x.d)===i)
-    .sort((a,b)=>a.d<b.d? -1 : a.d>b.d? 1 : 0);
-  /* ⚠️ The lease-shortening clamp lives in syncSaleDate, i.e. in the UI — `buildEvents` will
-     happily model a 12-month tenancy against a sale six months in. So the tenancy has to be
-     cut to each exit date HERE, or `months % 12` stays 0 and the early rows quietly show no
-     break fee at all, which is exactly what makes them look cheap. */
+  /* ⚠️ The break fee lives in the UI clamp (syncSaleDate), not in `buildEvents`, which will
+     happily model a 12-month tenancy against a sale six months in. So the tenancy is cut to
+     each exit date HERE, or the early rows quietly show no break fee at all. */
   const rentTo = d => {
     if(!rent || !lt(d, rent.end)) return rent;
     const e = lt(d, rent.start)? rent.start : d;
     return {...rent, end:e, months:monthsBetween(rent.start, e)};
   };
-  let prev=null;
-  document.getElementById('oppexits').querySelector('tbody').innerHTML = exits.map(x=>{
-    const b=buildEvents(x.d, priceOn(x.d), rentTo(x.d), home);
+  // Every row is also shown in TODAY's dollars, so exits years apart compare on one footing.
+  const real = (v,d) => v/Math.pow(1+INFL_PCT, Math.max(0,nDays(SALE_FLOOR,d))/365.25);
+  const handOf = d => { const b=buildEvents(d, priceOn(d), rentTo(d), home);
     const brk=b.ev.filter(e=>/Early lease termination/.test(e.l)).reduce((a,e)=>a+e.a,0);
-    const hand=b.proceeds+b.loss+brk;
+    return {b, brk, hand:b.proceeds+b.loss+brk}; };
+  /* The model stops at T1, and past it payoffOn has no schedule to walk — so the whole table is
+     built against the 30-year horizon and T1 restored after, exactly as the horizon sweep does.
+     The break-even can land beyond the chosen window; it is still worth knowing. */
+  const saveT1=T1; let exitRows=[], recover=null, gap=0;
+  try{
+    T1=HORIZONS.h30.end;
+    const last=handOf(RELO_DEADLINE), next=handOf(addD(RELO_DEADLINE,1));
+    gap=(last.b.proceeds+last.b.loss)-(next.b.proceeds+next.b.loss);
+    /* When does waiting make the relo loss back? Past the window, what you walk away with is
+       price x (1 - seller costs) - payoff: appreciation raises it, amortisation raises it, and
+       inflation shrinks what it is worth. The answer is the first date on which it is worth, in
+       today's dollars, what selling on the window's last day is worth. */
+    const target=real(last.hand, RELO_DEADLINE);
+    const worth=d=>real(priceOn(d)*(1-SELLER_COST_PCT)-payoffOn(d), d);
+    let lo=addD(RELO_DEADLINE,1), hi=null;
+    for(let d=lo; d<=T1; d=addM(d,1)){ if(worth(d)>=target){ hi=d; break; } lo=d; }
+    if(hi){                                            // narrow the month down to the day
+      while(nDays(lo,hi)>1){ const mid=addD(lo,Math.floor(nDays(lo,hi)/2)); if(worth(mid)>=target) hi=mid; else lo=mid; }
+      recover=hi;
+    }
+    const exits=[{d:SALE_FLOOR, l:'Today'},
+                 {d:RELO_DEADLINE, l:'Last day of the relo window'},
+                 {d:addD(RELO_DEADLINE,1), l:'One day later'},
+                 {d:OPP_EXIT, l:'Once the signed term is served'}]
+      .filter(x=>x.d<=saveT1);
+    if(recover) exits.push({d:recover, l:'Waiting makes the relo loss back', be:true});
+    exitRows=exits.filter((x,i,arr)=>arr.findIndex(y=>y.d===x.d)===i)
+      .sort((a,b)=>a.d<b.d? -1 : a.d>b.d? 1 : 0)
+      .map(x=>({...x, ...handOf(x.d)}));
+  } finally { T1=saveT1; }
+  let prev=null;
+  document.getElementById('oppexits').querySelector('tbody').innerHTML = exitRows.map(x=>{
+    const {b,brk,hand}=x;
     const cliff = prev!==null && hand < prev-5000;
     prev=hand;
-    return `<tr class="${cliff?'cliff':''}"><td>${esc(x.l)}`
+    return `<tr class="${cliff?'cliff':''}${x.be?' berow':''}"><td>${esc(x.l)}`
       +(brk? `<span style="color:var(--s4)"> · breaks the lease, ${fmt0(-brk)}</span>`:'')
+      +(x.be && x.d>T1? `<span style="color:var(--muted)"> · past this horizon</span>`:'')
       +`</td><td>${esc(nice(x.d))}</td>`
       +`<td class="num">${b.sellerCost? '−'+fmt0(b.sellerCost) : '<span class="oppwin">covered</span>'}</td>`
       +`<td class="num">${b.loss? fmt0(b.loss):'—'}</td>`
-      +`<td class="num"><b>${fmt0(hand)}</b></td></tr>`;
+      +`<td class="num"><b>${fmt0(hand)}</b></td>`
+      +`<td class="num">${fmt0(real(hand,x.d))}</td></tr>`;
   }).join('');
-  const a=buildEvents(RELO_DEADLINE, priceOn(RELO_DEADLINE), rentTo(RELO_DEADLINE), home);
-  const bq=buildEvents(addD(RELO_DEADLINE,1), priceOn(addD(RELO_DEADLINE,1)), rentTo(addD(RELO_DEADLINE,1)), home);
+  const assume=`${(MID_APPREC*100).toFixed(1)}% appreciation and ${(INFL_PCT*100).toFixed(1)}% inflation`;
   document.getElementById('oppexitintro').innerHTML =
-    `Selling after ${esc(nice(RELO_DEADLINE))} costs <b>${fmt0((a.proceeds+a.loss)-(bq.proceeds+bq.loss))}</b> `
-    +`more — relo stops covering seller costs.`;
+    `Selling after ${esc(nice(RELO_DEADLINE))} costs <b>${fmt0(gap)}</b> more — relo stops covering `
+    +`seller costs. `
+    +(recover
+      ? `At ${assume}, waiting until <b>${esc(nice(recover))}</b> makes that back in today's dollars.`
+      : `At ${assume}, waiting does not make that back within 30 years.`);
   document.getElementById('oppcaveat').innerHTML =
     `After-tax rate; no risk priced in. Assumes it sells for ${fmt0(priceOn(SALE_FLOOR))}.`;
 }
