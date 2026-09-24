@@ -551,7 +551,10 @@
      THEME v2 — quiet, flat, native. Inter; neutral surfaces; one accent; no gradients.
      Last in the sheet on purpose: it restyles the components above without rewriting them.
      ===================================================================================== */
-  :root{
+  /* ⚠️ `.viz-root` too. The original palette is declared on BOTH :root and .viz-root, so
+     tokens set on :root alone never reached the content — tiles, chart, tables and selects kept
+     the old colours while only the app bar and the page ground took these. */
+  :root,.viz-root{
     --page:#f7f7f5; --surface-1:#ffffff; --fill:rgba(20,20,22,.05); --fill-2:rgba(20,20,22,.08);
     --ink:#141416; --ink-2:#5c5c62; --muted:#8e8e93;
     --grid:#ededeb; --axis:#dcdcd8; --ring:rgba(20,20,22,.07); --line:var(--grid);
@@ -561,7 +564,8 @@
     --gut:20px; --seg:#ffffff;
   }
   @media (prefers-color-scheme: dark){
-    :root:where(:not([data-theme="light"])){
+    :root:where(:not([data-theme="light"])),
+    :root:where(:not([data-theme="light"])) .viz-root{
       --page:#0e0e0f; --surface-1:#18181a; --fill:rgba(255,255,255,.06); --fill-2:rgba(255,255,255,.1);
       --ink:#f4f4f5; --ink-2:#b4b4b9; --muted:#7c7c83;
       --grid:#242427; --axis:#34343a; --ring:rgba(255,255,255,.07);
@@ -639,6 +643,11 @@
   .pager button{min-width:34px;padding:0 10px}
   .pager select{padding:0 10px}
   .pager button:hover{background:var(--fill-2)}
+  /* ⚠️ A select's option list is drawn by the browser from the select's own colours. With a
+     translucent fill it came out light-on-light in dark mode on desktop; opaque, and explicit
+     option colours, fix it in both themes. */
+  .pager select,.fld select{background-color:color-mix(in srgb,var(--ink) 6%,var(--surface-1))}
+  select option,select optgroup{background-color:var(--surface-1);color:var(--ink)}
   .keyrow{font-size:11.5px;gap:12px}
 
   .secsum{background:var(--surface-1);border:1px solid var(--ring);border-radius:18px;
@@ -1541,7 +1550,10 @@ function buildEvents(sale, price, rent, home){
   const {dates:rentDates, end:rentEnd, pro:rentPro}=rentSchedule(rent);
   // From MOVE-IN, not from the first full payment — this gates utilities, Vivint and the relo
   // reimbursement, all of which stop the day the tenant is in the house.
-  const rented = d => !!rent && d>=rent.start && lt(d,rentEnd);
+  /* ⚠️ Nothing is let after the house is sold, whatever tenancy the caller passed in. The UI
+     clamps the lease to the sale, but the keep-or-sell comparison did not — and every rental line
+     keyed off this (Schedule E, interest, HOA) went on taxing phantom rent after the sale. */
+  const rented = d => !!rent && d>=rent.start && lt(d,rentEnd) && (!sale || lt(d,sale));
 
   // Your own housing: either the Sept 18 purchase, or a lease with an optional purchase later.
   /* The OKC purchase is committed, so these are constants now rather than a fork. They are
@@ -1835,6 +1847,7 @@ function buildEvents(sale, price, rent, home){
     // Vacancy is uncollected rent, never a deduction — it reduces the income of its own year.
     turnovers.forEach(t=>add(YR(t.d),'rent',-t.lost));
     rentRows.forEach(r=>{
+      if(sale && !lt(r.d,sale)) return;          // sold: no rent, no Schedule E line
       const y=YR(r.d);
       add(y,'rent',r.coll);         // vacancy is uncollected rent, not a deduction
       add(y,'mgmt',r.mgmt);
@@ -1882,14 +1895,16 @@ function buildEvents(sale, price, rent, home){
 
     // ---- gain, recapture and capital gains. MUST sit here: it needs reloOK/sellerCost. ----
     if(rent && rentDates.length)
-      recapDep = +(rent.basis/DEPREC_YEARS/12*(rentDates.length+(rentPro?rentPro.frac:0))).toFixed(2);
+      // Only depreciation actually taken — months let BEFORE the sale.
+      recapDep = +(rent.basis/DEPREC_YEARS/12*(rentDates.filter(d=>lt(d,sale)).length
+                   +(rentPro && lt(rentPro.d,sale)? rentPro.frac:0))).toFixed(2);
     const realized = +(price - sellerCost).toFixed(2);
     const gain = +(realized - (MID_BASIS - recapDep)).toFixed(2);
     // recapture is capped at the actual gain — a sale at a loss owes none
     recapTax = +(Math.max(0, Math.min(recapDep, gain))*(rent? rent.rate:0)/100).toFixed(2);
     // guard: the template reads rent.rate, which is evaluated before addTax can reject a zero
     if(recapTax>0) addTax(YR(sale),
-      `depreciation recapture (${rentDates.length} mo, ${fmt(recapDep)} @ ${rent.rate}%)`, recapTax);
+      `depreciation recapture (${rentDates.filter(d=>lt(d,sale)).length} mo, ${fmt(recapDep)} @ ${rent.rate}%)`, recapTax);
     // IRC 469(g): disposing of the activity releases every suspended loss in full. Recapturing
     // the depreciation without releasing the losses it created taxes one side of the same coin.
     if(suspendedLoss>0) addTax(YR(sale),
@@ -2048,6 +2063,10 @@ function oppNW(sc, home, rates){
    hold an empty house to the horizon", and reported that SELLING wins outright at any return.
    The same trap the configured-term bug hit before `rent.end` existed. */
 const keepRent = (rent, end) => ({...rent, end, months: monthsBetween(rent.start, end)});
+/* The sell side's tenancy ends at its exit. Passing the reader's tenancy (which runs to the
+   selected horizon in "keep renting") made the sell column depend on which horizon was open. */
+const sellRent = rent => { if(!rent) return rent; const x=oppExitDate(rent);
+  return lt(x, rent.end)? keepRent(rent, x) : rent; };
 
 /* ⚠️ The sell side honours the SIGNED LEASE and sells at its end — it is not "sell today".
    With a tenant under contract you cannot hand the house over now, and pretending you could
@@ -2091,7 +2110,7 @@ function oppAcrossHorizons(rent, home, rates){
         ? Math.max(1,(YR(T1)-YR(rent.start))*12 + (+T1.slice(5,7) - +rent.start.slice(5,7)) + 1)
         : 0;
       const keepSc=oppScenario(null, rent? keepRent(rent,T1) : null, home);
-      const sellSc=oppScenario(oppExitDate(rent), rent, home);
+      const sellSc=oppScenario(oppExitDate(rent), sellRent(rent), home);
       out.push({key:k, label:HORIZONS[k].label, end:T1,
                 keep:oppNW(keepSc,home,rates), sell:oppNW(sellSc,home,rates),
                 be:breakEvenROI(keepSc,sellSc,home,rates)});
@@ -2615,7 +2634,7 @@ function render(){
                                     DOWN_PCT,INFL_PCT,T1,sale,price,RECON]);
   if(OPPC.key!==oppKeyStr){
     const keepSc=oppScenario(null, rent? keepRent(rent,T1) : null, home);
-    const sellSc=oppScenario(oppExitDate(rent), rent, home);
+    const sellSc=oppScenario(oppExitDate(rent), sellRent(rent), home);
     OPPC={key:oppKeyStr, keepSc, sellSc,
           be:breakEvenROI(keepSc,sellSc,home,RATES),
           keepEnd:oppNW(keepSc,home,RATES), sellEnd:oppNW(sellSc,home,RATES),
@@ -3061,15 +3080,24 @@ function render(){
     run=d.b;                             // resync (also applies a reconcile rebase)
   });
   // pages follow the timeline window, so picking "2027" scopes both
-  PMONTHS=[...new Set(rows.map(r=>r.ym))].filter(mo=>VIEW==='span'||mo.slice(0,4)===VIEW);
+  /* Every month is pageable. On a single-year chart the table and the chart share ONE year:
+     a chart change pulls the table into that year here, and paging the table into another year
+     moves the chart (see followPage). A multi-year window leaves them independent. */
+  PMONTHS=[...new Set(rows.map(r=>r.ym))];
+  const inView = mo => VIEW==='span' || mo.slice(0,4)===VIEW;
   // Open on the month we are actually in, and keep re-snapping to it until the reader pages
   // somewhere themselves. Re-snapping also lets the server's date — which lands after the
   // first render — correct a wrong device clock. Outside the window, take the nearest month
   // forward rather than blindly the first one.
   const curYM=TODAY_ISO.slice(0,7);
-  if(!TPAGE_PINNED || !PMONTHS.includes(TPAGE))
-    TPAGE = PMONTHS.includes(curYM) ? curYM
-          : (PMONTHS.find(mo=>mo>curYM) || PMONTHS[PMONTHS.length-1]);
+  if(!TPAGE_PINNED || !PMONTHS.includes(TPAGE) || !inView(TPAGE)){
+    const scope=PMONTHS.filter(inView);
+    // Keep the month the reader was on when the chart changes year (Mar 2026 -> Mar 2027).
+    const sameMonth = TPAGE_PINNED && TPAGE && VIEW!=='span' ? VIEW+TPAGE.slice(4) : null;
+    TPAGE = (sameMonth && scope.includes(sameMonth)) ? sameMonth
+          : scope.includes(curYM) ? curYM
+          : (scope.find(mo=>mo>curYM) || scope[scope.length-1] || PMONTHS[PMONTHS.length-1]);
+  }
   const page=rows.filter(r=>r.ym===TPAGE);
   const desc=[...page].reverse();                       // newest first
   let body;
@@ -3097,7 +3125,7 @@ function render(){
   const net=+page.reduce((a,r)=>a+r.a,0).toFixed(2);
   const mEnd=DATA.filter(d=>d.d.slice(0,7)===TPAGE).slice(-1)[0];
   gid('tblmeta').textContent =
-    `${rows.filter(r=>VIEW==='span'||r.ym.slice(0,4)===VIEW).length} across ${PMONTHS.length} months`;
+    `${rows.filter(r=>inView(r.ym)).length} across ${PMONTHS.filter(inView).length} months`;
   gid('pginfo').textContent =
     `${page.length} line${page.length===1?'':'s'} · net ${fmt(net)}`+
     (mEnd? ` · ends ${fmt(mEnd.b)}`:'');
@@ -3461,11 +3489,13 @@ function setView(v){
   if(v==null) return;
   if(HORIZONS[v]){ setHorizon(v); VIEW='span'; buildViews(); }
   else { if(!VIEWS.includes(v)) return; VIEW=v; $vw.value=v; }
-  const cur = VIEW==='span'? HORIZON : VIEW;
-  const i=VIEWS.indexOf(cur);
+  syncViewButtons();
+  render();
+}
+function syncViewButtons(){
+  const i=VIEWS.indexOf(VIEW==='span'? HORIZON : VIEW);
   document.getElementById('vwprev').disabled = i<=0;
   document.getElementById('vwnext').disabled = i>=VIEWS.length-1;
-  render();
 }
 buildViews();
 $vw.addEventListener('change',e=>setView(e.target.value));
@@ -3524,11 +3554,16 @@ document.getElementById('setreset').addEventListener('click',resetForm);
 document.getElementById('setdone').addEventListener('click',cancelSet);
 $set.addEventListener('mousedown',e=>{ if(e.target===$set) cancelSet(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$set.hidden) cancelSet(); });
+// Paging the table into another year moves a single-year chart with it.
+function followPage(){
+  const y=TPAGE && TPAGE.slice(0,4);
+  if(VIEW!=='span' && y!==VIEW && VIEWS.includes(y)){ VIEW=y; $vw.value=y; syncViewButtons(); }
+}
 const pgStep=n=>{const i=PMONTHS.indexOf(TPAGE)+n;
-  if(i>=0&&i<PMONTHS.length){TPAGE=PMONTHS[i];TPAGE_PINNED=true;render();}};
+  if(i>=0&&i<PMONTHS.length){TPAGE=PMONTHS[i];TPAGE_PINNED=true;followPage();render();}};
 document.getElementById('pgprev').addEventListener('click',()=>pgStep(-1));
 document.getElementById('pgnext').addEventListener('click',()=>pgStep(1));
-document.getElementById('pgsel').addEventListener('change',e=>{TPAGE=e.target.value;TPAGE_PINNED=true;render();});
+document.getElementById('pgsel').addEventListener('change',e=>{TPAGE=e.target.value;TPAGE_PINNED=true;followPage();render();});
 let rsz; window.addEventListener('resize',()=>{clearTimeout(rsz);rsz=setTimeout(render,150);});
 window.addEventListener('resize',tileFades);
 render();
