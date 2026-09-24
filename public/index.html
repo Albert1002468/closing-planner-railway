@@ -133,6 +133,9 @@
   .foot{font-size:11px;color:var(--muted);margin-top:12px}
   .foot summary{cursor:pointer;color:var(--muted)}
   .foot p{margin:7px 0 0;line-height:1.5}
+  .foot ul{margin:8px 0 0;padding-left:18px;line-height:1.5}
+  .foot li{margin:0 0 5px}
+  .foot b{color:var(--ink-2);font-weight:600}
   /* ---- collapsible closing-cost card ---- */
   /* ---- scenario controls ---- */
   .controls{display:flex;flex-direction:column;gap:14px;margin:0 0 4px}
@@ -188,6 +191,7 @@
   .grpbody{display:flex;flex-direction:column;gap:14px}
   .grpnote{margin:0;font-size:11.5px;line-height:1.5;color:var(--muted)}
   .grpbody>.warn:empty{display:none}
+  .ctl[hidden]{display:none}
   /* ⚠️ The hit area is the SWITCH, nothing more. The label used to wrap the caption too, so
      clicking the text toggled it — a 400px-wide target for a 38px control. The caption is now
      a sibling span, tied to the input by aria-labelledby so it is still announced. */
@@ -839,8 +843,8 @@
         <div class="tile"><div class="lab">Buying power</div><div class="val" id="t_real">—</div><div class="sm trunc" id="t_reald"></div></div>
         <div class="tile"><div class="lab">Rent, net</div><div class="val" id="t_rent">—</div><div class="sm trunc" id="t_rentd"></div></div>
         <div class="tile"><div class="lab">Car loan</div><div class="val" id="t_car">—</div><div class="sm trunc" id="t_card"></div></div>
-        <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm trunc" id="t_lowd"></div></div>
-        <div class="tile"><div class="lab">Days under $15k</div><div class="val" id="t_thin">—</div><div class="sm trunc" id="t_thind"></div></div>
+        <div class="tile"><div class="lab">Lowest ahead</div><div class="val" id="t_low">—</div><div class="sm trunc" id="t_lowd"></div></div>
+        <div class="tile"><div class="lab">Days under $15k ahead</div><div class="val" id="t_thin">—</div><div class="sm trunc" id="t_thind"></div></div>
         <div class="tile"><div class="lab">Break-even ROI</div><div class="val" id="t_be">—</div><div class="sm trunc" id="t_bed"></div></div>
         <!-- Sale tiles: shown only while a sale is modelled (see render) -->
         <div class="tile saleonly"><div class="lab">Net proceeds</div><div class="val" id="t_proceeds">—</div><div class="sm trunc" id="t_proceedsm"></div></div>
@@ -944,7 +948,30 @@
     </details>
 
     <details class="foot"><summary>Assumptions &amp; sources</summary>
-      <p>Projection from your statements + stated plans; Closing Disclosure and actual payoff quote govern. Assumes relo covers commissions/seller costs (net = price − payoff), proceeds land on the sale date, loss credit 14 days later, AutoFortiva settled in full 8/20/26, Vivint paid monthly at $57.77 (never bought out, whatever happens to the house) with a 12-month deferral from Oct 2026, resuming Oct 22, 2027 and ending with the final payment on Jun 20, 2031, Midland utilities stop while the house is let and end at sale with one final trailing bill, and the 6-mo car insurance renewal ($940) recurs each March and September. Car payoff uses simple interest at 6.74% actual/365 from the $40,862.63 principal standing after the 8/16/26 payment, with no further $500 extra payments. The new-home payment starts at $2,667.25 ($2,475.42 P&amp;I at 22% down plus $191.83 escrow, set at closing against the unimproved lot); the first full-house tax bill ($6,000/yr assumed) lands Dec 2027 and the annual analysis that month re-sets the escrow with the shortage spread over 12 months. The Midland escrow was set at the mid-May 2025 closing against a bare-lot assessment, so it funds insurance ($1,329/yr) and land-only tax ($567.84/yr) plus $28.75 PMI; the first assessment including the house is billed Jan 31, 2027, and PennyMac's annual analysis resets the payment from June 2027 with the shortage spread over 12 months. The March bonus is shown net at 65.60% of gross (22% federal supplemental + 6.2% + 1.45% + 4.75% Oklahoma) and repeats each year with the $5,000 IRS payment. 2026 and 2027 are modelled from statements; from 2028 pay rises 3%/yr and costs inflate 3%/yr (not the mortgage P&amp;I or car payment, which are fixed). Depreciation recapture on a rented-then-sold home is straight line over 27.5 years at 29.75% (25% federal + 4.75% Oklahoma, which applies because you are an OK resident even though the house is in Texas). Utilities and the $6,000 tax figure are estimates.</p>
+      <ul>
+        <li><b>Starting point:</b> $99,026.57 available on Aug 14, 2026. A reconciled day resets the
+            projection to the actual balance; only days after today are forecast.</li>
+        <li><b>Pay:</b> biweekly paychecks (5 OT hours), +3%/yr from 2028. The March bonus is netted at
+            65.6% of gross; each year's taxes settle the following April 15.</li>
+        <li><b>OKC home:</b> closed Sep 18, 2026 — 22% down at 5.99%. Its escrow was set against the lot,
+            so the first full-house tax ($6,000/yr assumed) lands Dec 2027 and resets the payment.</li>
+        <li><b>Midland home:</b> let from Sep 25, 2026 at $3,300 (lease to Sep 30, 2027); 10% management,
+            half a month to place a tenant. The Jan 2027 house-tax bill resets the PennyMac escrow from
+            June 2027; PMI is assumed off from Nov 2026; losing the homestead is a 1.30× estimate.</li>
+        <li><b>Selling:</b> the relocation company covers seller costs and half of any loss under $425k
+            (max $25k) if it closes by Jul 20, 2027; after that seller costs are 7.5%. Leaving before the
+            lease ends costs 2 months' rent (assumed — not in the lease).</li>
+        <li><b>Tax:</b> rental income at 28.75%; depreciation recapture at 29.75% (25% federal + 4.75%
+            Oklahoma); rental losses are suspended and released at a sale.</li>
+        <li><b>Car:</b> 6.74% simple interest; paid off two months after a sale, otherwise amortised.
+            <b>Vivint:</b> $57.77/mo, paused Oct 2026–Sep 2027, final payment Jun 20, 2031.</li>
+        <li><b>Growth:</b> from 2028 costs inflate at your inflation rate (not loan payments or the
+            level-premium life policy); the Midland value grows at your appreciation rate, OKC at 3%.</li>
+        <li><b>Net worth:</b> cash + OKC equity (after 7% selling costs) + Midland equity (after 7.5%) −
+            car loan − property tax accrued beyond escrow − tax a sale would trigger.</li>
+        <li><b>Estimates, not statements:</b> utilities, the $6,000 OKC tax, the non-homestead Midland
+            tax and the lease-break fee.</li>
+      </ul>
     </details>
   </div>
 
@@ -2418,6 +2445,10 @@ function syncSaleDate(rent, home, fromSaleDate){
   /* In "as soon as the tenant leaves" mode the date is DERIVED, so the field is read-only and
      visibly so. Choosing a date is what unlocks it. */
   $sd.disabled = noSalePossible || SALE_MODE!=='pick';
+  /* Holding the house has no closing date and no sale price, so those fields are not shown at
+     all rather than shown disabled. "Value today" stays: net worth values the house either way. */
+  const holding = SALE_MODE==='never';
+  [$sd, document.getElementById('pricelab')].forEach(el=>{ const c=el.closest('.ctl'); if(c) c.hidden=holding; });
   [['salenever','never'],['saleauto','auto'],['salepick','pick']].forEach(([id,m])=>{
     const b=document.getElementById(id), on=SALE_MODE===m;
     b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on));
@@ -3135,7 +3166,10 @@ function render(){
   hit.addEventListener('pointerleave',e=>{ if(!isTouchLike(e)) hide(); });
   document.addEventListener('pointerdown',e=>{ if(isTouchLike(e) && !svg.contains(e.target)) hide(); },{passive:true});
 
-  const mnD=DATA.reduce((a,d)=>d.b<a.b?d:a,DATA[0]);
+  /* ⚠️ From TODAY on, not from the start of the series. Measured over the whole series these
+     two were pinned to the September 2026 closing-wire dip — history, not a warning. */
+  const AHEAD = DATA.filter(d=>!lt(d.d,TODAY_ISO)); const FWD = AHEAD.length? AHEAD : DATA;
+  const mnD=FWD.reduce((a,d)=>d.b<a.b?d:a,FWD[0]);
   const set=(id,txt,cls)=>{const el=document.getElementById(id);el.textContent=txt;el.className='val'+(cls?' '+cls:'');
     delete el.dataset.full; el.removeAttribute('title');};   // a fresh figure; fitTiles re-fits it
   set('t_payoff', sale? fmt(payoff):'—');
@@ -3146,13 +3180,13 @@ function render(){
   // sale is modelled; the default plan holds the house, so they hide rather than read "—".
   document.querySelectorAll('.tile.saleonly').forEach(t=>{ t.hidden=!sale; });
   set('t_low', fmt(mnD.b), mnD.b<0?'neg':'');
-  // One "lowest point" hides how LONG the account runs thin. Whole series, like t_low.
+  // One "lowest point" hides how LONG the account runs thin. From today on, like t_low.
   const CUSHION=15000;
-  const thinDays = DATA.filter(d=>d.b<CUSHION).length;
-  const firstThin = DATA.find(d=>d.b<CUSHION);
+  const thinDays = FWD.filter(d=>d.b<CUSHION).length;
+  const firstThin = FWD.find(d=>d.b<CUSHION);
   set('t_thin', String(thinDays), thinDays>30?'neg':'');
   document.getElementById('t_thind').textContent = thinDays
-    ? `since ${nice(firstThin.d)}`
+    ? `first ${nice(firstThin.d)}`
     : `never below ${fmt0(CUSHION)}`;
   const NW = netWorth({series:DATA,buyDate,carPayoffDate,carPayoff,suspendedByYear},
                       sale, rent, home, endDay.d);
@@ -3161,7 +3195,7 @@ function render(){
     `cash ${fmt0(NW.cash)}${NW.okc?' · OKC '+fmt0(NW.okc):''}`
     +`${NW.mid?' · Midland '+fmt0(NW.mid):''}${NW.car?' − car '+fmt0(NW.car):''}`
     +`${NW.deferred?' − tax '+fmt0(NW.deferred):''}`;
-  document.getElementById('t_lowd').textContent = dd(mnD.d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+  document.getElementById('t_lowd').textContent = nice(mnD.d);
   // today's balance — the series starts 8/14, so clamp to the ends when today falls outside it
   const tdi = DATA.findIndex(d=>d.d===TODAY_ISO);
   const tdD = tdi>=0? DATA[tdi] : (TODAY_ISO<DATA[0].d? DATA[0] : DATA[DATA.length-1]);
@@ -3906,7 +3940,7 @@ function fillForm(){
   $('rechint').textContent=(SRV.online?'':'Offline — can’t save. ')+
     (isFix
       ? 'Enter what the variance should have been. The old figure is logged.'
-      : `Today opens at ${UNLOCK_HOUR%12||12} ${UNLOCK_HOUR<12?'am':'pm'}. Mistakes can be corrected later.`);
+      : `Today opens at ${UNLOCK_HOUR%12||12} ${UNLOCK_HOUR<12?'am':'pm'}. Check the preview below — saving is immediate, and mistakes can be corrected.`);
   if(isFix) prefillFromExisting();
   /* Newest first, a page at a time. Reconciling daily makes this list grow by one a day, and
      all of it at once pushed the form's own buttons a long scroll away. */
@@ -4043,15 +4077,8 @@ $('recsave').addEventListener('click',async ()=>{
   if(isFix && prev && prev.actual===actual && (prev.note||'')===note.trim()){
     msg.className='recmsg err'; msg.textContent='That is the same figure already recorded.'; return;
   }
-  const head = isFix
-    ? `Correct ${dd(date).toLocaleDateString('en-US',{month:'long',day:'numeric'})}`
-      +`\n\nWas: ${fmt(prev.actual)}  (variance ${fmt(+(prev.actual-proj).toFixed(2))})`
-      +`\nNow: ${fmt(actual)}  (variance ${fmt(variance)})`
-      +`\n\nThe old figure is kept in the audit log.`
-    : `Reconcile ${dd(date).toLocaleDateString('en-US',{month:'long',day:'numeric'})}`
-      +`\n\nProjected: ${fmt(proj)}\nVariance: ${fmt(variance)}\nNew balance: ${fmt(actual)}`
-      +`\n\nCorrect it later from this screen if you mistype.`;
-  if(!confirm(head)) return;
+  // No confirmation dialog: the sheet already shows projected, variance and the new balance
+  // before Save, and a slip is one tap from "Correct an entry".
   btn.disabled=true; btnLoading(btn,true); msg.textContent='Saving…';
   try{
     const r=await fetch('/api/reconciles',{method:isFix?'PUT':'POST',headers:{'Content-Type':'application/json'},
