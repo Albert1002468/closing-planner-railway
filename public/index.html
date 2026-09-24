@@ -362,10 +362,21 @@
      it stays put while the content bounces over it. */
   html{background:var(--page)}
   body{background:transparent}
-  body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:
+  :root{--backdrop:
     radial-gradient(1100px 420px at 50% -120px,color-mix(in srgb,var(--s1) 13%,transparent),transparent 72%),
     radial-gradient(700px 360px at 100% 0,color-mix(in srgb,#22c58b 7%,transparent),transparent 70%),
     var(--page)}
+  body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:var(--backdrop)}
+  /* The status-bar scrim. Content scrolled up used to slide under the clock and battery and sit
+     there, overlapping them. This is the SAME backdrop, same size and position, so it lines up
+     pixel for pixel — masked to show only across the safe-area inset and fading out just below
+     it. Scrolled content disappears under it the way it does in a native app. Above the page,
+     below the sheets (60) so a dimmed modal still covers it. */
+  body::after{content:'';position:fixed;inset:0;z-index:55;pointer-events:none;background:var(--backdrop);
+    -webkit-mask-image:linear-gradient(to bottom,#000 0,#000 env(safe-area-inset-top,0px),
+                                        transparent calc(env(safe-area-inset-top,0px) + 14px));
+            mask-image:linear-gradient(to bottom,#000 0,#000 env(safe-area-inset-top,0px),
+                                        transparent calc(env(safe-area-inset-top,0px) + 14px))}
   /* viewport-fit=cover lets the fixed backdrop run up behind the status bar and camera island
      in the home-screen app; the content itself is pushed clear of them by the safe-area insets. */
   .viz-root{background:transparent;padding-top:calc(26px + env(safe-area-inset-top,0px));
