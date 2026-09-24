@@ -575,23 +575,24 @@
              calc(28px + env(safe-area-inset-bottom,0px)) max(var(--gut),env(safe-area-inset-left,0px))}
 
   /* ---- app bar ---- */
-  /* Scroll-linked, not a class flip: render() sets --nav (bar background) and --navt (compact
-     title) from 0 to 1 as the large title passes under the bar, every frame. */
-  .appbar{position:sticky;top:0;z-index:50;padding-top:env(safe-area-inset-top,0px)}
+  /* ⚠️ FIXED, not sticky, and driven by inline styles set straight on each element (see the
+     app-bar script), not by custom properties inherited from :root. iOS Safari did not always
+     repaint a sticky bar's children when a root variable changed, which left the compact title
+     painted at a stale opacity over the large one after a bounce. */
+  .appbar{position:fixed;top:0;left:0;right:0;z-index:50;padding-top:env(safe-area-inset-top,0px)}
+  body{padding-top:calc(50px + env(safe-area-inset-top,0px))}
+  #tblwrap,#oppwrap{scroll-margin-top:calc(62px + env(safe-area-inset-top,0px))}
   /* The frosted layer. It reaches 240px ABOVE the bar so it also covers the status-bar strip,
      where iOS draws scrolled content. */
   .appbar-bg{position:absolute;left:0;right:0;bottom:0;top:-240px;pointer-events:none;
-             opacity:var(--nav,0);background:color-mix(in srgb,var(--surface-1) 86%,transparent);
+             opacity:0;background:color-mix(in srgb,var(--surface-1) 86%,transparent);
              -webkit-backdrop-filter:saturate(1.8) blur(20px);backdrop-filter:saturate(1.8) blur(20px);
              box-shadow:inset 0 -1px 0 var(--ring)}
   .appbar-in{position:relative;max-width:1000px;margin:0 auto;height:50px;box-sizing:border-box;
              display:flex;align-items:center;justify-content:flex-end;
              padding:0 max(calc(var(--gut) - 8px),env(safe-area-inset-right,0px))}
   .appbar-title{position:absolute;left:50%;font-size:16px;font-weight:600;letter-spacing:-.01em;
-                pointer-events:none;opacity:var(--navt,0);
-                transform:translate(-50%,calc((1 - var(--navt,0)) * 7px))}
-  /* Mutually exclusive by construction: any trace of the compact title zeroes the large one. */
-  .bigtitle{opacity:var(--navb,1)}
+                pointer-events:none;opacity:0;visibility:hidden;transform:translate(-50%,7px)}
   .appbar .acts{display:flex;gap:2px}
   .appbar .abtn,.appbar .abtn.accent{width:40px;height:40px;border-radius:50%;padding:0;border:0;
     background:transparent;color:var(--ink);box-shadow:none}
@@ -3179,7 +3180,7 @@ document.getElementById('todaybar').addEventListener('click',e=>{
    still for a moment, so a missed final scroll event cannot strand it. */
 {
   const bar=document.getElementById('appbar'), big=document.getElementById('bigtitle');
-  const root=document.documentElement;
+  const bgEl=bar.querySelector('.appbar-bg'), title=bar.querySelector('.appbar-title');
   const ease=t=>t*t*(3-2*t), clamp=t=>Math.max(0,Math.min(1,t));
   let start=0, h=1, last='';
   const measure=()=>{                     // where the title sits relative to the bar at scroll 0
@@ -3194,9 +3195,14 @@ document.getElementById('todaybar').addEventListener('click',e=>{
     const fade= tt>0 ? 0 : clamp(1-under/(h*.7));
     const key=bg.toFixed(3)+fade.toFixed(3)+tt.toFixed(3);
     if(key===last) return; last=key;
-    root.style.setProperty('--nav',bg.toFixed(3));
-    root.style.setProperty('--navb',fade.toFixed(3));
-    root.style.setProperty('--navt',tt.toFixed(3));
+    // Straight onto each element; a fully faded one is also taken out of paint entirely, so a
+    // missed repaint has nothing left to show.
+    bgEl.style.opacity=bg.toFixed(3);
+    title.style.opacity=tt.toFixed(3);
+    title.style.visibility= tt>0? 'visible' : 'hidden';
+    title.style.transform=`translate(-50%,${((1-tt)*7).toFixed(2)}px)`;
+    big.style.opacity=fade.toFixed(3);
+    big.style.visibility= fade>0? 'visible' : 'hidden';
   };
   let running=false, touching=false, stillSince=0, lastY=NaN;
   const tick=now=>{
