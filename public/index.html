@@ -348,6 +348,46 @@
   .pager select{background:var(--page);color:var(--ink);border:1px solid var(--axis);border-radius:7px;
                 padding:5px 8px;font-size:12.5px;font-family:inherit;max-width:200px}
   .pginfo{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  /* ---- visual refresh. Same palette: the icon's navy and its blue → teal → green bars carry
+     the accents, so the page and the home-screen icon read as one thing. ---- */
+  :root{--line:var(--grid);            /* the opportunity tables referenced this; it was never defined */
+        --grad:linear-gradient(90deg,#3987e5,#17a6c0,#22c58b);
+        --shadow:0 1px 2px rgba(16,24,40,.05),0 8px 24px rgba(16,24,40,.06)}
+  @media (prefers-color-scheme: dark){
+    :root:where(:not([data-theme="light"])){--shadow:0 1px 2px rgba(0,0,0,.5),0 10px 28px rgba(0,0,0,.35)}
+  }
+  body{background:
+    radial-gradient(1100px 360px at 50% -140px,color-mix(in srgb,var(--s1) 11%,transparent),transparent 72%),
+    var(--page) no-repeat}
+  .viz-root{background:transparent;padding-top:26px}
+  .brand{display:flex;align-items:center;gap:14px;margin:0 0 18px}
+  .brand .mark{width:46px;height:46px;flex:none;border-radius:12px;
+               box-shadow:0 6px 18px rgba(14,58,92,.30)}
+  .brandtxt{min-width:0}
+  h1{font-size:22px;font-weight:720;letter-spacing:-.018em;margin:0 0 3px}
+  .brand .sub{margin:0;line-height:1.45}
+  .card{border-radius:16px;padding:20px 22px;box-shadow:var(--shadow)}
+  .tile{position:relative;overflow:hidden;border-radius:12px;padding:11px 13px 10px;
+        transition:border-color .15s,transform .15s}
+  .tile[hidden]{display:none}
+  .tile .val{font-size:18px}
+  @media (hover:hover){ .tile:hover{border-color:var(--axis)} }
+  /* The three headline figures lead the strip, tinted and topped with the icon's gradient. */
+  .tile.key{background:linear-gradient(180deg,color-mix(in srgb,var(--s1) 8%,var(--surface-1)),var(--surface-1) 75%);
+            border-color:color-mix(in srgb,var(--s1) 26%,var(--ring))}
+  .tile.key::before{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--grad)}
+  .tile.key .val{font-size:20px}
+  .abtn.accent,.actbtn:not(.ghost),.recrow button:not(.ghost){
+    background:linear-gradient(135deg,var(--s1),color-mix(in srgb,var(--s1) 70%,#17a6c0));
+    box-shadow:0 3px 10px color-mix(in srgb,var(--s1) 32%,transparent)}
+  .signbtn.on{box-shadow:0 2px 8px color-mix(in srgb,var(--s1) 28%,transparent)}
+  .secsum{background:var(--surface-1);border-color:var(--grid);transition:border-color .15s,background .15s}
+  .secsum:hover{background:color-mix(in srgb,var(--s1) 4%,var(--surface-1))}
+  details[open]>.secsum .secic{color:var(--s1)}
+  .secbody{border-color:var(--grid)}
+  .sheet{border-radius:18px}
+  .grp{border-radius:14px}
+  .tip{border-radius:10px;box-shadow:var(--shadow),0 4px 14px rgba(0,0,0,.10)}
   /* responsive */
   /* 53 months in 340px is unreadable, so on a phone the chart gets a floor of ~30px per month
      and scrolls sideways instead of compressing. Same hidden-scrollbar + fade idiom as the
@@ -388,7 +428,12 @@
   @media (max-width:640px){
     .viz-root{padding:9px}
     .card{padding:12px 12px;border-radius:10px}
-    h1{font-size:17px}
+    h1{font-size:18px}
+    .viz-root{padding-top:14px}
+    .brand{gap:11px;margin-bottom:12px;align-items:flex-start}
+    .brand .mark{width:38px;height:38px;border-radius:10px}
+    .card{border-radius:13px}
+    .tile.key .val{font-size:15px}
     .sub{font-size:12px}
     /* Three across, exactly: 3 basis + 2 gaps = 100% of the strip. */
     .tiles{gap:7px}
@@ -404,28 +449,46 @@
 </head>
 <body>
 <div class="viz-root">
-  <h1>Cash Flow Planner</h1>
-  <p class="sub" id="subhead">Closing Fri, Sept 18, 2026</p>
-  <p class="sub" id="subcash" style="margin-top:-12px"></p>
+  <header class="brand">
+    <!-- The app icon, inline: navy tile, bars rising blue to green. -->
+    <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+      <defs><linearGradient id="markbg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#0e3a5c"/><stop offset="1" stop-color="#0a2740"/></linearGradient>
+      <linearGradient id="markarc" x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0" stop-color="#3987e5"/><stop offset="1" stop-color="#22c58b"/></linearGradient></defs>
+      <rect width="64" height="64" rx="14" fill="url(#markbg)"/>
+      <rect x="11" y="37" width="10" height="16" rx="3.2" fill="#3987e5"/>
+      <rect x="27" y="28" width="10" height="25" rx="3.2" fill="#17a6c0"/>
+      <rect x="43" y="17" width="10" height="36" rx="3.2" fill="#22c58b"/>
+      <path d="M12 30 L26 22 L36 25 L52 9" fill="none" stroke="url(#markarc)" stroke-width="4.6"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="52" cy="9" r="4.6" fill="#22c58b"/>
+    </svg>
+    <div class="brandtxt">
+      <h1>Cash Flow Planner</h1>
+      <p class="sub" id="subhead">Closing Fri, Sept 18, 2026</p>
+      <p class="sub" id="subcash"></p>
+    </div>
+  </header>
 
   <div class="card pos">
     <div class="tilewrap">
       <div class="tiles" id="tiles">
-        <div class="tile"><div class="lab">Today</div><div class="val" id="t_today">—</div><div class="sm" id="t_todayd"></div></div>
-        <div class="tile"><div class="lab">Net worth</div><div class="val" id="t_nw">—</div><div class="sm" id="t_nwd"></div></div>
-        <div class="tile"><div class="lab" id="t_endlab">Ending balance</div><div class="val" id="t_end">—</div><div class="sm" id="t_endd"></div></div>
+        <div class="tile key"><div class="lab">Today</div><div class="val" id="t_today">—</div><div class="sm" id="t_todayd"></div></div>
+        <div class="tile key"><div class="lab">Net worth</div><div class="val" id="t_nw">—</div><div class="sm" id="t_nwd"></div></div>
+        <div class="tile key"><div class="lab" id="t_endlab">Ending balance</div><div class="val" id="t_end">—</div><div class="sm" id="t_endd"></div></div>
         <div class="tile"><div class="lab">Buying power</div><div class="val" id="t_real">—</div><div class="sm" id="t_reald"></div></div>
-        <div class="tile"><div class="lab">Break-even ROI</div><div class="val" id="t_be">—</div><div class="sm" id="t_bed"></div></div>
+        <div class="tile"><div class="lab">Rent, net</div><div class="val" id="t_rent">—</div><div class="sm" id="t_rentd"></div></div>
+        <div class="tile"><div class="lab">Car loan</div><div class="val" id="t_car">—</div><div class="sm" id="t_card"></div></div>
         <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
         <div class="tile"><div class="lab">Days under $15k</div><div class="val" id="t_thin">—</div><div class="sm" id="t_thind"></div></div>
-        <div class="tile"><div class="lab">Before the wire</div><div class="val" id="t_morn">—</div><div class="sm" id="t_mornd"></div></div>
-        <div class="tile"><div class="lab">Net proceeds</div><div class="val" id="t_proceeds">—</div><div class="sm" id="t_proceedsm"></div></div>
-        <div class="tile"><div class="lab">Payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm" id="t_payoffsm"></div></div>
-        <div class="tile"><div class="lab">Loss credit</div><div class="val" id="t_loss">—</div><div class="sm">half of loss under $425k, max $25k</div></div>
-        <div class="tile"><div class="lab">Relo costs</div><div class="val" id="t_relo">—</div><div class="sm" id="t_relod"></div></div>
-        <div class="tile"><div class="lab">Car loan</div><div class="val" id="t_car">—</div><div class="sm" id="t_card"></div></div>
-        <div class="tile"><div class="lab">Recapture</div><div class="val" id="t_recap">—</div><div class="sm" id="t_recapd"></div></div>
-        <div class="tile"><div class="lab">Rent, net</div><div class="val" id="t_rent">—</div><div class="sm" id="t_rentd"></div></div>
+        <div class="tile"><div class="lab">Break-even ROI</div><div class="val" id="t_be">—</div><div class="sm" id="t_bed"></div></div>
+        <!-- Sale tiles: shown only while a sale is modelled (see render) -->
+        <div class="tile saleonly"><div class="lab">Net proceeds</div><div class="val" id="t_proceeds">—</div><div class="sm" id="t_proceedsm"></div></div>
+        <div class="tile saleonly"><div class="lab">Payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm" id="t_payoffsm"></div></div>
+        <div class="tile saleonly"><div class="lab">Loss credit</div><div class="val" id="t_loss">—</div><div class="sm">half of loss under $425k, max $25k</div></div>
+        <div class="tile saleonly"><div class="lab">Relo costs</div><div class="val" id="t_relo">—</div><div class="sm" id="t_relod"></div></div>
+        <div class="tile saleonly"><div class="lab">Recapture</div><div class="val" id="t_recap">—</div><div class="sm" id="t_recapd"></div></div>
       </div>
       <button type="button" class="tnav tprev" id="tprev" aria-label="Scroll cards left">&lsaquo;</button>
       <button type="button" class="tnav tnext" id="tnext" aria-label="Scroll cards right">&rsaquo;</button>
@@ -2396,6 +2459,19 @@ function render(){
     add('path',{d:opath,fill:'none',stroke:'var(--s8)','stroke-width':1.8,
                 'stroke-linejoin':'round',opacity:.9});
   }
+  // A soft wash under the balance line, fading down to the floor of the scale.
+  {
+    const defs=add('defs',{}), lg=document.createElementNS(NS,'linearGradient');
+    lg.setAttribute('id','balfill'); lg.setAttribute('x1','0'); lg.setAttribute('y1','0');
+    lg.setAttribute('x2','0'); lg.setAttribute('y2','1');
+    [['0',.20],['1',0]].forEach(([o,a])=>{ const st=document.createElementNS(NS,'stop');
+      st.setAttribute('offset',o); st.style.stopColor='var(--s1)'; st.style.stopOpacity=a; lg.appendChild(st); });
+    defs.appendChild(lg);
+    let area='';
+    kept.forEach((i,k)=>{ area+= k===0? `M${X(i)} ${Y(VD[i].b)}` : `L${X(i)} ${Y(VD[kept[k-1]].b)} L${X(i)} ${Y(VD[i].b)}`; });
+    area+=`L${X(kept[kept.length-1])} ${Y(y0)} L${X(kept[0])} ${Y(y0)} Z`;
+    add('path',{d:area,fill:'url(#balfill)',stroke:'none'});
+  }
   add('path',{d:band,fill:'var(--s7)',stroke:'none',opacity:.08});
   add('path',{d:rpath,fill:'none',stroke:'var(--s7)','stroke-width':1.6,'stroke-linejoin':'round'});
   let path=''; let pprev=-1;
@@ -2545,20 +2621,15 @@ function render(){
   hit.addEventListener('pointerleave',e=>{ if(!isTouchLike(e)) hide(); });
   document.addEventListener('pointerdown',e=>{ if(isTouchLike(e) && !svg.contains(e.target)) hide(); },{passive:true});
 
-  /* The balance the night before the wire. It used to add PAY10 by hand, because the paycheck
-     landed the same morning as the wire — that cheque now arrives two days earlier and is
-     already in the balance, so adding it again would double-count it. */
-  const eve=DATA.find(d=>d.d===addD(WIRE_DATE,-1));
-  const morn=eve? eve.b : DATA[0].b;
   const mnD=DATA.reduce((a,d)=>d.b<a.b?d:a,DATA[0]);
   const set=(id,txt,cls)=>{const el=document.getElementById(id);el.textContent=txt;el.className='val'+(cls?' '+cls:'');};
   set('t_payoff', sale? fmt(payoff):'—');
   document.getElementById('t_payoffsm').textContent = sale? 'incl. accrued per-diem interest':'home not sold in window';
   set('t_proceeds', sale? fmt(proceeds): '—', sale&&proceeds<0?'neg':(sale?'posv':''));
   set('t_loss', sale? (loss>0?fmt(loss):'$0.00'):'—', loss>0?'posv':'');
-  set('t_morn', fmt(morn));
-  document.getElementById('t_mornd').textContent =
-    `close of ${nice(addD(WIRE_DATE,-1))}, wire goes ${nice(WIRE_DATE)}`;
+  // The closing wire has gone, so its tile is retired. The sale tiles only mean anything while a
+  // sale is modelled; the default plan holds the house, so they hide rather than read "—".
+  document.querySelectorAll('.tile.saleonly').forEach(t=>{ t.hidden=!sale; });
   set('t_low', fmt(mnD.b), mnD.b<0?'neg':'');
   // One "lowest point" hides how LONG the account runs thin. Whole series, like t_low.
   const CUSHION=15000;
