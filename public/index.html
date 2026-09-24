@@ -383,6 +383,11 @@
             border-color:color-mix(in srgb,var(--s1) 26%,var(--ring))}
   .tile.key::before{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--grad)}
   .tile.key .val{font-size:20px}
+  /* The rest carry the same treatment, lighter, so the strip reads as one family on desktop
+     where every tile is on screen at once. */
+  .tile:not(.key){background:linear-gradient(180deg,color-mix(in srgb,var(--s1) 4%,var(--surface-1)),var(--surface-1) 75%);
+                  border-color:color-mix(in srgb,var(--s1) 12%,var(--ring))}
+  .tile:not(.key)::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;background:var(--grad);opacity:.35}
   .abtn.accent,.actbtn:not(.ghost),.recrow button:not(.ghost){
     background:linear-gradient(135deg,var(--s1),color-mix(in srgb,var(--s1) 70%,#17a6c0));
     box-shadow:0 3px 10px color-mix(in srgb,var(--s1) 32%,transparent)}
@@ -491,6 +496,8 @@
     .ctl input[type=range]{width:100%;min-width:0}
     .keyrow{gap:10px;font-size:11px}
     details{overflow-x:auto}
+    /* Beside the date the chip widened the column past the phone; under it, it costs nothing. */
+    .todaychip{display:block;width:fit-content;margin:3px 0 0}
   }
 </style>
 </head>
@@ -2806,7 +2813,7 @@ function render(){
     if(d.rec && d.rec.delta!==0){
       const note = d.rec.note? ` — “${esc(d.rec.note)}”` : '';
       rows.push({ym,d:d.d,a:d.rec.delta,h:
-        `<tr class="recrowT ${d.rec.delta>0?'vp':'vn'}"><td>${ds}</td><td>RECONCILED — actual ${fmt(d.rec.actual)} vs projected ${fmt(d.rec.projected)}${note}</td><td class="n">${fmt(d.rec.delta)}</td><td class="n">${fmt(d.b)}</td></tr>`});
+        `<tr class="recrowT ${d.rec.delta>0?'vp':'vn'}${isToday?' today':''}"><td>${ds}${chip}</td><td>RECONCILED — actual ${fmt(d.rec.actual)} vs projected ${fmt(d.rec.projected)}${note}</td><td class="n">${fmt(d.rec.delta)}</td><td class="n">${fmt(d.b)}</td></tr>`});
     }
     run=d.b;                             // resync (also applies a reconcile rebase)
   });
@@ -2865,13 +2872,17 @@ function renderTodayBar(DATA){
   if(i<0){ bar.hidden=true; return; }
   const day=DATA[i], MAX=3;
   const sgn=a=>`<span class="${a>0?'tbpos':'tbneg'}">${a>0?'+':''}${fmt(a)}</span>`;
-  const net=+day.ev.reduce((a,e)=>a+e.a,0).toFixed(2);
+  // A reconcile is part of what happened today, so it is listed and counted in the net.
+  const items=day.ev.map(e=>({l:esc(e.l),a:e.a}));
+  if(day.rec && day.rec.delta!==0)
+    items.push({l:'Reconciled'+(day.rec.note? ` · “${esc(day.rec.note)}”` : ''), a:day.rec.delta});
+  const net=+items.reduce((a,e)=>a+e.a,0).toFixed(2);
   let h=`<div class="tbhead"><span class="tblab">Today</span>`
     +`<span class="tbdate">${dd(TODAY_ISO).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</span>`
-    +(day.ev.length? `<span class="tbnet">${sgn(net)}</span>` : '')+`</div><ul class="tblist">`;
-  h += day.ev.length
-    ? day.ev.slice(0,MAX).map(e=>`<li><span>${esc(e.l)}</span>${sgn(e.a)}</li>`).join('')
-      + (day.ev.length>MAX? `<li class="none"><span>+${day.ev.length-MAX} more</span><span></span></li>` : '')
+    +(items.length? `<span class="tbnet">${sgn(net)}</span>` : '')+`</div><ul class="tblist">`;
+  h += items.length
+    ? items.slice(0,MAX).map(e=>`<li><span>${e.l}</span>${sgn(e.a)}</li>`).join('')
+      + (items.length>MAX? `<li class="none"><span>+${items.length-MAX} more</span><span></span></li>` : '')
     : `<li class="none"><span>Nothing posts today</span><span></span></li>`;
   h += '</ul>';
   const nx=DATA.slice(i+1).find(d=>d.ev.length);
