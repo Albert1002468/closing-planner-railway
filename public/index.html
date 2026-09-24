@@ -611,6 +611,8 @@
   .tile .lab{font-size:12.5px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;margin-bottom:4px}
   .tile .val,.tile.key .val{font-size:21px;font-weight:600;letter-spacing:-.02em}
   .tile .sm{font-size:12px;color:var(--muted);margin-top:3px}
+  /* One line, always; fitTiles() shrinks the type rather than let a figure clip. */
+  .tile .val{white-space:nowrap;overflow:hidden}
   .tile .val.posv{color:var(--ink)}               /* money is ink; only a problem gets colour */
   .tnav{box-shadow:var(--shadow);border-color:var(--ring)}
 
@@ -2886,7 +2888,8 @@ function render(){
   document.addEventListener('pointerdown',e=>{ if(isTouchLike(e) && !svg.contains(e.target)) hide(); },{passive:true});
 
   const mnD=DATA.reduce((a,d)=>d.b<a.b?d:a,DATA[0]);
-  const set=(id,txt,cls)=>{const el=document.getElementById(id);el.textContent=txt;el.className='val'+(cls?' '+cls:'');};
+  const set=(id,txt,cls)=>{const el=document.getElementById(id);el.textContent=txt;el.className='val'+(cls?' '+cls:'');
+    delete el.dataset.full; el.removeAttribute('title');};   // a fresh figure; fitTiles re-fits it
   set('t_payoff', sale? fmt(payoff):'—');
   document.getElementById('t_payoffsm').textContent = sale? 'incl. accrued per-diem interest':'home not sold in window';
   set('t_proceeds', sale? fmt(proceeds): '—', sale&&proceeds<0?'neg':(sale?'posv':''));
@@ -3056,11 +3059,35 @@ function render(){
     `${page.length} line${page.length===1?'':'s'} · net ${fmt(net)}`+
     (mEnd? ` · ends ${fmt(mEnd.b)}`:'');
   renderTodayBar(DATA);
+  fitTiles();
   // Tile subtitles are cut to one line; the full text is their tooltip.
   document.querySelectorAll('.tile .sm').forEach(el=>{ el.title=el.textContent; });
   LAST_DATA=DATA;
   tileFades(); tlFades();
 }
+
+/* Fit each tile's figure to its tile — the tile never grows. A figure that overflows shrinks
+   just enough to fit; only if that would go below ~60% of the normal size does it switch to a
+   compact form ($1.23M), with the exact figure kept as the tooltip. Runs after every render. */
+function fitTiles(){
+  document.querySelectorAll('.tile .val').forEach(el=>{
+    el.style.fontSize='';
+    if(el.dataset.full){ el.textContent=el.dataset.full; delete el.dataset.full; el.removeAttribute('title'); }
+    const room=el.clientWidth;
+    if(!room || el.scrollWidth<=room) return;            // hidden tile, or it already fits
+    const base=parseFloat(getComputedStyle(el).fontSize);
+    const fit=base*room/el.scrollWidth*.97;
+    if(fit>=base*.6){ el.style.fontSize=fit.toFixed(2)+'px'; return; }
+    const full=el.textContent, n=+full.replace(/[^0-9.-]/g,'');
+    if(!isFinite(n)) { el.style.fontSize=(base*.6).toFixed(2)+'px'; return; }
+    const a=Math.abs(n), sign=/^-|−/.test(full.trim())?'-':'';
+    el.dataset.full=full; el.title=full;
+    el.textContent = sign+'$'+(a>=1e9? (a/1e9).toFixed(2)+'B' : a>=1e6? (a/1e6).toFixed(2)+'M' : (a/1e3).toFixed(1)+'k');
+    if(el.scrollWidth>room) el.style.fontSize=Math.max(base*.6, base*room/el.scrollWidth*.97).toFixed(2)+'px';
+  });
+}
+// Inter arrives after first paint and is wider than the fallback, so fit again once it lands.
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>fitTiles());
 
 /* Today at a glance: what posts today, and the next day anything does. Compact on purpose — the
    full list is one tap away in Transactions, which this opens at the right month. */
