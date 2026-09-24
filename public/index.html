@@ -2833,14 +2833,15 @@ function render(){
     // work out where "now" is by reading dates.
     const isToday = d.d===TODAY_ISO;
     const chip = isToday? '<span class="todaychip">today</span>' : '';
+    // Today's lines open in full by default (they are the ones being read); a tap still folds them.
     d.ev.forEach(e=>{
       run=+(run+e.a).toFixed(2);
-      rows.push({ym,d:d.d,a:e.a,h:`<tr${isToday?' class="today"':''}><td>${ds}${chip}</td><td class="trunc" title="${esc(e.l)}">${esc(e.l)}</td><td class="n${e.a>0?' pos':''}">${fmt(e.a)}</td><td class="n">${fmt(run)}</td></tr>`});
+      rows.push({ym,d:d.d,a:e.a,h:`<tr${isToday?' class="today"':''}><td>${ds}${chip}</td><td class="trunc${isToday?' open':''}" title="${esc(e.l)}">${esc(e.l)}</td><td class="n${e.a>0?' pos':''}">${fmt(e.a)}</td><td class="n">${fmt(run)}</td></tr>`});
     });
     if(d.rec && d.rec.delta!==0){
       const note = d.rec.note? ` — “${esc(d.rec.note)}”` : '';
       rows.push({ym,d:d.d,a:d.rec.delta,h:
-        `<tr class="recrowT ${d.rec.delta>0?'vp':'vn'}${isToday?' today':''}"><td>${ds}${chip}</td><td class="trunc" title="RECONCILED — actual ${fmt(d.rec.actual)} vs projected ${fmt(d.rec.projected)}${note}">RECONCILED — actual ${fmt(d.rec.actual)} vs projected ${fmt(d.rec.projected)}${note}</td><td class="n">${fmt(d.rec.delta)}</td><td class="n">${fmt(d.b)}</td></tr>`});
+        `<tr class="recrowT ${d.rec.delta>0?'vp':'vn'}${isToday?' today':''}"><td>${ds}${chip}</td><td class="trunc${isToday?' open':''}" title="RECONCILED — actual ${fmt(d.rec.actual)} vs projected ${fmt(d.rec.projected)}${note}">RECONCILED — actual ${fmt(d.rec.actual)} vs projected ${fmt(d.rec.projected)}${note}</td><td class="n">${fmt(d.rec.delta)}</td><td class="n">${fmt(d.b)}</td></tr>`});
     }
     run=d.b;                             // resync (also applies a reconcile rebase)
   });
