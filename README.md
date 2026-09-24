@@ -1,7 +1,7 @@
 # Cash Flow Planner
 
-Cash-flow planner for the Sept 18, 2026 closing and the Midland home sale, with
-permanent daily reconciliation.
+Daily cash-flow and net-worth planner for the OKC home and the let (and possibly sold) Midland
+home, with daily reconciliation against the real balance. See `PROJECT.md` for how it works.
 
 Zero npm dependencies — pure Node (`node:http` + `node:sqlite`). Nothing to compile.
 
@@ -35,17 +35,21 @@ Railway sets `PORT` automatically — don't set it yourself.
 
 ## Reconciliation rules (enforced on the server, not just the browser)
 
-- The trigger is a deliberately low-contrast button below the chart footnotes, right side.
-  It only appears when at least one date is eligible.
-- Clicking it opens a centered modal that starts on a **PIN screen**. The PIN is checked
-  against the server (`POST /api/verify`) before the form is revealed — a wrong PIN never
-  gets you to the form. The PIN is held in memory only, never stored in the browser.
+- The trigger is the check-mark icon in the app bar. It appears once any date is eligible or
+  any entry exists (so a past entry can always be corrected).
+- It opens a sheet (a bottom sheet on phones) that starts on a **PIN screen**. The PIN is
+  checked against the server (`POST /api/verify`) before the form is revealed. It is held in
+  memory only, never stored in the browser.
 - **Today** can be reconciled only after **19:00 America/Chicago**.
 - **Past dates** with no entry stay open indefinitely — no time-of-day restriction.
 - **Future dates** can never be reconciled.
-- Each date can be reconciled **once**. Entries cannot be edited or deleted from the UI.
+- Each date can be reconciled **once**. A mistake is fixed with **Correct an entry**
+  (`PUT /api/reconciles`): the entry is updated and the previous value is kept in an audit
+  log (`reconcile_edits`). Entries cannot be deleted.
 - A variance of **$0.00 is valid** — it records that actual matched projection.
 - Saving requires the passcode. Eight failed attempts from one IP triggers a 15-minute lockout.
+- There is no confirmation dialog: the sheet shows the projected balance, the variance and the
+  new balance live before you save.
 
 ### What a reconcile does
 
@@ -55,9 +59,9 @@ resulting actual balance and:
 
 - **rebases** the projection: every day after that continues from the new balance,
   so all later balances shift by the variance;
-- shows the entry in the **transaction table** and the **timeline tooltip** — but only when
-  the variance is non-zero. A $0.00 entry is saved and locks the date, yet appears nowhere
-  except the "Recorded" list inside the modal.
+- shows the entry in the **transaction table**, the **Today** panel (if it is today) and the
+  **chart readout** — but only when the variance is non-zero. A $0.00 entry is saved and locks
+  the date, yet appears only in the "Recorded" list inside the sheet.
 
 The stored value is the resulting balance, so it stays pinned to reality; the variance shown
 later is re-derived against whatever sale scenario is active.
