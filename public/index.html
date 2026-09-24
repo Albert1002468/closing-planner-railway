@@ -112,11 +112,11 @@
   #oppexits tr.cliff td{background:color-mix(in srgb,var(--crit) 8%,transparent)}
   #oppexits tr.berow td{background:color-mix(in srgb,var(--good) 8%,transparent)}
   /* Exits are choices: the picked one is the sell side of every comparison above. */
-  #oppexits tbody tr{cursor:pointer}
-  #oppexits tbody tr:hover td{background:color-mix(in srgb,var(--s1) 5%,transparent)}
-  #oppexits tbody tr.sel td{background:color-mix(in srgb,var(--s1) 10%,transparent)}
-  #oppexits tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--s1);font-weight:600}
-  #oppexits tbody tr:focus-visible{outline:2px solid var(--s1);outline-offset:-2px}
+  #oppexits tbody tr,#opptable tbody tr{cursor:pointer}
+  #oppexits tbody tr:hover td,#opptable tbody tr:hover td{background:color-mix(in srgb,var(--s1) 5%,transparent)}
+  #oppexits tbody tr.sel td,#opptable tbody tr.sel td{background:color-mix(in srgb,var(--s1) 10%,transparent)}
+  #oppexits tbody tr.sel td:first-child,#opptable tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--s1);font-weight:600}
+  #oppexits tbody tr:focus-visible,#opptable tbody tr:focus-visible{outline:2px solid var(--s1);outline-offset:-2px}
   .selmark{color:var(--s1);margin-right:6px;font-weight:700}
   .exithint{font-size:12px;color:var(--muted);margin:-4px 0 8px}
   #oppexits{min-width:600px}
@@ -706,7 +706,7 @@
         border-top-color:transparent;border-radius:50%;animation:spinturn .7s linear infinite;vertical-align:-2px}
   .busyhost{position:relative}
   .busyveil{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
-            border-radius:inherit;background:color-mix(in srgb,var(--page) 55%,transparent);
+            border-radius:inherit;background:color-mix(in srgb,var(--page) 62%,transparent);
             -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);animation:veilin .12s ease-out}
   .busyveil .ring{width:26px;height:26px;border-width:2.5px;color:var(--ink);opacity:.8}
   @keyframes veilin{from{opacity:0}}
@@ -928,6 +928,8 @@
           <th style="text-align:right" id="oppsellhdr">Sell &amp; invest</th>
           <th style="text-align:right">Difference</th>
           <th style="text-align:right">Break-even</th></tr></thead><tbody></tbody></table></div>
+        <p class="oppnote exithint">Tap a horizon to project the whole app to it — the chart, the tiles and
+          the settings all follow.</p>
         <p class="oppnote" id="oppexitintro"></p>
         <p class="oppnote exithint">Tap an exit to compare it above — the table, the break-even and the
           net worth chart all follow. Tap it again to go back to the default.</p>
@@ -2600,7 +2602,10 @@ function fillOppPanel(rent, home, rates){
                : (b.rate*100).toFixed(1)+'%';
   document.getElementById('opptable').querySelector('tbody').innerHTML = rows.map(r=>{
     const d=r.keep-r.sell;
-    return `<tr class="${r.end===T1?'now':''}"><td>${esc(r.label)} <span style="color:var(--ink-2)">`
+    const isSel = r.key===HORIZON;
+    return `<tr class="${isSel?'now sel':''}" data-hz="${r.key}" tabindex="0" aria-selected="${isSel}"`
+      +` title="${isSel? 'The projection runs to this horizon' : 'Project to this horizon'}">`
+      +`<td>${isSel? '<span class="selmark" aria-hidden="true">✓</span>' : ''}${esc(r.label)} <span style="color:var(--ink-2)">`
       +`· to ${esc(nice(r.end))}</span></td>`
       +`<td class="num">${fmt0(r.keep)}</td><td class="num">${fmt0(r.sell)}</td>`
       +`<td class="num ${d>=0?'oppwin':'opplose'}">${d>=0?'+':'−'}${fmt0(Math.abs(d))}</td>`
@@ -3630,6 +3635,12 @@ function busy(hosts, fn, label){
     h.classList.add('busyhost');
     const v=document.createElement('div'); v.className='busyveil'; v.setAttribute('aria-hidden','true');
     v.innerHTML='<span class="ring"></span>'; h.appendChild(v); veils.push(v);
+    /* Centre the ring on the part of the host that is ON SCREEN, clear of the app bar. A tall
+       panel's own centre is often off-screen — which is why picking an exit showed nothing. */
+    const r=h.getBoundingClientRect(), barB=document.getElementById('appbar').getBoundingClientRect().bottom;
+    const top=Math.max(r.top, barB), bot=Math.min(r.bottom, window.innerHeight);
+    if(bot>top){ v.style.alignItems='flex-start';
+      v.querySelector('.ring').style.marginTop=Math.round((top+bot)/2 - r.top - 13)+'px'; }
   });
   /* After the next frame has painted (rAF, then a task), or after 120 ms at the latest: frames
      do not come while a page is hidden, and waiting on rAF alone would leave the spinner up and
@@ -3653,6 +3664,15 @@ function pickExit(d){
   OPP_SEL = (!d || d===OPP_EXIT || d===OPP_SEL)? null : d;
   OPPC={key:null};                    // the comparison, its chart lines and the panel all rebuild
   busy([document.getElementById('oppwrap'), $chartP], render);
+}
+/* Horizon rows set THE horizon — the one variable the chart's picker and the sheet's buttons
+   also drive — so all three stay in step. It recomputes everything, hence the full overlay. */
+{
+  const tb=document.getElementById('opptable').querySelector('tbody');
+  const go=tr=>{ const k=tr.dataset.hz; if(k && (k!==HORIZON || VIEW!=='span')) setViewUI(k); };
+  tb.addEventListener('click',e=>{ const tr=e.target.closest('tr[data-hz]'); if(tr) go(tr); });
+  tb.addEventListener('keydown',e=>{ if(e.key!=='Enter' && e.key!==' ') return;
+    const tr=e.target.closest('tr[data-hz]'); if(tr){ e.preventDefault(); go(tr); } });
 }
 {
   const tb=document.getElementById('oppexits').querySelector('tbody');
