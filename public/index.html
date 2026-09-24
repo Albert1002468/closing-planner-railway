@@ -3267,11 +3267,15 @@ function sheetDrag(modal, close){
   let y0=null, dy=0, on=false, lastY=0, lastT=0, vel=0;
   const put=(y,animate)=>{
     sheet.style.transition = animate? 'transform .26s cubic-bezier(.2,.8,.2,1)' : 'none';
-    modal.style.transition = animate? 'background .26s' : 'none';
+    modal.style.transition = animate
+      ? 'background .26s, backdrop-filter .26s, -webkit-backdrop-filter .26s' : 'none';
     sheet.style.transform = y? `translateY(${y}px)` : '';
     const f = 1 - Math.min(1, y/Math.max(1,sheet.offsetHeight));
-    // The frost thins as the sheet is pulled away (same page-coloured veil as the CSS).
+    // The frost thins as the sheet is pulled away and thickens as it comes back: the veil AND the
+    // blur both follow the finger (same values as the CSS at f = 1).
     modal.style.background = y? `color-mix(in srgb,var(--page) ${(62*f).toFixed(1)}%,transparent)` : '';
+    const bf = y? `blur(${(14*f).toFixed(1)}px) saturate(${(1+.2*f).toFixed(3)})` : '';
+    modal.style.backdropFilter = bf; modal.style.webkitBackdropFilter = bf;
   };
   sheet.addEventListener('touchstart',e=>{
     y0=null;
