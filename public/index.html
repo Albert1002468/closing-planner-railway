@@ -225,6 +225,7 @@
   .tile .val{font-size:17px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
   .tile .val.neg{color:var(--crit)} .tile .val.posv{color:var(--goodtext)}
   .tile .sm{font-size:11px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+  .tile .sm.trunc{cursor:pointer}
   /* reconcile — deliberately low-visibility trigger */
   .actionbar{display:flex;align-items:center;justify-content:space-between;gap:10px;
              flex-wrap:wrap;margin:2px 0 6px}
@@ -389,7 +390,7 @@
   .brand .mark{width:46px;height:46px;flex:none;border-radius:12px;
                box-shadow:0 6px 18px rgba(14,58,92,.30)}
   .brandtxt{min-width:0}
-  h1{font-size:22px;font-weight:720;letter-spacing:-.018em;margin:0 0 3px}
+  h1{font-size:22px;font-weight:720;letter-spacing:-.018em;margin:0}
   .brand .sub{margin:0;line-height:1.45}
   .card{border-radius:16px;padding:20px 22px;box-shadow:var(--shadow)}
   .tile{position:relative;overflow:hidden;border-radius:12px;padding:11px 13px 10px;
@@ -515,7 +516,7 @@
     .viz-root{padding-top:calc(14px + env(safe-area-inset-top,0px));
               padding-left:max(9px,env(safe-area-inset-left,0px));
               padding-right:max(9px,env(safe-area-inset-right,0px))}
-    .brand{gap:11px;margin-bottom:12px;align-items:flex-start}
+    .brand{gap:11px;margin-bottom:12px}
     .brand .mark{width:38px;height:38px;border-radius:10px}
     .card{border-radius:13px}
     .tile.key .val{font-size:15px}
@@ -558,29 +559,27 @@
     </svg>
     <div class="brandtxt">
       <h1>Cash Flow Planner</h1>
-      <p class="sub" id="subhead">Closing Fri, Sept 18, 2026</p>
-      <p class="sub" id="subcash"></p>
     </div>
   </header>
 
   <div class="card pos">
     <div class="tilewrap">
       <div class="tiles" id="tiles">
-        <div class="tile key"><div class="lab">Today</div><div class="val" id="t_today">—</div><div class="sm" id="t_todayd"></div></div>
-        <div class="tile key"><div class="lab">Net worth</div><div class="val" id="t_nw">—</div><div class="sm" id="t_nwd"></div></div>
-        <div class="tile key"><div class="lab" id="t_endlab">Ending balance</div><div class="val" id="t_end">—</div><div class="sm" id="t_endd"></div></div>
-        <div class="tile"><div class="lab">Buying power</div><div class="val" id="t_real">—</div><div class="sm" id="t_reald"></div></div>
-        <div class="tile"><div class="lab">Rent, net</div><div class="val" id="t_rent">—</div><div class="sm" id="t_rentd"></div></div>
-        <div class="tile"><div class="lab">Car loan</div><div class="val" id="t_car">—</div><div class="sm" id="t_card"></div></div>
-        <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm" id="t_lowd"></div></div>
-        <div class="tile"><div class="lab">Days under $15k</div><div class="val" id="t_thin">—</div><div class="sm" id="t_thind"></div></div>
-        <div class="tile"><div class="lab">Break-even ROI</div><div class="val" id="t_be">—</div><div class="sm" id="t_bed"></div></div>
+        <div class="tile key"><div class="lab">Today</div><div class="val" id="t_today">—</div><div class="sm trunc" id="t_todayd"></div></div>
+        <div class="tile key"><div class="lab">Net worth</div><div class="val" id="t_nw">—</div><div class="sm trunc" id="t_nwd"></div></div>
+        <div class="tile key"><div class="lab" id="t_endlab">Ending balance</div><div class="val" id="t_end">—</div><div class="sm trunc" id="t_endd"></div></div>
+        <div class="tile"><div class="lab">Buying power</div><div class="val" id="t_real">—</div><div class="sm trunc" id="t_reald"></div></div>
+        <div class="tile"><div class="lab">Rent, net</div><div class="val" id="t_rent">—</div><div class="sm trunc" id="t_rentd"></div></div>
+        <div class="tile"><div class="lab">Car loan</div><div class="val" id="t_car">—</div><div class="sm trunc" id="t_card"></div></div>
+        <div class="tile"><div class="lab">Lowest point</div><div class="val" id="t_low">—</div><div class="sm trunc" id="t_lowd"></div></div>
+        <div class="tile"><div class="lab">Days under $15k</div><div class="val" id="t_thin">—</div><div class="sm trunc" id="t_thind"></div></div>
+        <div class="tile"><div class="lab">Break-even ROI</div><div class="val" id="t_be">—</div><div class="sm trunc" id="t_bed"></div></div>
         <!-- Sale tiles: shown only while a sale is modelled (see render) -->
-        <div class="tile saleonly"><div class="lab">Net proceeds</div><div class="val" id="t_proceeds">—</div><div class="sm" id="t_proceedsm"></div></div>
-        <div class="tile saleonly"><div class="lab">Payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm" id="t_payoffsm"></div></div>
-        <div class="tile saleonly"><div class="lab">Loss credit</div><div class="val" id="t_loss">—</div><div class="sm">half of loss under $425k, max $25k</div></div>
-        <div class="tile saleonly"><div class="lab">Relo costs</div><div class="val" id="t_relo">—</div><div class="sm" id="t_relod"></div></div>
-        <div class="tile saleonly"><div class="lab">Recapture</div><div class="val" id="t_recap">—</div><div class="sm" id="t_recapd"></div></div>
+        <div class="tile saleonly"><div class="lab">Net proceeds</div><div class="val" id="t_proceeds">—</div><div class="sm trunc" id="t_proceedsm"></div></div>
+        <div class="tile saleonly"><div class="lab">Payoff at sale</div><div class="val" id="t_payoff">—</div><div class="sm trunc" id="t_payoffsm"></div></div>
+        <div class="tile saleonly"><div class="lab">Loss credit</div><div class="val" id="t_loss">—</div><div class="sm trunc">half the loss under $425k, max $25k</div></div>
+        <div class="tile saleonly"><div class="lab">Relo costs</div><div class="val" id="t_relo">—</div><div class="sm trunc" id="t_relod"></div></div>
+        <div class="tile saleonly"><div class="lab">Recapture</div><div class="val" id="t_recap">—</div><div class="sm trunc" id="t_recapd"></div></div>
       </div>
       <button type="button" class="tnav tprev" id="tprev" aria-label="Scroll cards left">&lsaquo;</button>
       <button type="button" class="tnav tnext" id="tnext" aria-label="Scroll cards right">&rsaquo;</button>
@@ -623,9 +622,9 @@
       <span><i style="color:var(--goodtext)">&#9650;</i> <span id="markin">in &ge;$800</span></span>
       <span><i style="color:var(--crit)">&#9660;</i> <span id="markout">out &ge;$800</span></span>
       <span><span class="sw" style="background:var(--crit);opacity:.15;border-radius:2px"></span>below $0</span>
-      <span><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale</span>
+      <span id="keysale"><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale</span>
       <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
-      <span><span class="sw" style="background:var(--s7);height:3px;border-radius:0"></span>buying power (2026 $)</span>
+      <span><span class="sw" style="background:var(--s7);height:3px;border-radius:0"></span>buying power</span>
       <span id="keyoppwrap" hidden><span class="sw" style="background:var(--s8);height:3px;border-radius:0"></span><span id="keyopp">sell at lease end</span></span>
     </div>
 
@@ -690,8 +689,6 @@
   <div class="modal" id="setmodal" hidden role="dialog" aria-modal="true" aria-labelledby="settitle">
     <div class="sheet">
       <h3 id="settitle">Home sale scenario</h3>
-      <p class="hint">Set everything you want to change, then hit <b>Update projection</b> &mdash;
-         the whole model recomputes at once rather than on every keystroke.</p>
       <div class="controls">
 
         <section class="grp">
@@ -840,7 +837,7 @@
       <div class="sheet" id="recsheet">
         <div id="stagepin">
           <h3 id="rectitle">Enter PIN</h3>
-          <p class="hint">Reconciliation is locked. Enter the PIN to continue.</p>
+          <p class="hint">Enter your PIN to reconcile.</p>
           <div class="fld">
             <input class="pin" id="pinput" type="password" inputmode="numeric" autocomplete="off"
                    autocapitalize="off" spellcheck="false" placeholder="••••" aria-label="PIN">
@@ -2146,9 +2143,8 @@ function syncSaleDate(rent, home, fromSaleDate){
       +`(${BREAK_MONTHS} mo — assumed, not in the lease)</dd>`
     +`<dt>Tax</dt><dd>${RENT_TAX_RATE}% on rental income · ${RECAP_RATE}% recapture on `
       +`${fmt0(DEPREC_BASIS)} of basis</dd>`
-    +`</dl><p class="tiny">Tenants pay all utilities, yard care and filters, and carry $100k `
-    +`liability. You cover HVAC, water heater and structural leaks. HOA dues are yours; the `
-    +`tenants follow the rules and repay any fines. Holdover is 3× rent.</p>`;
+    +`</dl><p class="tiny">Tenants: utilities, yard, filters. You: HVAC, water heater, leaks, `
+    +`HOA. Holdover 3× rent.</p>`;
   document.getElementById('saleday').textContent =
     sale? dd(sale).toLocaleDateString('en-US',{weekday:'long'}) : 'no sale modeled';
   /* ⚠️ The lease-length hints live HERE, not in render(). They are the feedback for the field
@@ -2253,15 +2249,9 @@ function fillOppPanel(rent, home, rates){
       +`<td class="num"><b>${esc(pct(r.be))}</b></td></tr>`;
   }).join('');
   document.getElementById('oppintro').innerHTML =
-    `Two futures, same salary, same spending, and <b>the same ${(roi*100).toFixed(2)}% return applied to `
-    +`the cash in both</b> — otherwise this would just be a house earning nothing against an index `
-    +`fund. That rate is this panel's own assumption — it is deliberately NOT your `
-    +`<b>${(numOr('cashapy',0)).toFixed(2)}% cash APY</b>, which is what a bank account pays and `
-    +`what the chart's two balance lines both use. `
-    +`<b>Keep &amp; rent</b> re-lets to the end of the window and never sells. The other sells `
-    +`<b>${esc(nice(oppExitDate(rent)))}</b>, once the signed term is served, and invests the `
-    +`proceeds. Both sides are identical until then, so this is only about what happens after `
-    +`the lease is up. The break-even column is the return at which they finish level.`;
+    `<b>Keep</b> re-lets to the end of the window. <b>Sell</b> sells `
+    +`${esc(nice(oppExitDate(rent)))}, when the lease is up, and invests. Both earn `
+    +`<b>${(roi*100).toFixed(2)}%</b> on cash above the floor. Break-even is the return where they tie.`;
 
   // The exits. Every figure comes from the engine, so the relo window and the loss credit are
   // whatever the rest of the model already says they are.
@@ -2303,18 +2293,10 @@ function fillOppPanel(rent, home, rates){
   const a=buildEvents(RELO_DEADLINE, priceOn(RELO_DEADLINE), rentTo(RELO_DEADLINE), home);
   const bq=buildEvents(addD(RELO_DEADLINE,1), priceOn(addD(RELO_DEADLINE,1)), rentTo(addD(RELO_DEADLINE,1)), home);
   document.getElementById('oppexitintro').innerHTML =
-    `If you do sell, <b>when</b> is worth more than the break-even rate. Crossing `
-    +`${esc(nice(RELO_DEADLINE))} costs <b>${fmt0((a.proceeds+a.loss)-(bq.proceeds+bq.loss))}</b> `
-    +`overnight, because the relocation company stops covering seller costs.`;
+    `Selling after ${esc(nice(RELO_DEADLINE))} costs <b>${fmt0((a.proceeds+a.loss)-(bq.proceeds+bq.loss))}</b> `
+    +`more — relo stops covering seller costs.`;
   document.getElementById('oppcaveat').innerHTML =
-    `<b>Read this before trusting the number.</b> It is an <b>after-tax</b> rate — in a taxable `
-    +`brokerage you need a higher pre-tax return to clear it. It prices no risk: one leveraged, `
-    +`undiversified, illiquid house in an oil-price town is not the same bet as an index fund, and `
-    +`the model cannot see a bad tenant, a roof, or a foundation. Maintenance starts at your `
-    +`${fmt0(rent? rent.maint : 0)}/yr reserve and ramps toward 1% of value once the warranty `
-    +`lapses (zero stays zero), and vacancy is ${rent? rent.vacancyMo : 0} month at each tenant `
-    +`turnover. The house also has to actually sell at `
-    +`${fmt0(priceOn(SALE_FLOOR))} for the sell column to mean anything.`;
+    `After-tax rate; no risk priced in. Assumes it sells for ${fmt0(priceOn(SALE_FLOOR))}.`;
 }
 
 /* Captured before anything can touch the form, so "default" means the values the document
@@ -2367,15 +2349,6 @@ function render(){
      up to the floor earns the bank rate; only the surplus above it earns the investment rate. */
   const RATES = {cash:apy, invest:OPP_ROI, floor:LIQ_FLOOR};
   // DOWN_PCT is fixed: the loan is signed and the wire is sent. Not an input any more.
-  /* The closing is done, so the subtitle describes what the model IS now: a daily balance out
-     to the horizon, and the state of the Midland house that drives most of it. */
-  document.getElementById('subhead').textContent =
-    `Daily balance through ${nice(T1)} (${HORIZONS[HORIZON].label})`
-    + (rent? ` · Midland let to ${nice(rentSchedule(rent).end)}` : ' · Midland vacant')
-    + (sale? ` · sells ${nice(sale)}` : ' · no sale in window');
-  document.getElementById('subcash').textContent =
-    `OKC closed ${nice(CLOSING_DATE)} — ${fmt(nhCashToClose())} wired at ${DOWN_PCT}% down `
-    + `· loan ${fmt0(nhLoan())} at ${(NH_RATE*100).toFixed(3)}%`;
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentTotal,myRentTotal,buyDate,buyCC,
          recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,midEscEnd,
@@ -2592,6 +2565,7 @@ function render(){
     });
   });
   document.getElementById('markin').textContent='in \u2265'+fmt0(markMin);
+  document.getElementById('keysale').hidden=!sale;
   document.getElementById('markout').textContent='out \u2265'+fmt0(markMin);
   drawMarkerLabels();
   const cross=add('line',{x1:0,x2:0,y1:m.t,y2:H-m.b,stroke:'var(--axis)','stroke-width':1,visibility:'hidden'});
@@ -2731,15 +2705,15 @@ function render(){
   const firstThin = DATA.find(d=>d.b<CUSHION);
   set('t_thin', String(thinDays), thinDays>30?'neg':'');
   document.getElementById('t_thind').textContent = thinDays
-    ? `from ${nice(firstThin.d)} · ${DATA.filter(d=>d.b<5000).length} under ${fmt0(5000)}`
+    ? `since ${nice(firstThin.d)}`
     : `never below ${fmt0(CUSHION)}`;
   const NW = netWorth({series:DATA,buyDate,carPayoffDate,carPayoff,suspendedByYear},
                       sale, rent, home, endDay.d);
   set('t_nw', fmt(NW.nw), NW.nw<0?'neg':'posv');
   document.getElementById('t_nwd').textContent =
-    `${nice(endDay.d)} · cash ${fmt0(NW.cash)}${NW.okc?' · OKC equity '+fmt0(NW.okc):''}`
+    `cash ${fmt0(NW.cash)}${NW.okc?' · OKC '+fmt0(NW.okc):''}`
     +`${NW.mid?' · Midland '+fmt0(NW.mid):''}${NW.car?' − car '+fmt0(NW.car):''}`
-    +`${NW.deferred?' − deferred tax '+fmt0(NW.deferred):''}`;
+    +`${NW.deferred?' − tax '+fmt0(NW.deferred):''}`;
   document.getElementById('t_lowd').textContent = dd(mnD.d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
   // today's balance — the series starts 8/14, so clamp to the ends when today falls outside it
   const tdi = DATA.findIndex(d=>d.d===TODAY_ISO);
@@ -2752,10 +2726,8 @@ function render(){
   const carSettled = carPayoffDate && carPayoffDate<=T1 && carPayoff>0;
   set('t_car', carSettled? fmt(carPayoff) : fmt(carOwedAtEnd), 'neg');
   document.getElementById('t_card').textContent = carSettled
-    ? nice(carPayoffDate)+' · then no car payment'
-    : carPayoffDate
-      ? `payoff ${nice(carPayoffDate)} is past the window — ${fmt0(carOwedAtEnd)} owed ${nice(T1)}`
-      : `still owed ${nice(T1)} · clears ${nice(carNaturalDate)} if never sold`;
+    ? `paid off ${nice(carPayoffDate)}`
+    : `owed ${nice(T1)} · clears ${nice(carNaturalDate)}`;
   // Ending balance follows the WINDOW, not the whole series — on "2027" this is Dec 31 2027.
   set('t_end', fmt(endDay.b), endDay.b<0?'neg':'posv');
   document.getElementById('t_endd').textContent =
@@ -2765,9 +2737,7 @@ function render(){
   const realEnd=realAt(endDay.b, endDay.d);
   set('t_real', fmt(realEnd), realEnd<0?'neg':'posv');
   document.getElementById('t_reald').textContent =
-    `${fmt0(endDay.b-realEnd)} lost to ${(INFL_PCT*100).toFixed(2)}% inflation · `
-    + (realEnd>START_BAL? `${fmt0(realEnd-START_BAL)} ahead of where you started`
-                        : `${fmt0(START_BAL-realEnd)} behind where you started`);
+    `${fmt0(endDay.b-realEnd)} lost to inflation`;
   /* Break-even ROI. `null` means keeping still wins at the top of the search range, which is
      the honest answer rather than a made-up number. */
   const bePct = OPPBE.rate===null? null : OPPBE.rate*100;
@@ -2776,9 +2746,8 @@ function render(){
       OPPBE.verdict==='sell'? 'posv' : '');
   document.getElementById('t_bed').textContent =
     OPPBE.verdict==='sell'
-      ? `selling already wins by ${fmt0(-OPPBE.gap)} — no return needed`
-      : `to beat ${rent?'renting it out':'holding it'} through ${nice(T1)}`
-        + (bePct===null? '' : ` · you assume ${(OPP_ROI*100).toFixed(2)}%`);
+      ? `selling wins by ${fmt0(-OPPBE.gap)}`
+      : `to beat keeping it · you assume ${(OPP_ROI*100).toFixed(1)}%`;
   document.getElementById('oppsm').textContent =
     `at ${(OPP_ROI*100).toFixed(2)}%: ${keepEnd>=oppEnd? 'keeping' : 'selling'} ahead by `
     + `${fmt0(Math.abs(keepEnd-oppEnd))} at ${nice(T1)}`;
@@ -2789,8 +2758,8 @@ function render(){
       + `${fmt0(priceOn(T1)*MAINT_MATURE_PCT/100)}/yr by ${YR(T1)}`
     : '';
   document.getElementById('t_rentd').textContent = rent
-    ? `${fmt0(rentTotal)} gross − ${fmt0(rentCostTotal)} landlord costs`
-      + (rentIncTax? ` − ${fmt0(rentIncTax)} tax` : ' · paper loss, no tax')
+    ? `${fmt0(rentTotal)} gross − ${fmt0(rentCostTotal)} costs`
+      + (rentIncTax? ` − ${fmt0(rentIncTax)} tax` : '')
     : 'not renting';
   set('t_recap', recapTax? fmt(-recapTax) : (rent?'$0.00':'—'), recapTax?'neg':'');
   // Zero recapture has two very different causes: no sale yet, or a sale whose gain is too
@@ -2896,9 +2865,10 @@ function render(){
     `${rows.filter(r=>VIEW==='span'||r.ym.slice(0,4)===VIEW).length} across ${PMONTHS.length} months`;
   gid('pginfo').textContent =
     `${page.length} line${page.length===1?'':'s'} · net ${fmt(net)}`+
-    (mEnd? ` · month-end ${fmt(mEnd.b)}`:'')+
-    ` · page ${pi+1} of ${PMONTHS.length}`;
+    (mEnd? ` · ends ${fmt(mEnd.b)}`:'');
   renderTodayBar(DATA);
+  // Tile subtitles are cut to one line; the full text is their tooltip.
+  document.querySelectorAll('.tile .sm').forEach(el=>{ el.title=el.textContent; });
   LAST_DATA=DATA;
   tileFades(); tlFades();
 }
@@ -3242,10 +3212,10 @@ function fillForm(){
   $('recsave').textContent = isFix? 'Save correction' : 'Save reconcile';
   $('recdate').innerHTML=dates.map(d=>`<option value="${d}">${dd(d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</option>`).join('');
   $('modefix').disabled = reconciledDates().length===0;
-  $('rechint').textContent=(SRV.online?'':'Offline — entries cannot be saved without the server. ')+
+  $('rechint').textContent=(SRV.online?'':'Offline — can’t save. ')+
     (isFix
-      ? 'Pick a day you already reconciled and enter what the variance SHOULD have been. The old figure is kept in an audit log.'
-      : `Permanent once saved; correct it later from this screen if you mistype. Today unlocks after ${UNLOCK_HOUR}:00 ${TZ}; past days with no entry stay open.`);
+      ? 'Enter what the variance should have been. The old figure is logged.'
+      : `Today opens at ${UNLOCK_HOUR%12||12} ${UNLOCK_HOUR<12?'am':'pm'}. Mistakes can be corrected later.`);
   if(isFix) prefillFromExisting();
   /* Newest first, a page at a time. Reconciling daily makes this list grow by one a day, and
      all of it at once pushed the form's own buttons a long scroll away. */
