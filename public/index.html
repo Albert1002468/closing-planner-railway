@@ -713,7 +713,7 @@
 
   .tip{background:var(--surface-1);border:1px solid var(--ring);border-radius:14px;
        box-shadow:0 12px 32px rgba(0,0,0,.14)}
-  .tip.docked{z-index:52}
+  .tip.docked{z-index:49;width:min(calc(100vw - 2 * var(--gut)),430px)}
   .grab{display:none}
 
   @media (max-width:640px){
@@ -2844,7 +2844,10 @@ function render(){
       const vv=window.visualViewport;
       const vTop=vv? vv.offsetTop : 0;
       const vH=vv? vv.height : window.innerHeight;
-      const padT=12+px('--sat'), padB=12+px('--sab');
+      // Dock clear of the app bar, not just the status bar — over it, the card met the status
+      // strip with a hard edge and hid the bar.
+      const barB=document.getElementById('appbar').getBoundingClientRect().bottom;
+      const padT=Math.max(12+px('--sat'), barB-vTop+10), padB=12+px('--sab');
       tip.style.maxHeight=(vH-padT-padB)+'px';
       const th=tip.offsetHeight;
       const fingerHigh=(cy2-vTop) < vH*0.5;
