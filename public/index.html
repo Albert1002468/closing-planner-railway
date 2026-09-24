@@ -591,7 +591,7 @@
                 pointer-events:none;opacity:var(--navt,0);
                 transform:translate(-50%,calc((1 - var(--navt,0)) * 7px))}
   /* Mutually exclusive by construction: any trace of the compact title zeroes the large one. */
-  .bigtitle{opacity:calc(var(--navb,1) * (1 - min(1, var(--navt,0) * 100)))}
+  .bigtitle{opacity:var(--navb,1)}
   .appbar .acts{display:flex;gap:2px}
   .appbar .abtn,.appbar .abtn.accent{width:40px;height:40px;border-radius:50%;padding:0;border:0;
     background:transparent;color:var(--ink);box-shadow:none}
@@ -998,7 +998,7 @@
         <div class="setmsgs" id="setmsgs"></div>
         <div class="setacts">
         <button id="setapply" class="actbtn" title="Update projection" aria-label="Update projection">Apply</button>
-        <button id="setdone" class="actbtn ghost" title="Apply and close" aria-label="Apply and close">Close</button>
+        <button id="setdone" class="actbtn ghost" title="Close without applying" aria-label="Close without applying">Close</button>
         <button id="setreset" class="actbtn ghost" title="Reset every setting to its default"
                 aria-label="Reset to defaults">Reset</button>
         <span class="dirtybadge" id="setdirty">unapplied changes</span>
@@ -3189,8 +3189,9 @@ document.getElementById('todaybar').addEventListener('click',e=>{
   const sync=()=>{
     const under=Math.max(0, window.scrollY) - start;   // negative scroll is the bounce: treat as 0
     const bg=ease(clamp(under/h));
-    const fade=clamp(1-under/(h*.7));
     const tt=ease(clamp((under-h*.75)/(h*.55)));
+    // Never both: any trace of the compact title zeroes the large one.
+    const fade= tt>0 ? 0 : clamp(1-under/(h*.7));
     const key=bg.toFixed(3)+fade.toFixed(3)+tt.toFixed(3);
     if(key===last) return; last=key;
     root.style.setProperty('--nav',bg.toFixed(3));
@@ -3449,17 +3450,39 @@ function applyChanges(close){
   $spin.hidden=false;
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     try{ render(); }
-    finally{ $spin.hidden=true; DIRTY=false; showDirty(); if(close) closeSet(); }
+    finally{ $spin.hidden=true; DIRTY=false; showDirty(); SHEET_SNAP=snapSheet(); if(close) closeSet(); }
   }));
 }
-const openSet =()=>{$set.hidden=false; document.body.style.overflow='hidden'; showDirty();};
+/* Close means CANCEL. The sheet is snapshotted when it opens (and again after every apply);
+   dismissing it any way but Apply — Close, Escape, the backdrop, a drag down — puts the form,
+   the sale mode and the horizon back exactly as they were, and recomputes nothing. */
+let SHEET_SNAP=null;
+function snapSheet(){
+  return { vals:[...$set.querySelectorAll('input')].map(el=>[el, el.type==='checkbox'? el.checked : el.value]),
+           mode:SALE_MODE, hz:HORIZON, view:VIEW, sbr:SALE_BEFORE_RENT, lsm:LAST_SALE_MIN,
+           opp:document.getElementById('oppsm').textContent };
+}
+function revertSheet(){
+  const k=SHEET_SNAP; if(!k || !DIRTY) return;
+  clearTimeout(oppPrevT);
+  k.vals.forEach(([el,v])=>{ if(el.type==='checkbox') el.checked=v; else el.value=v; });
+  SALE_MODE=k.mode; SALE_BEFORE_RENT=k.sbr; LAST_SALE_MIN=k.lsm;
+  if(HORIZON!==k.hz) setHorizon(k.hz);
+  VIEW=k.view; buildViews(); if(VIEW!=='span') $vw.value=VIEW;
+  document.getElementById('pricefields').hidden = !document.getElementById('priceover').checked;
+  try{ syncSaleDate(readRent(), readHome()); }catch(e){}
+  document.getElementById('oppsm').textContent=k.opp;
+  DIRTY=false; showDirty();
+}
+const openSet =()=>{SHEET_SNAP=snapSheet(); $set.hidden=false; document.body.style.overflow='hidden'; showDirty();};
 const closeSet=()=>{$set.hidden=true;  document.body.style.overflow='';};
+const cancelSet=()=>{ revertSheet(); closeSet(); };
 document.getElementById('setbtn').addEventListener('click',openSet);
 document.getElementById('setapply').addEventListener('click',()=>applyChanges(true));
 document.getElementById('setreset').addEventListener('click',resetForm);
-document.getElementById('setdone').addEventListener('click',()=>applyChanges(true));
-$set.addEventListener('mousedown',e=>{ if(e.target===$set) applyChanges(true); });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$set.hidden) applyChanges(true); });
+document.getElementById('setdone').addEventListener('click',cancelSet);
+$set.addEventListener('mousedown',e=>{ if(e.target===$set) cancelSet(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$set.hidden) cancelSet(); });
 const pgStep=n=>{const i=PMONTHS.indexOf(TPAGE)+n;
   if(i>=0&&i<PMONTHS.length){TPAGE=PMONTHS[i];TPAGE_PINNED=true;render();}};
 document.getElementById('pgprev').addEventListener('click',()=>pgStep(-1));
@@ -3616,7 +3639,7 @@ function closeModal(){
 }
 $('recbtn').addEventListener('click',openModal);
 sheetDrag($('recmodal'), closeModal);
-sheetDrag(document.getElementById('setmodal'), ()=>applyChanges(true));
+sheetDrag(document.getElementById('setmodal'), cancelSet);
 $('reclist').addEventListener('click',e=>{
   const b=e.target.closest('button[data-p]'); if(!b||b.disabled) return;
   RECPAGE+=+b.dataset.p; fillForm();
