@@ -47,14 +47,8 @@
   html,body{margin:0;padding:0;min-height:100%}
   body{background:var(--page);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
   .viz-root{background:var(--page);color:var(--ink);padding:20px;max-width:1000px;margin:0 auto}
-  h1{font-size:19px;margin:0 0 2px}
-  .sub{color:var(--ink-2);font-size:13px;margin:0 0 18px}
   .card{background:var(--surface-1);border:1px solid var(--ring);border-radius:12px;padding:18px 20px;margin-bottom:18px}
-  .card h2{font-size:15px;margin:0 0 2px}
-  .card .note{font-size:12px;color:var(--muted);margin:0 0 12px}
   .sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px;vertical-align:-1px}
-  .credit td{color:var(--goodtext)}
-  .netrow td{border-top:1px solid var(--axis);font-weight:600;padding-top:7px}
   svg text{font-family:inherit}
   .tip{position:absolute;pointer-events:none;background:var(--surface-1);border:1px solid var(--ring);
        box-shadow:0 4px 14px rgba(0,0,0,.14);border-radius:8px;padding:8px 11px;font-size:12px;
@@ -257,7 +251,6 @@
         font-family:inherit;cursor:pointer;font-weight:600;font-variant-numeric:tabular-nums}
   .abtn:hover{border-color:var(--ink-2)}
   .abtn:focus-visible{outline:2px solid var(--s1);outline-offset:1px}
-  .abtn.accent{background:var(--s1);border-color:var(--s1);color:#fff}
   .iconbtn{width:36px;height:32px;padding:0;justify-content:center}
   .iconbtn svg{width:17px;height:17px;display:block}
   .abtn[hidden]{display:none}
@@ -362,7 +355,6 @@
   .todayline{display:flex;align-items:center;gap:8px;white-space:nowrap;
              font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2)}
   .todayline::before,.todayline::after{content:'';flex:1;height:1px;background:var(--ink-2);opacity:.4}
-  tr.mrule td{border-top:1px solid var(--axis)}
   .viewrow{margin:0}
   .viewrow select{min-width:120px;font-weight:600}
   .pager{display:flex;gap:8px;align-items:center;margin:8px 0 6px;flex-wrap:wrap}
@@ -372,10 +364,8 @@
   .pager select{background:var(--page);color:var(--ink);border:1px solid var(--axis);border-radius:7px;
                 padding:5px 8px;font-size:12.5px;font-family:inherit;max-width:200px}
   .pginfo{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
-  /* ---- visual refresh. Same palette: the icon's navy and its blue → teal → green bars carry
-     the accents, so the page and the home-screen icon read as one thing. ---- */
+  /* ---- shared tokens that predate theme v2 (still read by the rules below and by v2) ---- */
   :root{--line:var(--grid);            /* the opportunity tables referenced this; it was never defined */
-        --grad:linear-gradient(90deg,#3987e5,#17a6c0,#22c58b);
         --shadow:0 1px 2px rgba(16,24,40,.05),0 8px 24px rgba(16,24,40,.06)}
   @media (prefers-color-scheme: dark){
     :root:where(:not([data-theme="light"])){--shadow:0 1px 2px rgba(0,0,0,.5),0 10px 28px rgba(0,0,0,.35)}
@@ -390,16 +380,6 @@
     radial-gradient(700px 360px at 100% 0,color-mix(in srgb,#22c58b 7%,transparent),transparent 70%),
     var(--page)}
   body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:var(--backdrop)}
-  /* The status-bar band. ⚠️ With the "default" status-bar style iOS lays the page out BELOW the
-     status bar and reports a zero inset, so nothing fixed can reach up there while scrolled
-     content still shows through it — which is why the header slid under the clock. "black-
-     translucent" hands the page the whole screen instead, but iOS then always draws the clock in
-     WHITE, so the band is the icon's navy (readable white-on-navy in both themes) with the
-     icon's gradient as a hairline. Scrolled content disappears beneath it. Zero height anywhere
-     there is no inset, so desktop and browsers never see it. */
-  body::after{content:'';position:fixed;top:0;left:0;right:0;z-index:55;pointer-events:none;
-    height:env(safe-area-inset-top,0px);
-    background:var(--grad) left bottom/100% 2px no-repeat,linear-gradient(180deg,#0e3a5c,#0b2f4b)}
   /* viewport-fit=cover lets the fixed backdrop run up behind the status bar and camera island
      in the home-screen app; the content itself is pushed clear of them by the safe-area insets. */
   .viz-root{background:transparent;padding-top:calc(26px + env(safe-area-inset-top,0px));
@@ -408,12 +388,6 @@
             padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
   .modal{padding-top:max(14px,env(safe-area-inset-top,0px));
          padding-bottom:max(14px,env(safe-area-inset-bottom,0px))}
-  .brand{display:flex;align-items:center;gap:14px;margin:0 0 18px}
-  .brand .mark{width:46px;height:46px;flex:none;border-radius:12px;
-               box-shadow:0 6px 18px rgba(14,58,92,.30)}
-  .brandtxt{min-width:0}
-  h1{font-size:22px;font-weight:720;letter-spacing:-.018em;margin:0}
-  .brand .sub{margin:0;line-height:1.45}
   .card{border-radius:16px;padding:20px 22px;box-shadow:var(--shadow)}
   .tile{position:relative;overflow:hidden;border-radius:12px;padding:11px 13px 10px;
         transition:border-color .15s,transform .15s}
@@ -421,15 +395,8 @@
   .tile .val{font-size:18px}
   @media (hover:hover){ .tile:hover{border-color:var(--axis)} }
   /* The three headline figures lead the strip, tinted and topped with the icon's gradient. */
-  .tile.key{background:linear-gradient(180deg,color-mix(in srgb,var(--s1) 8%,var(--surface-1)),var(--surface-1) 75%);
-            border-color:color-mix(in srgb,var(--s1) 26%,var(--ring))}
-  .tile.key::before{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--grad)}
-  .tile.key .val{font-size:20px}
   /* The rest carry the same treatment, lighter, so the strip reads as one family on desktop
      where every tile is on screen at once. */
-  .tile:not(.key){background:linear-gradient(180deg,color-mix(in srgb,var(--s1) 4%,var(--surface-1)),var(--surface-1) 75%);
-                  border-color:color-mix(in srgb,var(--s1) 12%,var(--ring))}
-  .tile:not(.key)::before{content:'';position:absolute;left:0;right:0;top:0;height:2px;background:var(--grad);opacity:.35}
   .abtn.accent,.actbtn:not(.ghost),.recrow button:not(.ghost){
     background:linear-gradient(135deg,var(--s1),color-mix(in srgb,var(--s1) 70%,#17a6c0));
     box-shadow:0 3px 10px color-mix(in srgb,var(--s1) 32%,transparent)}
@@ -466,7 +433,6 @@
   /* ---- today at a glance ---- */
   .todaybar{position:relative;overflow:hidden;margin:0 0 14px;padding:10px 13px 10px 16px;
             border:1px solid var(--ring);border-radius:12px;background:var(--page)}
-  .todaybar::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--grad)}
   .todaybar[hidden]{display:none}
   .tbhead{display:flex;align-items:baseline;gap:8px;margin-bottom:5px}
   .tblab{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--s1)}
@@ -534,15 +500,10 @@
   @media (max-width:640px){
     .viz-root{padding:9px}
     .card{padding:12px 12px;border-radius:10px}
-    h1{font-size:18px}
     .viz-root{padding-top:calc(14px + env(safe-area-inset-top,0px));
               padding-left:max(9px,env(safe-area-inset-left,0px));
               padding-right:max(9px,env(safe-area-inset-right,0px))}
-    .brand{gap:11px;margin-bottom:12px}
-    .brand .mark{width:38px;height:38px;border-radius:10px}
     .card{border-radius:13px}
-    .tile.key .val{font-size:15px}
-    .sub{font-size:12px}
     /* Three across, exactly: 3 basis + 2 gaps = 100% of the strip. */
     .tiles{gap:7px}
     .tile{flex:0 0 calc((100% - 14px)/3);padding:7px 8px;border-radius:9px}
@@ -591,7 +552,6 @@
   body{font-family:var(--font);color:var(--ink);-webkit-font-smoothing:antialiased;
        font-feature-settings:"cv11","ss03"}
   body::before{background:var(--page)}
-  body::after{display:none}
   button,input,select,textarea{font-family:inherit}
   .viz-root{padding:0 max(var(--gut),env(safe-area-inset-right,0px))
              calc(28px + env(safe-area-inset-bottom,0px)) max(var(--gut),env(safe-area-inset-left,0px))}
@@ -631,7 +591,6 @@
   .tilewrap::after{background:linear-gradient(to right,transparent,var(--page))}
   .tile,.tile.key,.tile:not(.key){background:var(--surface-1);border:1px solid var(--ring);border-radius:18px;
         padding:13px 15px 12px;box-shadow:var(--shadow)}
-  .tile::before,.tile.key::before,.tile:not(.key)::before{display:none}
   .tile .lab{font-size:12.5px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0;margin-bottom:4px}
   .tile .val,.tile.key .val{font-size:21px;font-weight:600;letter-spacing:-.02em}
   .tile .sm{font-size:12px;color:var(--muted);margin-top:3px}
@@ -642,7 +601,6 @@
 
   .todaybar{background:var(--surface-1);border:1px solid var(--ring);border-radius:20px;
             padding:13px 16px 12px;box-shadow:var(--shadow)}
-  .todaybar::before{display:none}
   .tblab{font-size:15px;font-weight:600;letter-spacing:-.01em;text-transform:none;color:var(--ink)}
   .tbdate{font-size:13px;color:var(--muted)}
   .tbnet{font-size:13px}
@@ -1260,7 +1218,7 @@ const AF_PAYOFF_DATE='2026-08-20', AF_PAYOFF_AMT=1436.90;  // AutoFortiva settle
    immediately, so paying it out monthly to the end of the 60-month term is the cheaper path —
    which means the drafts survive both the tenancy AND the sale. It is a contract on you, not
    on the house. */
-const VIVINT_RATE=59.99, VIVINT_LOW=8.58, VIVINT_MO=57.77;
+const VIVINT_LOW=8.58, VIVINT_MO=57.77;
 /* ⚠️ The rate STEPS, it does not replace. The Aug 22 2026 draft really was $8.58 and may
    already be reconciled; rewriting it because a later rate changed would be the model editing
    history. Drafts before this date keep the negotiated rate. */
@@ -1273,7 +1231,6 @@ const VIVINT_RATE_FROM='2026-09-22';
 const VIVINT_RESUME='2027-10', VIVINT_LAST_FULL='2031-05', VIVINT_FINAL='2031-06-20';
 
 /* --- new-home payment: escrow steps up Jan 1 2027 for the reassessed property tax --- */
-const NH_PMT_26 = 2691.97;                  // P&I 2538.89 + escrow 153.08 (ins 141.83 + tax 11.25)
 
 /* The OKC escrow has the SAME defect as Midland: it was set at closing against an
    UNIMPROVED LOT. It is funded with 3 months' insurance ($425.49) and the lender's minimum
@@ -1319,10 +1276,8 @@ const DEPREC_YEARS=27.5;
 const DEPREC_BASIS=373210, RECAP_RATE=29.75, RENT_TAX_RATE=28.75;
 const MGMT_PCT=10, LEASE_FEE_PCT=50, BREAK_MONTHS=2, VACANCY_MONTHS=0;
 const MAINT_DEFAULT=0;
-const RECAP_DEFAULT={basis:DEPREC_BASIS, rate:RECAP_RATE};
 // Rental profit is ordinary income. 24% federal + 4.75% Oklahoma for a single filer at this
 // income; drop to 26.75% if you file jointly and land in the 22% bracket.
-const RENT_TAX_DEFAULT=28.75;
 /* Landlord costs. Vacancy is not an expense — it is rent you never collect — so it reduces the
    Schedule E income line, while management and maintenance are deductions on top. */
 /* maint: the house was built mid-May 2025. Builder workmanship cover ran to ~May 2026 and
@@ -1350,7 +1305,6 @@ function maintPerYear(rent, d){
 /* ⚠️ Management, vacancy and maintenance all default to ZERO: these are reconciled from the
    real statements rather than projected. The leasing fee stays at 50% because it is a known
    contractual amount with a known date, not an estimate. */
-const LANDLORD_DEFAULT={mgmt:0, vacancyMo:0, maint:0, leasePct:50, breakMo:2};  // leasePct = placement fee, % of ONE month's rent
 // Rent steps up on each LEASE anniversary, so a term under 13 months never sees one.
 const RENT_ESCAL_DEFAULT=3;
 
@@ -1395,7 +1349,6 @@ const MID_VALUE_DATE  = '2026-09-02';
 const SEC121_LAST = '2029-08-01';     // move-out Aug 1 2026 + 3 years
 const LTCG_RATE   = 19.75;            // 15% federal + 4.75% Oklahoma
 
-const CASH_APY_DEFAULT = 0;           // 0 reproduces the old behaviour exactly
 
 const RELO_DEADLINE='2027-07-20';
 const SELLER_COST_PCT=0.075;                // 6% commission + ~1.5% title/escrow/misc
@@ -1412,7 +1365,6 @@ const LEASE={
   landlords:'You and Hailea', tenants:'Michaelle Guzman, Danica Guzman, Hunter Sharp',
   manager:'Brandon Beckett', notice:60
 };
-const RENT_DEFAULT={start:LEASE.start, end:LEASE.end, months:12, amt:LEASE.rent};
 /* ⚠️ The $3,300 deposit is NOT modelled: the property manager holds it, so it never reaches
    this account. Modelling it as cash in and back out flattered the autumn trough by $3,300. */
 
@@ -1667,7 +1619,7 @@ function buildEvents(sale, price, rent, home){
   // Your own housing: either the Sept 18 purchase, or a lease with an optional purchase later.
   /* The OKC purchase is committed, so these are constants now rather than a fork. They are
      still returned, because netWorth and the tiles read them. */
-  const owning = true, myEnd = null, buyDate = CLOSING_DATE, ownedFrom = CLOSING_DATE;
+  const buyDate = CLOSING_DATE, ownedFrom = CLOSING_DATE;
 
   E('2026-08-21',3429.67,'Paycheck (4 straight-time extra hrs)');
   E('2026-09-04',PAY10,'Paycheck (10 OT hrs)');
@@ -1825,8 +1777,6 @@ function buildEvents(sale, price, rent, home){
     insLabel:'Midland insurance (billed direct — escrow closed)',
     taxLabel:'Midland property tax (billed direct — escrow closed)'
   }).forEach(([d,a,l])=>{ if(!sale || lt(d,sale)) E(d,a,l); });
-  const escVals=Object.values(ESC.notes);
-  const midEscEnd = sale? 0 : (escVals.length? escVals[escVals.length-1].bal : MID_ESC_START);
   // AutoFortiva: paid off in full 8/20/2026 — no further monthly drafts.
   E(AF_PAYOFF_DATE,-AF_PAYOFF_AMT,'AutoFortiva payoff (paid in full)');
 
@@ -1840,7 +1790,6 @@ function buildEvents(sale, price, rent, home){
   /* Kept in the shape only so downstream consumers do not have to change; there is no buyout
      any more. The alternative — 50% of everything remaining, due at once — is what makes
      paying it out the cheaper option. */
-  const vivFee=0, vivMonthsLeft=0;
   /* One row per payment, because the rent escalates on each lease anniversary and the
      percentage-based costs move with it. Both the ledger and the Schedule E read these same
      rows, so they cannot drift apart. Maintenance is a flat annual reserve and does not step. */
@@ -1943,7 +1892,7 @@ function buildEvents(sale, price, rent, home){
   //      interest, property tax, insurance, depreciation, management and maintenance. With the
   //      landlord costs in, this runs a paper LOSS at these rents. Losses are not carried: passive
   //      losses are suspended above ~$150k MAGI, so only profitable years are taxed here. ----
-  let rentNetIncome=0, rentIncTax=0, suspendedLoss=0;
+  let rentIncTax=0, suspendedLoss=0;
   const suspendedByYear={};   // netWorth releases only the losses suspended by its as-of date
   if(rent && rentDates.length){
     const yrs={};
@@ -1969,7 +1918,6 @@ function buildEvents(sale, price, rent, home){
     Object.keys(yrs).sort().forEach(y=>{
       const a=yrs[y];
       const net=+(a.rent-a.int-a.tax-a.ins-a.dep-a.mgmt-a.maint).toFixed(2);
-      rentNetIncome+=net;
       if(net>0){
         const t=+(net*rent.taxRate/100).toFixed(2);
         rentIncTax+=t;
@@ -1983,11 +1931,9 @@ function buildEvents(sale, price, rent, home){
     });
   }
 
-  const myRentTotal=0;   // no rent-instead-of-buy scenario any more
   // Recapture and capital gains are computed inside the sale block below — they need
   // sellerCost, which is not known until then.
   let recapDep=0, recapTax=0, cgTax=0;
-  const buyCC=0;         // the purchase is committed; nothing is bought later
 
   let payoff=null, proceeds=null, loss=0, sellerCost=0, reloOK=true;
   if(sale){
@@ -2057,11 +2003,10 @@ function buildEvents(sale, price, rent, home){
       `Taxes — ${ty} return (${parts.map(p=>p.label+' '+fmt(p.amt)).join(' + ')})`);
   });
 
-  return {ev, payoff, proceeds, loss, vivFee, vivMonthsLeft, carPayoff, carPayoffDate,
+  return {ev, payoff, proceeds, loss, carPayoff, carPayoffDate,
           sellerCost, reloOK, rentEnd, rentTotal:rentGross,
-          myRentTotal, myEnd, buyDate, buyCC, recapDep, recapTax, cgTax,
-          carNaturalDate:carNatural.d, carNaturalAmt:carNatural.amt, carOwedAtEnd, midEscEnd,
-          rentNetIncome:+rentNetIncome.toFixed(2), rentIncTax:+rentIncTax.toFixed(2),
+          buyDate, recapDep, recapTax, cgTax,
+          carNaturalDate:carNatural.d, carOwedAtEnd, rentIncTax:+rentIncTax.toFixed(2),
           suspendedLoss:+suspendedLoss.toFixed(2), suspendedByYear,
           rentCostTotal};
 }
@@ -2091,10 +2036,8 @@ function accrue(bal, r, d){
 }
 
 function buildSeries(sale, price, rent, home, rates){
-  const {ev,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
-         sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,
-         recapDep,recapTax,cgTax,carNaturalDate,carNaturalAmt,carOwedAtEnd,
-         midEscEnd,rentNetIncome,rentIncTax,rentCostTotal,suspendedLoss,suspendedByYear}=buildEvents(sale,price,rent,home);
+  // Everything buildEvents reports passes straight through; the walk only adds the daily series.
+  const {ev, ...built}=buildEvents(sale,price,rent,home);
   const map={};
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
   const series=[]; let bal=START_BAL, cur=T0;
@@ -2113,10 +2056,7 @@ function buildSeries(sale, price, rent, home, rates){
     series.push(day);
     cur=addD(cur,1);
   }
-  return {series,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
-          sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,recapDep,recapTax,cgTax,
-          carNaturalDate,carNaturalAmt,carOwedAtEnd,midEscEnd,rentNetIncome,rentIncTax,rentCostTotal,
-          suspendedLoss,suspendedByYear};
+  return {...built, series};
 }
 
 /* ---------------------------------------------------------------------------------------
@@ -2395,8 +2335,6 @@ const readHome = () => ({own:true});
    earliest possible sale, and the "sell now" comparison, were both dated yesterday. It has to
    BE today, and it can never precede the projection start. */
 let SALE_FLOOR = TODAY_ISO > T0 ? TODAY_ISO : T0;   // re-set when the server's date arrives
-let LAST_SALE_MIN=null;      // so a sale date parked on the rent floor can follow it
-let SALE_BEFORE_RENT=null;   // the date renting pushed off, to put back when the floor lifts
 /* 'never' | 'auto' | 'pick'. ⚠️ Defaults to NEVER: the plan is to hold the house and keep it
    let, so the model should say so rather than inventing a sale on the last day of the window.
    Values: 'never' holds and keeps letting, 'auto' follows the tenancy, 'pick' is typed. */
@@ -2411,7 +2349,6 @@ function syncSaleDate(rent, home, fromSaleDate){
   /* The lease follows the sale date through `leaseEndFor`, so there is nothing to clamp here
      any more — the two can no longer disagree because only one of them is entered. */
   const rentEndDate = rent? rentSchedule(rent).end : null;
-  const myEndDate = null;
   // The house cannot be sold out from under a tenant: the sale can only close once the term is up.
   const saleMin = (rentEndDate && rentEndDate>SALE_FLOOR)? rentEndDate : SALE_FLOOR;
   const $sd=document.getElementById('saledate');
@@ -2439,7 +2376,6 @@ function syncSaleDate(rent, home, fromSaleDate){
     if($sd.value>T1) $sd.value=T1;
     if(lt($sd.value, SALE_FLOOR)) $sd.value=SALE_FLOOR;
   }
-  LAST_SALE_MIN=saleMin;
   /* The "never sold in window" switch is gone. Clearing the date models it instead — an empty
      value is falsy, so every `if(sale)` guard downstream already handles it. */
   /* In "as soon as the tenant leaves" mode the date is DERIVED, so the field is read-only and
@@ -2530,7 +2466,7 @@ function syncSaleDate(rent, home, fromSaleDate){
     msgs.map(([k,t])=>`<p class="${k}">${esc(t)}</p>`).join('');
 
   sheetNotes(rent, sale);
-  return {rent, rentEndDate, myEndDate, saleMin, noSalePossible, sale};
+  return {rent, rentEndDate, saleMin, noSalePossible, sale};
 }
 
 /* The sheet's derived notes: the projected sale price, the maintenance ramp and the liquidity
@@ -2564,28 +2500,10 @@ function sheetNotes(rent, sale){
    past the new end. It deliberately does NOT rewrite `rentend`: silently shortening a lease the
    reader entered is worse than leaving it with the warning that explains it. */
 /* The tenant signed a 12-month lease, so that is the shortest term the READER may dial in. */
-const LEASE_TERM_MONTHS=12;
 
 function applyHorizonBounds(rent){
   const $sd=document.getElementById('saledate');
   $sd.max=T1;
-  if(false){
-    /* ⚠️ TWO different floors, because two different things shorten a tenancy.
-         · Slider and "rent through": floored at the CONTRACTED end (start + 12 months). You
-           cannot unilaterally shorten a lease the tenant signed by dragging a control.
-         · Sale date: may go earlier. Selling is what actually forces an early termination, and
-           it drags the lease end down with it — floored only at the lease start.
-       When a sale HAS cut the term short, the slider's floor drops to the current value so it
-       can still display it. Without that the range input would silently coerce 6 back up to 12
-       and desync from the date. Dragging UP is always allowed, so this is never a dead end. */
-    const contracted = Math.min(LEASE_TERM_MONTHS, monthsBetween(rent.start, T1));
-    const cut = rent.months < contracted;
-    $re.min = cut? rent.start : addM(rent.start, contracted);
-    $rm.min = String(cut? rent.months : contracted);
-    $rm.max = String(Math.max(+$rm.min, monthsBetween(rent.start, T1)));
-    if(+$rm.value > +$rm.max) $rm.value=$rm.max;
-    if(+$rm.value < +$rm.min) $rm.value=$rm.min;
-  }
 }
 
 // Live date preview while the sheet is open: cheap DOM work only, no engine.
@@ -2747,7 +2665,7 @@ function resetForm(){
   });
   // Everything derived from the form, not stored in it.
   document.getElementById('pricefields').hidden = !document.getElementById('priceover').checked;
-  SALE_MODE='never'; SALE_BEFORE_RENT=null; LAST_SALE_MIN=null;
+  SALE_MODE='never';
   setHorizon(DEFAULT_HORIZON);
   markDirty(); previewDates();
   applyChanges(false);          // show it immediately; the sheet stays open
@@ -2758,7 +2676,7 @@ function render(){
   const home = readHome();
   const sdOut = syncSaleDate(rent, home);
   rent = sdOut.rent;            // shortened if the sale date landed inside the tenancy
-  const {rentEndDate, myEndDate, saleMin, noSalePossible, sale:sale0} = sdOut;
+  const {rentEndDate, saleMin, noSalePossible, sale:sale0} = sdOut;
   const $sd=document.getElementById('saledate');
   let sale = sale0;
   if(sale && sale>T1) sale=null;
@@ -2781,9 +2699,9 @@ function render(){
   const RATES = {cash:apy, invest:OPP_ROI, floor:LIQ_FLOOR};
   // DOWN_PCT is fixed: the loan is signed and the wire is sent. Not an input any more.
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
-         sellerCost,reloOK,rentTotal,myRentTotal,buyDate,buyCC,
-         recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,midEscEnd,
-         rentNetIncome,rentIncTax,rentCostTotal,suspendedLoss,suspendedByYear}=buildSeries(sale,price,rent,home,RATES);
+         sellerCost,reloOK,rentTotal,buyDate,
+         recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,
+         rentIncTax,rentCostTotal,suspendedByYear}=buildSeries(sale,price,rent,home,RATES);
   // the chart draws only the selected window; the tiles and the running balance stay whole-series
   const VD = VIEW==='span'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
   // The last day in the window. Three tiles and netWorth all measure as of this date, so it is
@@ -3820,14 +3738,14 @@ function applyChanges(close){
 let SHEET_SNAP=null;
 function snapSheet(){
   return { vals:[...$set.querySelectorAll('input')].map(el=>[el, el.type==='checkbox'? el.checked : el.value]),
-           mode:SALE_MODE, hz:HORIZON, view:VIEW, sbr:SALE_BEFORE_RENT, lsm:LAST_SALE_MIN,
+           mode:SALE_MODE, hz:HORIZON, view:VIEW,
            opp:document.getElementById('oppsm').textContent };
 }
 function revertSheet(){
   const k=SHEET_SNAP; if(!k || !DIRTY) return;
   clearTimeout(oppPrevT);
   k.vals.forEach(([el,v])=>{ if(el.type==='checkbox') el.checked=v; else el.value=v; });
-  SALE_MODE=k.mode; SALE_BEFORE_RENT=k.sbr; LAST_SALE_MIN=k.lsm;
+  SALE_MODE=k.mode;
   if(HORIZON!==k.hz) setHorizon(k.hz);
   VIEW=k.view; buildViews(); if(VIEW!=='span') $vw.value=VIEW;
   document.getElementById('pricefields').hidden = !document.getElementById('priceover').checked;
