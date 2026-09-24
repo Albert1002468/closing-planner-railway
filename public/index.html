@@ -2361,7 +2361,31 @@ function syncSaleDate(rent, home, fromSaleDate){
   document.getElementById('setmsgs').innerHTML =
     msgs.map(([k,t])=>`<p class="${k}">${esc(t)}</p>`).join('');
 
+  sheetNotes(rent, sale);
   return {rent, rentEndDate, myEndDate, saleMin, noSalePossible, sale};
+}
+
+/* The sheet's derived notes: the projected sale price, the maintenance ramp and the liquidity
+   floor. ⚠️ They read the FORM, not the applied globals, and run from syncSaleDate — so they
+   follow the horizon and every rate as it is typed, instead of showing the last applied
+   window (they used to be written by render() alone, so they said 2030 until Apply). */
+function sheetNotes(rent, sale){
+  const value = digits('midvalue',50000,2000000,420000), apprec = numOr('apprec',3)/100;
+  const infl = numOr('inflpct',3)/100;
+  const valueOn = d => value*Math.pow(1+apprec, nDays(MID_VALUE_DATE,d)/365.25);
+  const at = sale || T1;
+  document.getElementById('pricederived').innerHTML = `${fmt0(valueOn(at))}<span>`
+    + (sale? `projected value on ${esc(nice(sale))}` : `projected value on ${esc(nice(T1))} · no sale set`)
+    + `</span>`;
+  document.getElementById('maintsm').textContent = rent
+    ? `warranty to ${nice(MAINT_WARRANTY_END)}, then rising toward `
+      + `${fmt0(valueOn(T1)*MAINT_MATURE_PCT/100)}/yr by ${YR(T1)}`
+    : '';
+  const floor = digits('liqfloor',0,5000000,25000);
+  const floorAt = floor*Math.pow(1+infl, Math.max(0, YR(T1)-2027));
+  document.getElementById('liqsm').textContent =
+    `earns ${numOr('cashapy',0).toFixed(2)}% below the floor, ${numOr('opproi',0).toFixed(2)}% above · `
+    + `floor grows with inflation to ${fmt0(floorAt)} by ${YR(T1)}`;
 }
 
 /* ⚠️ Every END control in the sheet is bounded by the horizon. The model does not exist past
@@ -2511,9 +2535,6 @@ function render(){
   const derived = priceOn(priceDate);
   const price = override? priceVal() : derived;
   // The price the model uses when no offer overrides it. Was never written, so it showed "—".
-  document.getElementById('pricederived').innerHTML = `${fmt0(derived)}<span>`
-    + (sale? `projected value on ${esc(nice(sale))}` : `projected value on ${esc(nice(T1))} · no sale set`)
-    + `</span>`;
   const apy = numOr('cashapy',0)/100;
   // Down payment drives the cash wire, the loan, the P&I and the prepaid interest, so it has
   // to be set before buildSeries runs and the donut has to be redrawn from the same figures.
@@ -2928,10 +2949,6 @@ function render(){
     + `${fmt0(Math.abs(keepEnd-oppEnd))} at ${nice(T1)}`;
   const rentNetCash = rent? +(rentTotal - rentCostTotal - rentIncTax).toFixed(2) : 0;
   set('t_rent', rent? fmt(rentNetCash):'—', rent?'posv':'');
-  document.getElementById('maintsm').textContent = rent
-    ? `warranty to ${nice(MAINT_WARRANTY_END)}, then rising toward `
-      + `${fmt0(priceOn(T1)*MAINT_MATURE_PCT/100)}/yr by ${YR(T1)}`
-    : '';
   document.getElementById('t_rentd').textContent = rent
     ? `${fmt0(rentTotal)} gross − ${fmt0(rentCostTotal)} costs`
       + (rentIncTax? ` − ${fmt0(rentIncTax)} tax` : '')
@@ -2969,9 +2986,6 @@ function render(){
     : `break-even ${(OPPBE.rate*100).toFixed(1)}%`;
   document.getElementById('keyoppwrap').hidden = !oppShown;
   document.getElementById('keyopp').textContent = `sell ${nice(oppExitDate(rent))}`;
-  document.getElementById('liqsm').textContent =
-    `earns ${(apy*100).toFixed(2)}% below the floor, ${(OPP_ROI*100).toFixed(2)}% above · `
-    + `floor grows with inflation to ${fmt0(LIQ_FLOOR*inflAt(T1))} by ${YR(T1)}`;
   /* The panel body depends on nothing that VIEW changes, and its exits table alone costs six
      buildEvents. Fill it once per real input change, not once per view switch. */
   if(oppw.open && !OPPC.filled){ fillOppPanel(rent, home, RATES); OPPC.filled=true; }
@@ -3132,6 +3146,21 @@ document.getElementById('todaybar').addEventListener('click',e=>{
   const req=()=>{ if(!queued){ queued=true; requestAnimationFrame(sync); } };
   window.addEventListener('scroll',req,{passive:true});
   window.addEventListener('resize',req);
+  /* ⚠️ iOS animates the rubber-band bounce back to the top without always firing a last scroll
+     event, so a slow pull-and-release could leave the titles frozen mid-fade (both showing).
+     After the finger lifts, keep sampling every frame until the page has been still for a
+     moment, and re-sync once more when the browser reports the scroll has ended. */
+  let settleUntil=0, lastY=null;
+  const settle=()=>{
+    sync();
+    const y=window.scrollY;
+    if(y!==lastY){ lastY=y; settleUntil=Math.max(settleUntil, performance.now()+180); }
+    if(performance.now()<settleUntil) requestAnimationFrame(settle);
+  };
+  const afterTouch=()=>{ last=''; lastY=null; settleUntil=performance.now()+900; requestAnimationFrame(settle); };
+  window.addEventListener('touchend',afterTouch,{passive:true});
+  window.addEventListener('touchcancel',afterTouch,{passive:true});
+  window.addEventListener('scrollend',()=>{ last=''; sync(); });
   sync();
 }
 
@@ -3296,14 +3325,14 @@ document.getElementById('oppwrap').addEventListener('toggle',render);
 [['salenever','never'],['saleauto','auto'],['salepick','pick']].forEach(([id,m])=>
   document.getElementById(id).addEventListener('click',()=>{SALE_MODE=m; markDirty(); previewDates();}));
 ['rentescal','apprec','cashapy','inflpct','opproi']
-  .forEach(id=>document.getElementById(id).addEventListener('input',markDirty));
+  .forEach(id=>document.getElementById(id).addEventListener('input',()=>{ markDirty(); previewDates(); }));
 document.getElementById('priceover').addEventListener('change',e=>{
   document.getElementById('pricefields').hidden = !e.target.checked; markDirty();
 });
 ['midvalue','rentmaint','liqfloor'].forEach(id=>{
   const el=document.getElementById(id), max=(id==='midvalue')?2000000:100000;
-  el.addEventListener('input',markDirty);
-  el.addEventListener('blur',()=>{el.value=digits(id,0,max,0).toLocaleString('en-US');markDirty();});
+  el.addEventListener('input',()=>{ markDirty(); previewDates(); });
+  el.addEventListener('blur',()=>{el.value=digits(id,0,max,0).toLocaleString('en-US');markDirty();previewDates();});
   el.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();el.blur();} });
 });
 /* One select carries two different things: the HORIZON (how far the model runs) and the
