@@ -111,7 +111,7 @@
   #opptable tr.now td{background:color-mix(in srgb,var(--s1) 7%,transparent)}
   #oppexits tr.cliff td{background:color-mix(in srgb,var(--crit) 8%,transparent)}
   #oppexits tr.berow td{background:color-mix(in srgb,var(--good) 8%,transparent)}
-  #oppexits{min-width:520px}
+  #oppexits{min-width:600px}
   .oppwin{color:var(--goodtext);font-weight:600}
   .opplose{color:var(--crit);font-weight:600}
   .secic{display:flex;color:var(--muted)}
@@ -901,6 +901,7 @@
           <th style="text-align:right">Break-even</th></tr></thead><tbody></tbody></table></div>
         <p class="oppnote" id="oppexitintro"></p>
         <div class="opptw"><table id="oppexits"><thead><tr><th>Exit</th><th>Date</th>
+          <th style="text-align:right" title="Projected value on that date, at your appreciation rate">Sale price</th>
           <th style="text-align:right">Seller costs</th>
           <th style="text-align:right">Loss credit</th>
           <th style="text-align:right">In hand</th>
@@ -2614,6 +2615,7 @@ function fillOppPanel(rent, home, rates){
       +(brk? `<span style="color:var(--s4)"> · breaks the lease, ${fmt0(-brk)}</span>`:'')
       +(x.be && x.d>T1? `<span style="color:var(--muted)"> · past this horizon</span>`:'')
       +`</td><td>${esc(nice(x.d))}</td>`
+      +`<td class="num">${fmt0(priceOn(x.d))}</td>`
       +`<td class="num">${b.sellerCost? '−'+fmt0(b.sellerCost) : '<span class="oppwin">covered</span>'}</td>`
       +`<td class="num">${b.loss? fmt0(b.loss):'—'}</td>`
       +`<td class="num"><b>${fmt0(hand)}</b></td>`
@@ -2626,8 +2628,12 @@ function fillOppPanel(rent, home, rates){
     +(recover
       ? `At ${assume}, waiting until <b>${esc(nice(recover))}</b> makes that back in today's dollars.`
       : `At ${assume}, waiting does not make that back within 30 years.`);
+  /* The sale price is not one number: it grows with appreciation, so each exit above carries its
+     own. The comparison's sell side closes on the exit date, so name that price. */
   document.getElementById('oppcaveat').innerHTML =
-    `After-tax rate; no risk priced in. Assumes it sells for ${fmt0(priceOn(SALE_FLOOR))}.`;
+    `After-tax rate; no risk priced in. The sell side assumes ${fmt0(priceOn(oppExitDate(rent)))} on `
+    +`${esc(nice(oppExitDate(rent)))} — today's ${fmt0(MID_VALUE_TODAY)} grown at `
+    +`${(MID_APPREC*100).toFixed(1)}%/yr — and each exit above uses its own date's price.`;
 }
 
 /* Captured before anything can touch the form, so "default" means the values the document
