@@ -698,7 +698,23 @@
   .sheet{box-shadow:0 1px 0 var(--ring),0 24px 70px rgba(0,0,0,.22),0 4px 16px rgba(0,0,0,.08)}
   :root .spin{background:color-mix(in srgb,var(--page) 70%,transparent);
          -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+  /* ONE spinner, three sizes: the full-screen overlay (.spinring), a frosted cover over one part
+     of the page while it recomputes (.busyveil), and an inline ring in a button or a note. All
+     rotate with a transform, which the compositor keeps turning while the page's script is busy. */
   .spinring{border-color:color-mix(in srgb,var(--ink) 16%,transparent);border-top-color:var(--ink)}
+  .ring{display:inline-block;width:14px;height:14px;box-sizing:border-box;border:2px solid currentColor;
+        border-top-color:transparent;border-radius:50%;animation:spinturn .7s linear infinite;vertical-align:-2px}
+  .busyhost{position:relative}
+  .busyveil{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+            border-radius:inherit;background:color-mix(in srgb,var(--page) 55%,transparent);
+            -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);animation:veilin .12s ease-out}
+  .busyveil .ring{width:26px;height:26px;border-width:2.5px;color:var(--ink);opacity:.8}
+  @keyframes veilin{from{opacity:0}}
+  .actbtn.loading,.recrow button.loading{opacity:.85;pointer-events:none}
+  .loading .ring{margin-right:8px}
+  .boot{z-index:80;animation:bootout .3s ease 10s forwards}
+  @keyframes bootout{to{opacity:0;visibility:hidden}}
+  .boot.gone{opacity:0;visibility:hidden;transition:opacity .25s,visibility 0s .25s}
   .spin p{color:var(--ink-2)}
   .sheet{border:0;border-radius:24px;padding:22px;box-shadow:0 30px 90px rgba(0,0,0,.25);
          animation:sheetin .22s cubic-bezier(.2,.8,.2,1)}
@@ -806,6 +822,11 @@
       </div>
   </div>
 </header>
+<!-- First load: covers the page until the saved reconciliations have arrived and been applied,
+     so the numbers never visibly jump. Fades by itself after 10 s in case the script never ends. -->
+<div class="spin boot" id="boot" role="status" aria-live="polite">
+  <div class="spinring" aria-hidden="true"></div><p>Loading your projection&hellip;</p>
+</div>
 <div class="viz-root">
   <h1 class="bigtitle" id="bigtitle">Cash Flow</h1>
 
@@ -834,7 +855,7 @@
 
     <div class="todaybar" id="todaybar" hidden></div>
 
-    <section class="panel">
+    <section class="panel" id="chartpanel">
     <div class="actionbar">
       <div class="pager viewrow">
         <button type="button" id="vwprev" aria-label="Previous window">&lsaquo;</button>
@@ -1579,15 +1600,18 @@ function carWalk(stopBefore){               // payments strictly before stopBefo
   }
   return {bal, last, paid};
 }
-function carPayoffOn(dateS){
-  const {bal,last}=carWalk(dateS);
+/* `inclusive`: count a payment made ON dateS. A sale settles before that day's draft, so the
+   sale paths leave it off; net worth must count it, or on every payment day the cash has left
+   while the debt has not yet fallen — a one-day dip the size of the principal. */
+function carPayoffOn(dateS, inclusive){
+  const {bal,last}=carWalk(inclusive? addD(dateS,1) : dateS);
   if(bal<=0) return 0;
   return +(bal + bal*CAR_RATE/365*Math.max(0,nDays(last,dateS))).toFixed(2);
 }
-function payoffOn(dateS){
+function payoffOn(dateS, inclusive){
   const sched = mortgageSchedule();
   let bal = MTG_BAL_AFTER_AUG, lastDue='2026-08-01';
-  sched.forEach(r=>{ if(lt(r.draft,dateS)){ bal=r.balAfter; lastDue=r.due; } });
+  sched.forEach(r=>{ if(lt(r.draft,dateS) || (inclusive && r.draft===dateS)){ bal=r.balAfter; lastDue=r.due; } });
   const days=Math.max(0,Math.round((dd(dateS)-dd(lastDue))/86400000));
   return +(bal + bal*MTG_RATE/365*days).toFixed(2);
 }
@@ -2219,7 +2243,7 @@ function netWorth(res, sale, rent, home, asOf){
   let mid=0, midTaxOwed=0, deferred=0;
   if(!soldByNow){
     const val = priceOn(asOf);
-    mid = val*(1-SELLER_COST_PCT) - payoffOn(asOf);
+    mid = val*(1-SELLER_COST_PCT) - payoffOn(asOf, true);
     // The escrow has been saving toward the bill that is due next January, so only the gap is
     // a liability. Balance as of this date, not at the end of the model.
     const seen=midEscrowSeen(asOf);
@@ -2228,7 +2252,17 @@ function netWorth(res, sale, rent, home, asOf){
     const fin=mortgageSchedule().slice(-1)[0];
     const closed = fin && fin.balAfter<=0 && fin.draft<=asOf;
     const escBal = closed? 0 : (seen? seen.bal : MID_ESC_START);
-    midTaxOwed = Math.max(0, midTaxForYear(YR(asOf)) - escBal);
+    /* ⚠️ Property tax ACCRUES through the year. Booking the whole year's bill on Jan 1 dropped
+       net worth by ~$5.9k overnight (and the weekly chart smeared that into late December).
+       Owed = this year's tax to date + last year's bill if it has not been paid yet, less what
+       the escrow holds. Texas bills the prior year on Jan 31; escrow pays it with the January
+       draft, or you pay it directly once the loan (and so the escrow) is gone. */
+    const y=YR(asOf), ys=`${y}-01-01`;
+    const accrued = midTaxForYear(y)*(nDays(ys,asOf)+1)/(nDays(ys,`${y}-12-31`)+1);
+    const janDraft = mortgageSchedule().find(r=>r.draft.slice(0,7)===`${y}-01`);
+    const priorPaidOn = (!closed && janDraft)? janDraft.draft : `${y}-01-31`;
+    const priorOwed = lt(asOf, priorPaidOn) && y>2026 ? midTaxForYear(y-1) : 0;
+    midTaxOwed = Math.max(0, accrued + priorOwed - escBal);
     // Valuing it net of selling costs implies a sale, so charge the tax that sale would
     // trigger — using only the depreciation actually taken by this date.
     const monthsRented = rent? rentSchedule(rent).dates.filter(d=>lt(d,asOf)).length : 0;
@@ -2239,15 +2273,19 @@ function netWorth(res, sale, rent, home, asOf){
     /* ⚠️ Only the losses suspended BY asOf. Releasing the whole run's total credited a 2027 view
        with decades of losses that had not happened yet. Every asOf is a Dec 31, so whole tax
        years are exact. */
+    // Whole past years, plus the current year pro rata — the chart samples mid-year dates now, and
+    // counting all of this year's loss on Jan 1 was a step of its own.
+    const yNow=YR(asOf), yStart=`${yNow}-01-01`;
+    const yFrac=(nDays(yStart,asOf)+1)/(nDays(yStart,`${yNow}-12-31`)+1);
     const susp = Object.entries(res.suspendedByYear||{})
-      .reduce((a,[y,v])=>+y<=YR(asOf)? a+v : a, 0);
+      .reduce((a,[y,v])=> +y<yNow? a+v : +y===yNow? a+v*yFrac : a, 0);
     const released = rent? susp*rent.taxRate/100 : 0;
     deferred = recap + cg - released;
   }
 
   // 3. debts the cash balance never sees
   const carSettled = res.carPayoffDate && res.carPayoffDate<=asOf && res.carPayoff>0;
-  const car = carSettled? 0 : carPayoffOn(asOf);
+  const car = carSettled? 0 : carPayoffOn(asOf, true);
   return {nw:+(cash + okc + mid - car - midTaxOwed - deferred).toFixed(2),
           cash, okc:+okc.toFixed(2), mid:+mid.toFixed(2), car:+car.toFixed(2),
           midTaxOwed:+midTaxOwed.toFixed(2), deferred:+deferred.toFixed(2)};
@@ -2530,6 +2568,8 @@ const oppSmText = (roi, keep, sell) =>
 let oppPrevT=null;
 function oppPreview(){
   clearTimeout(oppPrevT);
+  const sm=document.getElementById('oppsm');
+  if(!sm.querySelector('.ring')) sm.innerHTML='<span class="ring" aria-hidden="true"></span> updating…';
   oppPrevT=setTimeout(()=>{
     const saved=[MID_VALUE_TODAY, MID_APPREC, INFL_PCT];
     try{
@@ -3577,12 +3617,42 @@ $pr.addEventListener('input',()=>{showPrice(+$pr.value);markDirty();});
 const onDateEdit=(id,fn)=>{ const el=document.getElementById(id);
   el.addEventListener('input',fn); el.addEventListener('change',fn); };
 onDateEdit('saledate',()=>{SALE_MODE='pick';markDirty();previewDates(true);});
+/* Run a blocking recompute behind the shared spinner. `hosts` get a frosted cover with a ring;
+   `null` means the whole page (the full-screen overlay). Two frames first, so the spinner has
+   actually PAINTED before the script blocks; and it stays at least ~220 ms, so a fast job
+   reads as a deliberate tick rather than a flicker. */
+function busy(hosts, fn, label){
+  const t0=performance.now(), veils=[];
+  if(hosts===null){
+    $spin.querySelector('p').textContent = label || 'Recomputing the projection…';
+    $spin.hidden=false;
+  } else (Array.isArray(hosts)? hosts : [hosts]).filter(Boolean).forEach(h=>{
+    h.classList.add('busyhost');
+    const v=document.createElement('div'); v.className='busyveil'; v.setAttribute('aria-hidden','true');
+    v.innerHTML='<span class="ring"></span>'; h.appendChild(v); veils.push(v);
+  });
+  /* After the next frame has painted (rAF, then a task), or after 120 ms at the latest: frames
+     do not come while a page is hidden, and waiting on rAF alone would leave the spinner up and
+     the work undone until it was shown again. */
+  let ran=false;
+  const go=()=>{ if(ran) return; ran=true;
+    try{ fn(); }
+    finally{
+      setTimeout(()=>{ veils.forEach(v=>v.remove()); if(hosts===null) $spin.hidden=true; },
+                 Math.max(0, 220-(performance.now()-t0)));
+    }
+  };
+  requestAnimationFrame(()=>setTimeout(go,0));
+  setTimeout(go,120);
+}
+const $chartP=document.getElementById('chartpanel');
+
 /* Pick an exit: it becomes the sell side everywhere. Picking the chosen one again (or the
    default row) returns to the default. */
 function pickExit(d){
   OPP_SEL = (!d || d===OPP_EXIT || d===OPP_SEL)? null : d;
   OPPC={key:null};                    // the comparison, its chart lines and the panel all rebuild
-  render();
+  busy([document.getElementById('oppwrap'), $chartP], render);
 }
 {
   const tb=document.getElementById('oppexits').querySelector('tbody');
@@ -3590,17 +3660,19 @@ function pickExit(d){
   tb.addEventListener('keydown',e=>{ if(e.key!=='Enter' && e.key!==' ') return;
     const tr=e.target.closest('tr[data-d]'); if(tr){ e.preventDefault(); pickExit(tr.dataset.d); } });
 }
-function setChartMode(m){
+function setChartMode(m, extraHost){
   CHART_MODE=m;
   [['cmcash','cash'],['cmnw','nw']].forEach(([id,v])=>{ const b=document.getElementById(id);
     b.classList.toggle('on',m===v); b.setAttribute('aria-pressed',String(m===v)); });
-  render();
+  busy([$chartP, extraHost], render);
 }
 document.getElementById('cmcash').addEventListener('click',()=>setChartMode('cash'));
 document.getElementById('cmnw').addEventListener('click',()=>setChartMode('nw'));
 // The panel compares net worth, so the chart follows it open and closed.
-document.getElementById('oppwrap').addEventListener('toggle',()=>
-  setChartMode(document.getElementById('oppwrap').open? 'nw' : 'cash'));
+document.getElementById('oppwrap').addEventListener('toggle',()=>{
+  const o=document.getElementById('oppwrap');
+  setChartMode(o.open? 'nw' : 'cash', o.open? o : null);   // opening also fills the panel: cover it too
+});
 /* One listener per field, in the right order: re-arm tracking FIRST, then preview, or the
    preview runs against the stale flag and has to be corrected by a second pass. */
 // Changing the lease says when the tenant leaves, so the sale date starts tracking it again.
@@ -3663,11 +3735,13 @@ function syncViewButtons(){
   document.getElementById('vwnext').disabled = i>=VIEWS.length-1;
 }
 buildViews();
-$vw.addEventListener('change',e=>setView(e.target.value));
+// From the controls: a new horizon recomputes everything (full-screen); a year only redraws.
+const setViewUI = v => busy(HORIZONS[v]? null : [$chartP, document.getElementById('tblwrap')], ()=>setView(v));
+$vw.addEventListener('change',e=>setViewUI(e.target.value));
 document.getElementById('vwprev').addEventListener('click',()=>
-  setView(VIEWS[VIEWS.indexOf(VIEW==='span'?HORIZON:VIEW)-1]));
+  setViewUI(VIEWS[VIEWS.indexOf(VIEW==='span'?HORIZON:VIEW)-1]));
 document.getElementById('vwnext').addEventListener('click',()=>
-  setView(VIEWS[VIEWS.indexOf(VIEW==='span'?HORIZON:VIEW)+1]));
+  setViewUI(VIEWS[VIEWS.indexOf(VIEW==='span'?HORIZON:VIEW)+1]));
 setView(VIEW);
 /* The sheet BATCHES its edits. A full render walks up to 11,000 days, rebuilds two comparison
    scenarios and bisects for the break-even, so doing that on every keystroke made typing in the
@@ -3683,11 +3757,10 @@ function markDirty(){ DIRTY=true; showDirty(); }
    both, and the spinner never appears. */
 function applyChanges(close){
   if(!DIRTY){ if(close) closeSet(); return; }
-  $spin.hidden=false;
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+  busy(null, ()=>{
     try{ render(); }
-    finally{ $spin.hidden=true; DIRTY=false; showDirty(); SHEET_SNAP=snapSheet(); if(close) closeSet(); }
-  }));
+    finally{ DIRTY=false; showDirty(); SHEET_SNAP=snapSheet(); if(close) closeSet(); }
+  });
 }
 /* Close means CANCEL. The sheet is snapshotted when it opens (and again after every apply);
    dismissing it any way but Apply — Close, Escape, the backdrop, a drag down — puts the form,
@@ -3725,10 +3798,12 @@ function followPage(){
   if(VIEW!=='span' && y!==VIEW && VIEWS.includes(y)){ VIEW=y; $vw.value=y; syncViewButtons(); }
 }
 const pgStep=n=>{const i=PMONTHS.indexOf(TPAGE)+n;
-  if(i>=0&&i<PMONTHS.length){TPAGE=PMONTHS[i];TPAGE_PINNED=true;followPage();render();}};
+  if(i>=0&&i<PMONTHS.length){TPAGE=PMONTHS[i];TPAGE_PINNED=true;followPage();
+    busy([document.getElementById('tblwrap'), $chartP], render);}};
 document.getElementById('pgprev').addEventListener('click',()=>pgStep(-1));
 document.getElementById('pgnext').addEventListener('click',()=>pgStep(1));
-document.getElementById('pgsel').addEventListener('change',e=>{TPAGE=e.target.value;TPAGE_PINNED=true;followPage();render();});
+document.getElementById('pgsel').addEventListener('change',e=>{TPAGE=e.target.value;TPAGE_PINNED=true;followPage();
+  busy([document.getElementById('tblwrap'), $chartP], render);});
 let rsz; window.addEventListener('resize',()=>{clearTimeout(rsz);rsz=setTimeout(render,150);});
 window.addEventListener('resize',tileFades);
 render();
@@ -3890,17 +3965,25 @@ $('reccancel').addEventListener('click',closeModal);
 $('recmodal').addEventListener('mousedown',e=>{ if(e.target===$('recmodal')) closeModal(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('recmodal').hidden) closeModal(); });
 
+// A button waiting on the server shows the shared ring in front of its label.
+function btnLoading(btn,on){
+  btn.classList.toggle('loading',on);
+  const r=btn.querySelector('.ring');
+  if(on && !r){ const s=document.createElement('span'); s.className='ring'; s.setAttribute('aria-hidden','true'); btn.prepend(s); }
+  if(!on && r) r.remove();
+}
+
 /* stage 1 — PIN */
 async function submitPin(){
   const msg=$('pinmsg'), btn=$('pinok'), val=$('pinput').value;
   msg.className='recmsg';
   if(!val){ msg.className='recmsg err'; msg.textContent='Enter the PIN.'; return; }
   if(!SRV.online){ msg.className='recmsg err'; msg.textContent='No server connection — cannot unlock.'; return; }
-  btn.disabled=true; msg.textContent='Checking…';
+  btn.disabled=true; btnLoading(btn,true); msg.textContent='Checking…';
   try{
     const r=await fetch('/api/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passcode:val})});
     const body=await r.json().catch(()=>({}));
-    if(!r.ok){ msg.className='recmsg err'; msg.textContent=body.error||'Incorrect PIN.'; $('pinput').value=''; $('pinput').focus(); btn.disabled=false; return; }
+    if(!r.ok){ msg.className='recmsg err'; msg.textContent=body.error||'Incorrect PIN.'; $('pinput').value=''; $('pinput').focus(); btn.disabled=false; btnLoading(btn,false); return; }
     PIN=val;
     $('stagepin').hidden=true; $('stageform').hidden=false;
     fillForm();
@@ -3908,7 +3991,7 @@ async function submitPin(){
   }catch(e){
     msg.className='recmsg err'; msg.textContent='Network error.';
   }
-  btn.disabled=false;
+  btn.disabled=false; btnLoading(btn,false);
 }
 $('pinok').addEventListener('click',submitPin);
 $('pinput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); submitPin(); }});
@@ -3951,12 +4034,12 @@ $('recsave').addEventListener('click',async ()=>{
       +`\n\nProjected: ${fmt(proj)}\nVariance: ${fmt(variance)}\nNew balance: ${fmt(actual)}`
       +`\n\nCorrect it later from this screen if you mistype.`;
   if(!confirm(head)) return;
-  btn.disabled=true; msg.textContent='Saving…';
+  btn.disabled=true; btnLoading(btn,true); msg.textContent='Saving…';
   try{
     const r=await fetch('/api/reconciles',{method:isFix?'PUT':'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({date,actual,note,passcode:PIN,reason:$('recreason').value||''})});
     const body=await r.json().catch(()=>({}));
-    if(!r.ok){ msg.className='recmsg err'; msg.textContent=body.error||'Could not save.'; btn.disabled=false; return; }
+    if(!r.ok){ msg.className='recmsg err'; msg.textContent=body.error||'Could not save.'; btn.disabled=false; btnLoading(btn,false); return; }
     RECON[date]={actual:body.actual,note:body.note};
     $('recvar').value=''; $('recnote').value=''; $('recreason').value=''; setSign(-1);
     msg.className='recmsg ok';
@@ -3966,12 +4049,15 @@ $('recsave').addEventListener('click',async ()=>{
   }catch(e){
     msg.className='recmsg err'; msg.textContent='Network error — not saved.';
   }
-  btn.disabled=false;
+  btn.disabled=false; btnLoading(btn,false);
 });
 
 (async function loadState(){
   try{
-    const r=await fetch('/api/state',{cache:'no-store'});
+    // Bounded: a server that never answers must not hold the loading screen up.
+    const ac=new AbortController(), to=setTimeout(()=>ac.abort(),8000);
+    const r=await fetch('/api/state',{cache:'no-store', signal:ac.signal});
+    clearTimeout(to);
     if(!r.ok) throw new Error('bad status');
     const s=await r.json();
     SRV={today:s.today,hour:s.hour,saveEnabled:s.saveEnabled,online:true};
@@ -3983,6 +4069,7 @@ $('recsave').addEventListener('click',async ()=>{
     SRV={...localNowFallback(),saveEnabled:false,online:false};
   }
   refreshTrigger();
+  document.getElementById('boot').classList.add('gone');
 })();
 </script>
 </body>
