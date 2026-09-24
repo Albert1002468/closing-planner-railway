@@ -356,9 +356,15 @@
   @media (prefers-color-scheme: dark){
     :root:where(:not([data-theme="light"])){--shadow:0 1px 2px rgba(0,0,0,.5),0 10px 28px rgba(0,0,0,.35)}
   }
-  body{background:
-    radial-gradient(1100px 360px at 50% -140px,color-mix(in srgb,var(--s1) 11%,transparent),transparent 72%),
-    var(--page) no-repeat}
+  /* The wash lives on a FIXED layer behind everything, not on the body. On the body it scrolled
+     with the page, so pulling past the top on a phone showed the bare canvas above it. Fixed,
+     it stays put while the content bounces over it. */
+  html{background:var(--page)}
+  body{background:transparent}
+  body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:
+    radial-gradient(1100px 420px at 50% -120px,color-mix(in srgb,var(--s1) 13%,transparent),transparent 72%),
+    radial-gradient(700px 360px at 100% 0,color-mix(in srgb,#22c58b 7%,transparent),transparent 70%),
+    var(--page)}
   .viz-root{background:transparent;padding-top:26px}
   .brand{display:flex;align-items:center;gap:14px;margin:0 0 18px}
   .brand .mark{width:46px;height:46px;flex:none;border-radius:12px;
@@ -388,6 +394,47 @@
   .sheet{border-radius:18px}
   .grp{border-radius:14px}
   .tip{border-radius:10px;box-shadow:var(--shadow),0 4px 14px rgba(0,0,0,.10)}
+  /* Today in the ledger: brand blue, so it reads as the same marker as the chart's TODAY. */
+  #evtable td:first-child{white-space:nowrap}
+  #evtable tr.today td{background:color-mix(in srgb,var(--s1) 9%,transparent)}
+  #evtable tr.today td:first-child{box-shadow:inset 3px 0 0 var(--s1)}
+  .todaychip{border-color:color-mix(in srgb,var(--s1) 45%,transparent);color:var(--s1)}
+  #evtable tr.todaymark td{padding:8px 0}
+  .todayline{color:var(--s1);font-size:10px}
+  .todayline::before,.todayline::after{background:var(--s1);opacity:.45;height:1.5px}
+  .todayline b{padding:3px 10px;border-radius:999px;font-weight:700;
+               background:color-mix(in srgb,var(--s1) 13%,transparent)}
+  /* ---- today at a glance ---- */
+  .todaybar{position:relative;overflow:hidden;margin:0 0 14px;padding:10px 13px 10px 16px;
+            border:1px solid var(--ring);border-radius:12px;background:var(--page)}
+  .todaybar::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--grad)}
+  .todaybar[hidden]{display:none}
+  .tbhead{display:flex;align-items:baseline;gap:8px;margin-bottom:5px}
+  .tblab{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--s1)}
+  .tbdate{font-size:12px;color:var(--ink-2)}
+  .tbnet{margin-left:auto;font-size:12px;font-weight:650;font-variant-numeric:tabular-nums}
+  .tblist{list-style:none;margin:0;padding:0;font-size:12.5px}
+  .tblist li{display:flex;justify-content:space-between;gap:12px;padding:2px 0;
+             font-variant-numeric:tabular-nums}
+  .tblist li span:first-child{color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tblist li span:last-child{flex:none}
+  .tblist li.none span:first-child{color:var(--muted)}
+  .tbpos{color:var(--goodtext)} .tbneg{color:var(--ink-2)}
+  .tbnext{display:flex;align-items:center;gap:6px;width:100%;margin-top:6px;padding:6px 0 0;
+          border:0;border-top:1px dashed var(--grid);background:none;font:inherit;font-size:11.5px;
+          color:var(--muted);cursor:pointer;text-align:left}
+  .tbnext b{color:var(--ink-2);font-weight:600;white-space:nowrap;flex:none}
+  .tbnext>span:last-of-type{flex:none;overflow:visible;font-variant-numeric:tabular-nums}
+  .tbnext span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tbnext span:nth-of-type(1){flex:1}
+  .tbnext i{font-style:normal;font-size:15px;line-height:1;color:var(--s1);flex:none}
+  .tbnext:focus-visible{outline:2px solid var(--s1);outline-offset:2px;border-radius:4px}
+  /* reconcile list pager */
+  .reclist .recpg{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:8px;
+         font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .recpg button{background:var(--page);color:var(--ink-2);border:1px solid var(--axis);border-radius:7px;
+                padding:3px 10px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;line-height:1.2}
+  .recpg button:disabled{opacity:.35;cursor:not-allowed}
   /* responsive */
   /* 53 months in 340px is unreadable, so on a phone the chart gets a floor of ~30px per month
      and scrolls sideways instead of compressing. Same hidden-scrollbar + fade idiom as the
@@ -493,6 +540,8 @@
       <button type="button" class="tnav tprev" id="tprev" aria-label="Scroll cards left">&lsaquo;</button>
       <button type="button" class="tnav tnext" id="tnext" aria-label="Scroll cards right">&rsaquo;</button>
     </div>
+
+    <div class="todaybar" id="todaybar" hidden></div>
 
     <div class="actionbar">
       <div class="pager viewrow">
@@ -2784,7 +2833,7 @@ function render(){
     const i=at<0? desc.length : at;
     const lab=dd(TODAY_ISO).toLocaleDateString('en-US',{month:'short',day:'numeric'});
     body = desc.slice(0,i).map(r=>r.h).join('')
-         + `<tr class="todaymark"><td colspan="4"><span class="todayline">today · ${lab}</span></td></tr>`
+         + `<tr class="todaymark"><td colspan="4"><span class="todayline"><b>today · ${lab}</b></span></td></tr>`
          + desc.slice(i).map(r=>r.h).join('');
   } else {
     body=desc.map(r=>r.h).join('');
@@ -2803,9 +2852,46 @@ function render(){
     `${page.length} line${page.length===1?'':'s'} · net ${fmt(net)}`+
     (mEnd? ` · month-end ${fmt(mEnd.b)}`:'')+
     ` · page ${pi+1} of ${PMONTHS.length}`;
+  renderTodayBar(DATA);
   LAST_DATA=DATA;
   tileFades(); tlFades();
 }
+
+/* Today at a glance: what posts today, and the next day anything does. Compact on purpose — the
+   full list is one tap away in Transactions, which this opens at the right month. */
+function renderTodayBar(DATA){
+  const bar=document.getElementById('todaybar');
+  const i=DATA.findIndex(d=>d.d===TODAY_ISO);
+  if(i<0){ bar.hidden=true; return; }
+  const day=DATA[i], MAX=3;
+  const sgn=a=>`<span class="${a>0?'tbpos':'tbneg'}">${a>0?'+':''}${fmt(a)}</span>`;
+  const net=+day.ev.reduce((a,e)=>a+e.a,0).toFixed(2);
+  let h=`<div class="tbhead"><span class="tblab">Today</span>`
+    +`<span class="tbdate">${dd(TODAY_ISO).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</span>`
+    +(day.ev.length? `<span class="tbnet">${sgn(net)}</span>` : '')+`</div><ul class="tblist">`;
+  h += day.ev.length
+    ? day.ev.slice(0,MAX).map(e=>`<li><span>${esc(e.l)}</span>${sgn(e.a)}</li>`).join('')
+      + (day.ev.length>MAX? `<li class="none"><span>+${day.ev.length-MAX} more</span><span></span></li>` : '')
+    : `<li class="none"><span>Nothing posts today</span><span></span></li>`;
+  h += '</ul>';
+  const nx=DATA.slice(i+1).find(d=>d.ev.length);
+  if(nx){
+    const first=nx.ev[0], more=nx.ev.length-1;
+    h += `<button type="button" class="tbnext" data-ym="${nx.d.slice(0,7)}" title="Open in Transactions">`
+      +`<b>Next · ${dd(nx.d).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</b>`
+      +`<span>${esc(first.l)}${more? ` · +${more} more`:''}</span>${sgn(first.a)}<i aria-hidden="true">›</i></button>`;
+  }
+  bar.innerHTML=h; bar.hidden=false;
+}
+document.getElementById('todaybar').addEventListener('click',e=>{
+  const b=e.target.closest('.tbnext'); if(!b) return;
+  const tw=document.getElementById('tblwrap');
+  tw.open=true;
+  // Today's month if it has lines, else the month the next item lands in.
+  TPAGE = PMONTHS.includes(TODAY_ISO.slice(0,7))? TODAY_ISO.slice(0,7) : b.dataset.ym;
+  TPAGE_PINNED=true; render();
+  tw.scrollIntoView({behavior:'smooth',block:'start'});
+});
 
 /* The tile row scrolls horizontally with no visible scrollbar, so the only affordance is a
    fade at whichever edge still has content off-screen. */
@@ -3069,6 +3155,8 @@ function refreshTrigger(){
    it": the date list, the hint, the button and the endpoint all differ, and a correction is
    logged to an audit trail server-side. */
 let RECMODE='new';
+const REC_PER=8;
+let RECPAGE=0;
 const reconciledDates = () => Object.keys(RECON).sort().reverse();
 // One owner for the visual state: fillForm. This just picks the mode and re-renders.
 function setRecMode(m){ RECMODE=m; fillForm(); }
@@ -3091,13 +3179,23 @@ function fillForm(){
       ? 'Pick a day you already reconciled and enter what the variance SHOULD have been. The old figure is kept in an audit log.'
       : `Permanent once saved; correct it later from this screen if you mistype. Today unlocks after ${UNLOCK_HOUR}:00 ${TZ}; past days with no entry stay open.`);
   if(isFix) prefillFromExisting();
-  const keys=Object.keys(RECON).sort();
+  /* Newest first, a page at a time. Reconciling daily makes this list grow by one a day, and
+     all of it at once pushed the form's own buttons a long scroll away. */
+  const all=Object.keys(RECON).sort().reverse();
+  const pages=Math.max(1,Math.ceil(all.length/REC_PER));
+  RECPAGE=Math.min(Math.max(0,RECPAGE),pages-1);
+  const keys=all.slice(RECPAGE*REC_PER,(RECPAGE+1)*REC_PER);
+  const pager = all.length>REC_PER
+    ? `<div class="recpg"><button type="button" data-p="-1" aria-label="Newer"${RECPAGE===0?' disabled':''}>&lsaquo;</button>`
+      +`<span>${RECPAGE*REC_PER+1}–${RECPAGE*REC_PER+keys.length} of ${all.length}</span>`
+      +`<button type="button" data-p="1" aria-label="Older"${RECPAGE>=pages-1?' disabled':''}>&rsaquo;</button></div>`
+    : '';
   $('reclist').innerHTML = keys.length
-    ? '<div class="n"><span>Recorded</span><span></span></div>'+keys.map(k=>{
+    ? `<div class="n"><span>Recorded · newest first</span><span></span></div>`+keys.map(k=>{
         const p=projectedFor(k), delta=p==null?null:+(RECON[k].actual-p).toFixed(2);
         const col = delta==null||delta===0? '' : ` style="color:var(${delta>0?'--vpos':'--vneg'})"`;
         return `<div><span>${dd(k).toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${fmt(RECON[k].actual)}${RECON[k].note?' · '+esc(RECON[k].note):''}</span><span${col}>${delta==null?'':fmt(delta)}</span></div>`;
-      }).join('')
+      }).join('')+pager
     : '<div class="n"><span>No reconciliations recorded yet.</span><span></span></div>';
   updatePreview();
 }
@@ -3132,7 +3230,7 @@ function openModal(){
   $('recmodal').hidden=false;
   $('stagepin').hidden=false; $('stageform').hidden=true;
   $('pinput').value=''; $('pinmsg').textContent=''; $('pinmsg').className='recmsg';
-  PIN='';
+  PIN=''; RECPAGE=0;
   setTimeout(()=>$('pinput').focus(),40);
   document.body.style.overflow='hidden';
 }
@@ -3144,6 +3242,10 @@ function closeModal(){
   $('recmsg').textContent=''; $('recmsg').className='recmsg';
 }
 $('recbtn').addEventListener('click',openModal);
+$('reclist').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-p]'); if(!b||b.disabled) return;
+  RECPAGE+=+b.dataset.p; fillForm();
+});
 $('pincancel').addEventListener('click',closeModal);
 $('reccancel').addEventListener('click',closeModal);
 $('recmodal').addEventListener('mousedown',e=>{ if(e.target===$('recmodal')) closeModal(); });
