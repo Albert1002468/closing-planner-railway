@@ -775,7 +775,15 @@ gone, along with the buyout.
 
 ⚠️ **The rate STEPS at `VIVINT_RATE_FROM` (2026-09-22); it does not replace.** The Aug 22 2026
 draft really was $8.58 and may already be reconciled — rewriting it because a later rate
-changed would be the model editing history. 45 drafts, $2,550.46 total, ending Apr 2030.
+changed would be the model editing history.
+
+⚠️ **Deferred 12 months on 2026-09-23.** The first payment was May 2025. The Sept 22 2026 draft
+was the last before the pause; nothing drafts Oct 2026 – Sep 2027. Drafts resume on the 22nd
+from Oct 2027 (`VIVINT_RESUME`) and the contract names **Jun 20 2031** as the final payment
+(`VIVINT_FINAL`). The end date is taken from the contract, not derived from a term length —
+May 2025 + 60 months + 12 would give Apr 2031, so do not "fix" it back to a term count.
+In the window from Aug 2026: 2 drafts before the pause ($8.58 + $57.77), then 45 at $57.77.
+`vivintMonthsLeft` and the term constants are gone with the explicit schedule.
 
 `vivFee`/`vivMonthsLeft` are kept in the return shape as zeros so downstream consumers do not
 have to change.
@@ -1629,15 +1637,15 @@ From two paystubs differing only in overtime:
 ### Fixed events (not sale-dependent)
 
 Paychecks; the $104,462.90 closing wire on 9/18; Airbnb refunds on 9/19 (+$234 day refund,
-+$750 pet deposit); new-home mortgage $2,691.97 on 11/2 and 12/1
-(first payment Nov 1 because interest is prepaid through 9/30), then **$3,180.72 monthly
-through 2027**; the **$30,000 bonus on 3/1/27 (net $19,680)** and the **$5,000 IRS payment
++$750 pet deposit); new-home mortgage from 11/2 (first payment Nov 1 because interest is prepaid through 9/30):
+$2,475.42 P&I + $191.83 escrow until the Dec 2027 escrow analysis (see `nhEscrowPlan`); the **$30,000 bonus on 3/1/27 (net $19,680)** and the **$5,000 IRS payment
 on 3/19/27**; car $824.76 on the 16th until payoff;
 AT&T $80.65; card autopays ~$50; NY Life $59.10; Apple Cash $112; Claude $21.65; iCloud+ $0.99;
 ⚠️ **NY Life is the one recurring bill that is not inflated** — it is a level-premium life
 policy, fixed for the life of the contract, so `inflAt()` must not be applied to it. Every
 other subscription in that block carries `*inflAt(d)`; this one deliberately does not.
-Spotify $20.56; car insurance $940 on 9/25 and each 6 months after (3/25/27, 9/27/27);
+Spotify $20.56; new-home pest control $119 on 11/22/26, 2/22/27, 5/22/27 and 8/22/27 (four
+visits, then it stops); car insurance $940 on 9/25 and each 6 months after (3/25/27, 9/27/27);
 new-home utilities $150 / $250 / $300 Oct–Dec 2026, then a seasonal 2027 table
 ($195 in May up to $330 in Jan and Aug) — **estimates, not statements**.
 2027 paychecks are generated biweekly from 12/25/26: 26 checks, three-check months

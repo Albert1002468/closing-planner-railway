@@ -521,7 +521,7 @@
     </details>
 
     <details class="foot"><summary>Assumptions &amp; sources</summary>
-      <p>Projection from your statements + stated plans; Closing Disclosure and actual payoff quote govern. Assumes relo covers commissions/seller costs (net = price − payoff), proceeds land on the sale date, loss credit 14 days later, AutoFortiva settled in full 8/20/26, the Vivint contract bought out 7 days before the sale at 50% of the months remaining on the 6/21/25 60-month term (drafts stop after that), Midland utilities end at sale with one final trailing bill, and the 6-mo car insurance renewal ($940) recurs each March and September. Car payoff uses simple interest at 6.74% actual/365 from the $40,862.63 principal standing after the 8/16/26 payment, with no further $500 extra payments. The new-home payment steps from $2,691.97 to $3,180.72 on Jan 1, 2027 (escrow re-set for $6,000/yr property tax, no shortage spread). The Midland escrow was set at the mid-May 2025 closing against a bare-lot assessment, so it funds insurance ($1,329/yr) and land-only tax ($567.84/yr) plus $28.75 PMI; the first assessment including the house is billed Jan 31, 2027, and PennyMac's annual analysis resets the payment from June 2027 with the shortage spread over 12 months. The March bonus is shown net at 65.60% of gross (22% federal supplemental + 6.2% + 1.45% + 4.75% Oklahoma) and repeats each year with the $5,000 IRS payment. 2026 and 2027 are modelled from statements; from 2028 pay rises 3%/yr and costs inflate 3%/yr (not the mortgage P&amp;I or car payment, which are fixed). Depreciation recapture on a rented-then-sold home is straight line over 27.5 years at 29.75% (25% federal + 4.75% Oklahoma, which applies because you are an OK resident even though the house is in Texas). Utilities and the $6,000 tax figure are estimates.</p>
+      <p>Projection from your statements + stated plans; Closing Disclosure and actual payoff quote govern. Assumes relo covers commissions/seller costs (net = price − payoff), proceeds land on the sale date, loss credit 14 days later, AutoFortiva settled in full 8/20/26, Vivint paid monthly at $57.77 (never bought out, whatever happens to the house) with a 12-month deferral from Oct 2026, resuming Oct 22, 2027 and ending with the final payment on Jun 20, 2031, Midland utilities stop while the house is let and end at sale with one final trailing bill, and the 6-mo car insurance renewal ($940) recurs each March and September. Car payoff uses simple interest at 6.74% actual/365 from the $40,862.63 principal standing after the 8/16/26 payment, with no further $500 extra payments. The new-home payment starts at $2,667.25 ($2,475.42 P&amp;I at 22% down plus $191.83 escrow, set at closing against the unimproved lot); the first full-house tax bill ($6,000/yr assumed) lands Dec 2027 and the annual analysis that month re-sets the escrow with the shortage spread over 12 months. The Midland escrow was set at the mid-May 2025 closing against a bare-lot assessment, so it funds insurance ($1,329/yr) and land-only tax ($567.84/yr) plus $28.75 PMI; the first assessment including the house is billed Jan 31, 2027, and PennyMac's annual analysis resets the payment from June 2027 with the shortage spread over 12 months. The March bonus is shown net at 65.60% of gross (22% federal supplemental + 6.2% + 1.45% + 4.75% Oklahoma) and repeats each year with the $5,000 IRS payment. 2026 and 2027 are modelled from statements; from 2028 pay rises 3%/yr and costs inflate 3%/yr (not the mortgage P&amp;I or car payment, which are fixed). Depreciation recapture on a rented-then-sold home is straight line over 27.5 years at 29.75% (25% federal + 4.75% Oklahoma, which applies because you are an OK resident even though the house is in Texas). Utilities and the $6,000 tax figure are estimates.</p>
     </details>
   </div>
 
@@ -662,7 +662,7 @@
                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="4 12.5 9.5 18 20 6.5"/></svg>
         </button>
-        <button id="setdone" class="actbtn ghost" title="Close without applying" aria-label="Close">
+        <button id="setdone" class="actbtn ghost" title="Apply and close" aria-label="Apply and close">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
                stroke-linecap="round" aria-hidden="true">
             <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
@@ -829,7 +829,12 @@ const VIVINT_RATE=59.99, VIVINT_LOW=8.58, VIVINT_MO=57.77;
    already be reconciled; rewriting it because a later rate changed would be the model editing
    history. Drafts before this date keep the negotiated rate. */
 const VIVINT_RATE_FROM='2026-09-22';
-const VIVINT_START='2025-06-21', VIVINT_TERM=60;
+/* ⚠️ Deferred 12 months on 2026-09-23. The Sept 22 2026 draft was the last before the pause;
+   nothing is drafted Oct 2026 – Sep 2027. Drafts resume on the 22nd from Oct 2027, and the
+   contract names Jun 20 2031 as the final payment. The first payment was May 2025. The end date
+   is the contract's figure, not derived from a term length: May 2025 + 60 months + 12 would end
+   in Apr 2031, so the contract's date is what the model follows. */
+const VIVINT_RESUME='2027-10', VIVINT_LAST_FULL='2031-05', VIVINT_FINAL='2031-06-20';
 
 /* --- new-home payment: escrow steps up Jan 1 2027 for the reassessed property tax --- */
 const NH_PMT_26 = 2691.97;                  // P&I 2538.89 + escrow 153.08 (ins 141.83 + tax 11.25)
@@ -979,16 +984,6 @@ const RENT_DEFAULT={start:LEASE.start, end:LEASE.end, months:12, amt:LEASE.rent}
 // A later purchase: relo absorbs the buyer closing costs only inside the window.
 // $104,462.90 is the Closing Disclosure figure and is already net of the $5,299 earnest
 // money wired 8/12. A later purchase after walking away gets no such credit.
-function vivintMonthsLeft(onDate){          // payments still owed after the last one due on/before onDate
-  const s=dd(VIVINT_START), t=dd(onDate);
-  let made=0;
-  while(made<VIVINT_TERM){
-    const due=new Date(s.getFullYear(), s.getMonth()+made, s.getDate(), 12);
-    if(due>t) break;
-    made++;
-  }
-  return Math.max(0, VIVINT_TERM-made);
-}
 
 const dd = s => new Date(s+'T12:00:00');
 const iso = d => d.toISOString().slice(0,10);
@@ -1371,18 +1366,13 @@ function buildEvents(sale, price, rent, home){
   // AutoFortiva: paid off in full 8/20/2026 — no further monthly drafts.
   E(AF_PAYOFF_DATE,-AF_PAYOFF_AMT,'AutoFortiva payoff (paid in full)');
 
-  /* Vivint: negotiated $8.58/mo. ⚠️ The TENANT ASSUMES the contract at move-in, so from that
-     date it is not yours at all — the drafts stop for good (not just while they are in the
-     house) and there is no buyout, because the contract transfers rather than being settled.
-     Without a tenant it still buys out a week before the sale at 50% of the months remaining. */
-  /* ⚠️ The handover only happens if the tenant actually moves in BEFORE the sale. Selling
-     first means nobody took the contract over, so it is still yours and still has to be bought
-     out — keying off `rent` alone credited a handover that never occurred. */
-  // Runs to the end of the term whatever happens to the house or the tenancy.
-  ['2026-08-22','2026-09-22','2026-10-22','2026-11-23','2026-12-22'].concat(monthly(22,'2027-01','2030-06'))
-   .forEach(d=>{ if(vivintMonthsLeft(d)>0)
-                   E(d, -(lt(d,VIVINT_RATE_FROM)? VIVINT_LOW : VIVINT_MO),
-                     lt(d,VIVINT_RATE_FROM)? 'Vivint (negotiated rate)' : 'Vivint security'); });
+  /* Vivint is a contract on you, not the house: it runs to its end whatever happens to the
+     tenancy or the sale, and is never bought out. Paused for the 12-month deferral, then drafts
+     resume through the contract's final payment. Not inflated — the rate is contractual. */
+  ['2026-08-22','2026-09-22'].concat(monthly(22,VIVINT_RESUME,VIVINT_LAST_FULL), [VIVINT_FINAL])
+   .forEach(d=>E(d, -(lt(d,VIVINT_RATE_FROM)? VIVINT_LOW : VIVINT_MO),
+                 lt(d,VIVINT_RATE_FROM)? 'Vivint (negotiated rate)'
+                 : d===VIVINT_FINAL? 'Vivint security (final payment)' : 'Vivint security'));
   /* Kept in the shape only so downstream consumers do not have to change; there is no buyout
      any more. The alternative — 50% of everything remaining, due at once — is what makes
      paying it out the cheaper option. */
@@ -1490,6 +1480,7 @@ function buildEvents(sale, price, rent, home){
   //      landlord costs in, this runs a paper LOSS at these rents. Losses are not carried: passive
   //      losses are suspended above ~$150k MAGI, so only profitable years are taxed here. ----
   let rentNetIncome=0, rentIncTax=0, suspendedLoss=0;
+  const suspendedByYear={};   // netWorth releases only the losses suspended by its as-of date
   if(rent && rentDates.length){
     const yrs={};
     const BLANK={rent:0,int:0,tax:0,ins:0,dep:0,mgmt:0,maint:0};
@@ -1507,7 +1498,7 @@ function buildEvents(sale, price, rent, home){
       add(y,'maint',r.maint);
       add(y,'tax',midTaxForYear(y)/12);
       add(y,'ins',MID_INS/12);
-      add(y,'dep',rent.basis/DEPREC_YEARS/12);
+      add(y,'dep',rent.basis/DEPREC_YEARS/12*(r.pro||1));   // the stub month is a fraction, as in recapture
     });
     sched.forEach(r=>{ if(rented(r.draft)) add(YR(r.draft),'int',r.int); });
     Object.keys(yrs).sort().forEach(y=>{
@@ -1522,6 +1513,7 @@ function buildEvents(sale, price, rent, home){
         // Above ~$150k MAGI the $25k special allowance is fully phased out, so a rental loss
         // is a SUSPENDED passive loss: no benefit now, carried until disposal.
         suspendedLoss += -net;
+        suspendedByYear[y] = -net;
       }
     });
   }
@@ -1603,7 +1595,7 @@ function buildEvents(sale, price, rent, home){
           myRentTotal, myEnd, buyDate, buyCC, recapDep, recapTax, cgTax,
           carNaturalDate:carNatural.d, carNaturalAmt:carNatural.amt, carOwedAtEnd, midEscEnd,
           rentNetIncome:+rentNetIncome.toFixed(2), rentIncTax:+rentIncTax.toFixed(2),
-          suspendedLoss:+suspendedLoss.toFixed(2),
+          suspendedLoss:+suspendedLoss.toFixed(2), suspendedByYear,
           rentCostTotal};
 }
 
@@ -1635,7 +1627,7 @@ function buildSeries(sale, price, rent, home, rates){
   const {ev,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,
          recapDep,recapTax,cgTax,carNaturalDate,carNaturalAmt,carOwedAtEnd,
-         midEscEnd,rentNetIncome,rentIncTax,rentCostTotal,suspendedLoss}=buildEvents(sale,price,rent,home);
+         midEscEnd,rentNetIncome,rentIncTax,rentCostTotal,suspendedLoss,suspendedByYear}=buildEvents(sale,price,rent,home);
   const map={};
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
   const series=[]; let bal=START_BAL, cur=T0;
@@ -1657,7 +1649,7 @@ function buildSeries(sale, price, rent, home, rates){
   return {series,payoff,proceeds,loss,vivFee,vivMonthsLeft,carPayoff,carPayoffDate,
           sellerCost,reloOK,rentEnd,rentTotal,myRentTotal,myEnd,buyDate,buyCC,recapDep,recapTax,cgTax,
           carNaturalDate,carNaturalAmt,carOwedAtEnd,midEscEnd,rentNetIncome,rentIncTax,rentCostTotal,
-          suspendedLoss};
+          suspendedLoss,suspendedByYear};
 }
 
 /* ---------------------------------------------------------------------------------------
@@ -1704,7 +1696,7 @@ function oppWalk(sc, rates, full){
 function oppNW(sc, home, rates){
   const b=oppWalk(sc,rates), x=sc.built;
   return netWorth({series:[{d:T1,b}], buyDate:x.buyDate, carPayoffDate:x.carPayoffDate,
-                   carPayoff:x.carPayoff, suspendedLoss:x.suspendedLoss},
+                   carPayoff:x.carPayoff, suspendedByYear:x.suspendedByYear},
                   sc.sale, sc.rent, home, T1).nw;
 }
 /* ⚠️ Extending the keep-and-rent scenario has to move `end`, not just `months`. `rentSchedule`
@@ -1823,7 +1815,12 @@ function netWorth(res, sale, rent, home, asOf){
     const gain = val*(1-SELLER_COST_PCT) - (MID_BASIS - dep);
     const recap= Math.max(0, Math.min(dep, gain))*(rent? rent.rate:0)/100;
     const cg   = asOf > SEC121_LAST ? Math.max(0, gain-dep)*LTCG_RATE/100 : 0;
-    const released = rent? (res.suspendedLoss||0)*rent.taxRate/100 : 0;
+    /* ⚠️ Only the losses suspended BY asOf. Releasing the whole run's total credited a 2027 view
+       with decades of losses that had not happened yet. Every asOf is a Dec 31, so whole tax
+       years are exact. */
+    const susp = Object.entries(res.suspendedByYear||{})
+      .reduce((a,[y,v])=>+y<=YR(asOf)? a+v : a, 0);
+    const released = rent? susp*rent.taxRate/100 : 0;
     deferred = recap + cg - released;
   }
 
@@ -1908,7 +1905,7 @@ const readHome = () => ({own:true});
 /* ⚠️ Was hardcoded to the day it was written, and had already drifted into the PAST — the
    earliest possible sale, and the "sell now" comparison, were both dated yesterday. It has to
    BE today, and it can never precede the projection start. */
-const SALE_FLOOR = TODAY_ISO > T0 ? TODAY_ISO : T0;
+let SALE_FLOOR = TODAY_ISO > T0 ? TODAY_ISO : T0;   // re-set when the server's date arrives
 let LAST_SALE_MIN=null;      // so a sale date parked on the rent floor can follow it
 let SALE_BEFORE_RENT=null;   // the date renting pushed off, to put back when the floor lifts
 /* 'never' | 'auto' | 'pick'. ⚠️ Defaults to NEVER: the plan is to hold the house and keep it
@@ -2156,9 +2153,10 @@ function fillOppPanel(rent, home, rates){
     `<b>Read this before trusting the number.</b> It is an <b>after-tax</b> rate — in a taxable `
     +`brokerage you need a higher pre-tax return to clear it. It prices no risk: one leveraged, `
     +`undiversified, illiquid house in an oil-price town is not the same bet as an index fund, and `
-    +`the model cannot see a bad tenant, a roof, or a foundation. Maintenance is your `
-    +`${fmt0(rent? rent.maint : 0)}/yr assumption held flat for decades, and vacancy is `
-    +`${rent? rent.vacancyMo : 0} month a year every year. The house also has to actually sell at `
+    +`the model cannot see a bad tenant, a roof, or a foundation. Maintenance starts at your `
+    +`${fmt0(rent? rent.maint : 0)}/yr reserve and ramps toward 1% of value once the warranty `
+    +`lapses (zero stays zero), and vacancy is ${rent? rent.vacancyMo : 0} month at each tenant `
+    +`turnover. The house also has to actually sell at `
     +`${fmt0(priceOn(SALE_FLOOR))} for the sell column to mean anything.`;
 }
 
@@ -2224,7 +2222,7 @@ function render(){
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentTotal,myRentTotal,buyDate,buyCC,
          recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,midEscEnd,
-         rentNetIncome,rentIncTax,rentCostTotal,suspendedLoss}=buildSeries(sale,price,rent,home,RATES);
+         rentNetIncome,rentIncTax,rentCostTotal,suspendedLoss,suspendedByYear}=buildSeries(sale,price,rent,home,RATES);
   // the chart draws only the selected window; the tiles and the running balance stay whole-series
   const VD = VIEW==='span'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
   // The last day in the window. Three tiles and netWorth all measure as of this date, so it is
@@ -2570,7 +2568,7 @@ function render(){
   document.getElementById('t_thind').textContent = thinDays
     ? `from ${nice(firstThin.d)} · ${DATA.filter(d=>d.b<5000).length} under ${fmt0(5000)}`
     : `never below ${fmt0(CUSHION)}`;
-  const NW = netWorth({series:DATA,buyDate,carPayoffDate,carPayoff,suspendedLoss},
+  const NW = netWorth({series:DATA,buyDate,carPayoffDate,carPayoff,suspendedByYear},
                       sale, rent, home, endDay.d);
   set('t_nw', fmt(NW.nw), NW.nw<0?'neg':'posv');
   document.getElementById('t_nwd').textContent =
@@ -2585,14 +2583,14 @@ function render(){
   document.getElementById('t_todayd').textContent =
     dd(tdD.d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
   // Three outcomes: settled early by a sale, settled inside the window but too late to show,
-  // or never settled here — in which case say what is still owed on Dec 31, 2030.
+  // or never settled here — in which case say what is still owed at the end of the horizon.
   const carSettled = carPayoffDate && carPayoffDate<=T1 && carPayoff>0;
   set('t_car', carSettled? fmt(carPayoff) : fmt(carOwedAtEnd), 'neg');
   document.getElementById('t_card').textContent = carSettled
     ? nice(carPayoffDate)+' · then no car payment'
     : carPayoffDate
-      ? `payoff ${nice(carPayoffDate)} is past the window — ${fmt0(carOwedAtEnd)} owed Dec 31, 2030`
-      : `still owed Dec 31, 2030 · clears ${nice(carNaturalDate)} if never sold`;
+      ? `payoff ${nice(carPayoffDate)} is past the window — ${fmt0(carOwedAtEnd)} owed ${nice(T1)}`
+      : `still owed ${nice(T1)} · clears ${nice(carNaturalDate)} if never sold`;
   // Ending balance follows the WINDOW, not the whole series — on "2027" this is Dec 31 2027.
   set('t_end', fmt(endDay.b), endDay.b<0?'neg':'posv');
   document.getElementById('t_endd').textContent =
@@ -3166,7 +3164,7 @@ $('recsave').addEventListener('click',async ()=>{
     const s=await r.json();
     SRV={today:s.today,hour:s.hour,saveEnabled:s.saveEnabled,online:true};
     if(Number.isFinite(s.unlockHour)) UNLOCK_HOUR=s.unlockHour;
-    if(s.today) TODAY_ISO=s.today;
+    if(s.today){ TODAY_ISO=s.today; SALE_FLOOR = TODAY_ISO > T0 ? TODAY_ISO : T0; }
     (s.reconciles||[]).forEach(x=>{ RECON[x.date]={actual:x.actual,note:x.note}; });
     render();
   }catch(e){

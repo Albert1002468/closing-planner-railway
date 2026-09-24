@@ -116,7 +116,10 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; 
 /* ------------------------- server ------------------------- */
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+  /* The LAST X-Forwarded-For entry is the one Railway's edge appended; anything before it was
+     sent by the client and can be forged. Keying the lockout on the first entry let a client
+     rotate a fake address per request and never be locked out. */
+  const ip = (req.headers['x-forwarded-for'] || '').split(',').pop().trim() || req.socket.remoteAddress || 'unknown';
 
   if (url.pathname === '/api/state' && req.method === 'GET') {
     const now = localNow();
@@ -209,7 +212,10 @@ const server = http.createServer((req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'Method not allowed.' });
 
   // static
-  let rel = decodeURIComponent(url.pathname);
+  // A malformed %-escape throws, and an uncaught throw here takes the whole process down.
+  let rel;
+  try { rel = decodeURIComponent(url.pathname); }
+  catch { res.writeHead(400); return res.end('Bad request'); }
   if (rel === '/' || rel === '') rel = '/index.html';
   const file = path.join(PUBLIC_DIR, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
   if (!file.startsWith(PUBLIC_DIR)) { res.writeHead(403); return res.end('Forbidden'); }
