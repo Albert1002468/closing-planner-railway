@@ -590,7 +590,8 @@
   .appbar-title{position:absolute;left:50%;font-size:16px;font-weight:600;letter-spacing:-.01em;
                 pointer-events:none;opacity:var(--navt,0);
                 transform:translate(-50%,calc((1 - var(--navt,0)) * 7px))}
-  .bigtitle{opacity:var(--navb,1)}
+  /* Mutually exclusive by construction: any trace of the compact title zeroes the large one. */
+  .bigtitle{opacity:calc(var(--navb,1) * (1 - min(1, var(--navt,0) * 100)))}
   .appbar .acts{display:flex;gap:2px}
   .appbar .abtn,.appbar .abtn.accent{width:40px;height:40px;border-radius:50%;padding:0;border:0;
     background:transparent;color:var(--ink);box-shadow:none}
@@ -698,7 +699,7 @@
   .actbtn:hover,.recrow button:hover{filter:brightness(1.08)}
   .setacts{gap:8px}
   #setreset{order:0;background:transparent;color:var(--ink-2);padding:0 10px}
-  .dirtybadge{order:1;margin:0 auto 0 4px;color:var(--ink-2);font-weight:500}
+  .dirtybadge{order:1;margin:0 auto 0 4px;color:var(--ink-2);font-weight:500;white-space:nowrap}
   .dirtybadge:not(.on){display:block;visibility:hidden}
   #setdone{order:2} #setapply{order:3}
   .resultbox{background:var(--fill);border:0;border-radius:14px;padding:12px 14px}
@@ -2423,7 +2424,33 @@ function applyHorizonBounds(rent){
 }
 
 // Live date preview while the sheet is open: cheap DOM work only, no engine.
-const previewDates = (fromSaleDate) => { try{ syncSaleDate(readRent(), readHome(), fromSaleDate); }catch(e){} };
+const previewDates = (fromSaleDate) => { try{ syncSaleDate(readRent(), readHome(), fromSaleDate); }catch(e){} oppPreview(); };
+
+/* The keep-vs-sell line at the foot of the sheet needs the engine, so it cannot be a pure form
+   read like the other notes. Debounced so typing a rate does not run it per keystroke; it
+   borrows the form's value, appreciation and inflation for the run and restores the applied
+   ones after, so the chart is untouched until Apply. */
+const oppSmText = (roi, keep, sell) =>
+  `at ${(roi*100).toFixed(2)}%: ${keep>=sell? 'keeping' : 'selling'} ahead by `
+  + `${fmt0(Math.abs(keep-sell))} at ${nice(T1)}`;
+let oppPrevT=null;
+function oppPreview(){
+  clearTimeout(oppPrevT);
+  oppPrevT=setTimeout(()=>{
+    const saved=[MID_VALUE_TODAY, MID_APPREC, INFL_PCT];
+    try{
+      MID_VALUE_TODAY=digits('midvalue',50000,2000000,420000);
+      MID_APPREC=numOr('apprec',3)/100; INFL_PCT=numOr('inflpct',3)/100;
+      const rent=readRent(), home=readHome();
+      const rates={cash:numOr('cashapy',0)/100, invest:numOr('opproi',0)/100,
+                   floor:digits('liqfloor',0,5000000,25000)};
+      const keep=oppNW(oppScenario(null, rent? keepRent(rent,T1) : null, home), home, rates);
+      const sell=oppNW(oppScenario(oppExitDate(rent), rent, home), home, rates);
+      document.getElementById('oppsm').textContent = oppSmText(rates.invest, keep, sell);
+    }catch(e){}
+    finally{ [MID_VALUE_TODAY, MID_APPREC, INFL_PCT]=saved; }
+  },250);
+}
 
 /* The panel body. Split out of render() because it is only ever called when the panel is
    open, and because the horizon sweep is the expensive part of the whole app. */
@@ -2947,9 +2974,7 @@ function render(){
     OPPBE.verdict==='sell'
       ? `selling wins by ${fmt0(-OPPBE.gap)}`
       : `to beat keeping it · you assume ${(OPP_ROI*100).toFixed(1)}%`;
-  document.getElementById('oppsm').textContent =
-    `at ${(OPP_ROI*100).toFixed(2)}%: ${keepEnd>=oppEnd? 'keeping' : 'selling'} ahead by `
-    + `${fmt0(Math.abs(keepEnd-oppEnd))} at ${nice(T1)}`;
+  document.getElementById('oppsm').textContent = oppSmText(OPP_ROI, keepEnd, oppEnd);
   const rentNetCash = rent? +(rentTotal - rentCostTotal - rentIncTax).toFixed(2) : 0;
   set('t_rent', rent? fmt(rentNetCash):'—', rent?'posv':'');
   document.getElementById('t_rentd').textContent = rent
@@ -3147,48 +3172,49 @@ document.getElementById('todaybar').addEventListener('click',e=>{
   });
 }
 
-/* The app bar follows the scroll continuously. As the large title slides under the bar, the
-   frosted background fades in over its first stretch and the compact title over the second, so
-   the hand-off reads as one motion rather than a switch. One write per animation frame. */
+/* The app bar follows the scroll. Progress comes from window.scrollY alone, measured against
+   the large title's position in the DOCUMENT (taken at rest, on load and resize) — not from live
+   on-screen rects, which iOS distorts during a rubber-band bounce and which left both titles
+   half-faded. Tracking runs every frame from the first touch or scroll until the page has been
+   still for a moment, so a missed final scroll event cannot strand it. */
 {
   const bar=document.getElementById('appbar'), big=document.getElementById('bigtitle');
   const root=document.documentElement;
   const ease=t=>t*t*(3-2*t), clamp=t=>Math.max(0,Math.min(1,t));
-  let queued=false, last='';
+  let start=0, h=1, last='';
+  const measure=()=>{                     // where the title sits relative to the bar at scroll 0
+    h=Math.max(1,big.offsetHeight);
+    start=big.getBoundingClientRect().top + window.scrollY - bar.offsetHeight;
+  };
   const sync=()=>{
-    queued=false;
-    const barB=bar.getBoundingClientRect().bottom, r=big.getBoundingClientRect();
-    const under=barB-r.top;                     // px of the large title already under the bar
-    // Sequenced so the two titles never read at once: the large one fades out as it goes
-    // under, and the compact one only arrives once the large one is nearly gone.
-    const bg=ease(clamp(under/r.height));
-    const fade=clamp(1-under/(r.height*.7));
-    const tt=ease(clamp((under-r.height*.7)/(r.height*.6)));
+    const under=Math.max(0, window.scrollY) - start;   // negative scroll is the bounce: treat as 0
+    const bg=ease(clamp(under/h));
+    const fade=clamp(1-under/(h*.7));
+    const tt=ease(clamp((under-h*.75)/(h*.55)));
     const key=bg.toFixed(3)+fade.toFixed(3)+tt.toFixed(3);
     if(key===last) return; last=key;
     root.style.setProperty('--nav',bg.toFixed(3));
     root.style.setProperty('--navb',fade.toFixed(3));
     root.style.setProperty('--navt',tt.toFixed(3));
   };
-  const req=()=>{ if(!queued){ queued=true; requestAnimationFrame(sync); } };
-  window.addEventListener('scroll',req,{passive:true});
-  window.addEventListener('resize',req);
-  /* ⚠️ iOS animates the rubber-band bounce back to the top without always firing a last scroll
-     event, so a slow pull-and-release could leave the titles frozen mid-fade (both showing).
-     After the finger lifts, keep sampling every frame until the page has been still for a
-     moment, and re-sync once more when the browser reports the scroll has ended. */
-  let settleUntil=0, lastY=null;
-  const settle=()=>{
+  let running=false, touching=false, stillSince=0, lastY=NaN;
+  const tick=now=>{
     sync();
     const y=window.scrollY;
-    if(y!==lastY){ lastY=y; settleUntil=Math.max(settleUntil, performance.now()+180); }
-    if(performance.now()<settleUntil) requestAnimationFrame(settle);
+    if(y!==lastY){ lastY=y; stillSince=now; }
+    if(touching || now-stillSince<250) requestAnimationFrame(tick); else running=false;
   };
-  const afterTouch=()=>{ last=''; lastY=null; settleUntil=performance.now()+900; requestAnimationFrame(settle); };
-  window.addEventListener('touchend',afterTouch,{passive:true});
-  window.addEventListener('touchcancel',afterTouch,{passive:true});
+  const wake=()=>{ if(!running){ running=true; lastY=NaN; requestAnimationFrame(tick); } };
+  window.addEventListener('scroll',wake,{passive:true});
+  window.addEventListener('touchstart',()=>{ touching=true; wake(); },{passive:true});
+  const lift=()=>{ touching=false; last=''; wake(); };
+  window.addEventListener('touchend',lift,{passive:true});
+  window.addEventListener('touchcancel',lift,{passive:true});
   window.addEventListener('scrollend',()=>{ last=''; sync(); });
-  sync();
+  window.addEventListener('pageshow',()=>{ measure(); last=''; sync(); });
+  window.addEventListener('resize',()=>{ measure(); last=''; sync(); });
+  if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{ measure(); last=''; sync(); });
+  measure(); sync();
 }
 
 /* Drag a bottom sheet down to dismiss it (phones only — on desktop the sheet is a centred
