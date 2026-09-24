@@ -649,6 +649,19 @@
   .pager select,.fld select{background-color:color-mix(in srgb,var(--ink) 6%,var(--surface-1))}
   select option,select optgroup{background-color:var(--surface-1);color:var(--ink)}
   .keyrow{font-size:11.5px;gap:12px}
+  .keyrow.nw .cashonly,.keyrow:not(.nw) .nwonly{display:none}
+  .actionbar{flex-wrap:nowrap}
+  .chartmode{margin:0;flex:none}
+  .chartmode .signbtn{flex:none;padding:5px 11px;font-size:13px}
+  .viewrow{flex-wrap:nowrap}
+  @media (max-width:640px){
+    /* One row on a phone: year picker on the left, Cash | Net worth on the right. */
+    .actionbar{gap:6px}
+    .viewrow{gap:5px}
+    .viewrow select{min-width:0;width:92px;padding:0 6px}
+    .viewrow button{min-width:30px;padding:0 6px}
+    .chartmode .signbtn{padding:5px 8px;font-size:12.5px}
+  }
 
   .secsum{background:var(--surface-1);border:1px solid var(--ring);border-radius:18px;
           padding:14px 16px;font-size:15px;font-weight:600;box-shadow:var(--shadow)}
@@ -818,6 +831,12 @@
         <select id="viewsel" aria-label="Timeline window"></select>
         <button type="button" id="vwnext" aria-label="Next window">&rsaquo;</button>
       </div>
+      <!-- What the chart plots. Net worth is what "Keep it or sell it?" compares, so opening
+           that panel switches here, and closing it switches back. -->
+      <div class="signrow chartmode" role="group" aria-label="Chart shows">
+        <button type="button" class="signbtn on" id="cmcash" aria-pressed="true">Cash</button>
+        <button type="button" class="signbtn" id="cmnw" aria-pressed="false">Net worth</button>
+      </div>
     </div>
 
     <div class="tlouter" id="tlouter">
@@ -827,13 +846,14 @@
     </div>
     <div class="tlbar" id="tlbar" hidden><span class="tlthumb" id="tlthumb"></span></div>
     <div class="tip" id="ttip"></div>
-    <div class="keyrow">
-      <span><i style="color:var(--goodtext)">&#9650;</i> <span id="markin">in &ge;$800</span></span>
-      <span><i style="color:var(--crit)">&#9660;</i> <span id="markout">out &ge;$800</span></span>
-      <span><span class="sw" style="background:var(--crit);opacity:.15;border-radius:2px"></span>below $0</span>
+    <div class="keyrow" id="keyrow">
+      <span class="nwonly"><span class="sw" style="background:var(--s1);height:3px;border-radius:0"></span>keep &amp; rent</span>
+      <span class="cashonly"><i style="color:var(--goodtext)">&#9650;</i> <span id="markin">in &ge;$800</span></span>
+      <span class="cashonly"><i style="color:var(--crit)">&#9660;</i> <span id="markout">out &ge;$800</span></span>
+      <span class="cashonly"><span class="sw" style="background:var(--crit);opacity:.15;border-radius:2px"></span>below $0</span>
       <span id="keysale"><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale</span>
       <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
-      <span><span class="sw" style="background:var(--s7);height:3px;border-radius:0"></span>buying power</span>
+      <span class="cashonly"><span class="sw" style="background:var(--s7);height:3px;border-radius:0"></span>buying power</span>
       <span id="keyoppwrap" hidden><span class="sw" style="background:var(--s8);height:3px;border-radius:0"></span><span id="keyopp">sell at lease end</span></span>
     </div>
     </section>
@@ -1360,7 +1380,12 @@ const monthly=(day,fromYM,toYM)=>monthDays(day,fromYM,toYM).map(bumpWk);
 // Price and timing are not independent — the price IS the date. Used unless overridden.
 const priceOn = d => +(MID_VALUE_TODAY*Math.pow(1+MID_APPREC, nDays(MID_VALUE_DATE,d)/365.25)).toFixed(2);
 
-function mortgageSchedule(){
+/* Memoised on what they depend on. The net-worth chart samples netWorth ~3,000 times at a
+   30-year horizon, and each call rebuilt these (three schedules and an escrow walk) from
+   scratch — 5.5 s. Callers only read the results; nothing may mutate them. */
+const memoOn=(key,fn)=>{ let k, v; return ()=>{ const kk=key(); if(kk!==k){ k=kk; v=fn(); } return v; }; };
+const mortgageSchedule = memoOn(()=>T1, buildMortgageSchedule);
+function buildMortgageSchedule(){
   // Must run to T1. payoffOn() walks these rows, so a short schedule does not merely drop
   // payments — it stops amortising and then piles per-diem interest on a stale balance.
   // It must also STOP once the loan retires, or a long horizon keeps billing a paid-off loan.
@@ -1461,14 +1486,22 @@ const nhEscrowPlan = () => escrowPlan({
    draft. Deposits go in, insurance leaves each May and the tax bill each January, and every
    June the servicer re-analyses: new monthly = next 12 months of disbursements / 12, plus any
    shortage against a 2-month cushion, spread over the following 12 payments. */
-const midEscrowPlan = () => escrowPlan({
+/* The last escrow note on or before a date, by binary search over a cached sorted list —
+   netWorth used to rebuild Object.entries of every note on each call. */
+const midEscrowSorted = memoOn(()=>T1+'|'+MID_APPREC, ()=>Object.entries(midEscrowPlan().notes).sort((a,b)=>a[0]<b[0]?-1:1));
+function midEscrowSeen(asOf){
+  const a=midEscrowSorted(); let lo=0, hi=a.length-1, at=-1;
+  while(lo<=hi){ const mid=(lo+hi)>>1; if(a[mid][0]<=asOf){ at=mid; lo=mid+1; } else hi=mid-1; }
+  return at<0? null : a[at][1];
+}
+const midEscrowPlan = memoOn(()=>T1+'|'+MID_APPREC, () => escrowPlan({
   dates:mortgageSchedule().map(r=>r.draft), start:MID_ESC_START, pi:MTG_PI,
   baseStart:+((MID_INS+MID_LAND_TAX)/12).toFixed(2),
   pmi:MID_PMI, pmiUntil:MID_PMI_OFF,
   ins:MID_INS, insMonth:5,                // renews with the mid-May closing anniversary
   taxForYear:midTaxForYear, taxMonth:1, taxYearOffset:-1,  // Texas bills Jan 31 for the PRIOR year
   analysisMonth:ESC_ANALYSIS_M, firstAnalysis:'2027-01-01',
-  cushion:ESC_CUSHION_MO, spread:12 });
+  cushion:ESC_CUSHION_MO, spread:12 }));
 
 /* Rent runs on the 1st of the month: the first 1st on or after the start date, then one a
    month for the term. `end` is the day the tenancy is up — the earliest a sale can close. */
@@ -1479,7 +1512,16 @@ const monthLen = d => new Date(+d.slice(0,4), +d.slice(5,7), 0).getDate();
    ⚠️ Without the proration a 12-month lease starting the 2nd billed 12 payments from the NEXT
    1st — giving the tenant the move-in month free AND running the lease a month past its real
    end. `end` is now measured from the start date, not from the first full payment. */
+// Memoised on the three fields it reads; netWorth asks for the same tenancy thousands of times.
+const RENT_SCHED_MEMO=new Map();
 function rentSchedule(rent){
+  if(!rent) return {dates:[], end:null, pro:null};
+  const key=rent.start+'|'+(rent.end||'')+'|'+rent.months;
+  let v=RENT_SCHED_MEMO.get(key);
+  if(!v){ if(RENT_SCHED_MEMO.size>64) RENT_SCHED_MEMO.clear(); v=buildRentSchedule(rent); RENT_SCHED_MEMO.set(key,v); }
+  return v;
+}
+function buildRentSchedule(rent){
   if(!rent) return {dates:[], end:null, pro:null};
   /* ⚠️ Driven by the contract's two DATES, not a month count. The signed lease runs
      Sept 25 2026 → Sept 30 2027: a $660 stub for Sept 25–30, then a full $3,300 on the 1st of
@@ -2162,13 +2204,12 @@ function netWorth(res, sale, rent, home, asOf){
     mid = val*(1-SELLER_COST_PCT) - payoffOn(asOf);
     // The escrow has been saving toward the bill that is due next January, so only the gap is
     // a liability. Balance as of this date, not at the end of the model.
-    const notes=midEscrowPlan().notes;
-    const seen=Object.entries(notes).filter(([d])=>d<=asOf);
+    const seen=midEscrowSeen(asOf);
     // Once the loan retires the escrow closes and its balance is refunded into cash. Still
     // netting it against the tax bill here would count that money twice.
     const fin=mortgageSchedule().slice(-1)[0];
     const closed = fin && fin.balAfter<=0 && fin.draft<=asOf;
-    const escBal = closed? 0 : (seen.length? seen[seen.length-1][1].bal : MID_ESC_START);
+    const escBal = closed? 0 : (seen? seen.bal : MID_ESC_START);
     midTaxOwed = Math.max(0, midTaxForYear(YR(asOf)) - escBal);
     // Valuing it net of selling costs implies a sale, so charge the tax that sale would
     // trigger — using only the depreciation actually taken by this date.
@@ -2198,6 +2239,7 @@ function netWorth(res, sale, rent, home, asOf){
 const NS='http://www.w3.org/2000/svg';
 let LAST_DATA=[];
 let VIEW='2026';         // 'span' = the whole horizon, otherwise a 'YYYY' string
+let CHART_MODE='cash';   // 'cash' | 'nw' — what the chart plots (see setChartMode)
 let TPAGE=null;          // table page — a 'YYYY-MM' key
 let TPAGE_PINNED=false;  // true once the reader picks a month themselves
 let PMONTHS=[];          // month keys currently pageable, in order
@@ -2647,9 +2689,12 @@ function render(){
      higher — nearly all of that gap being the rate rather than the house. With one shared spec
      that class of bug is now impossible to reintroduce. */
   const oppShown= document.getElementById('oppwrap').open;
-  if(oppShown && !OPPC.full) OPPC.full = oppWalk(oppSell, RATES, true);
-  const oppFull = oppShown? OPPC.full : null;
-  const oppVD   = !oppFull? [] : VIEW==='span'? oppFull : oppFull.filter(d=>d.d.slice(0,4)===VIEW);
+  /* ⚠️ ONE metric on the chart at a time. The comparison line used to be the sell scenario's
+     CASH laid over our cash, while the panel beside it compared NET WORTH — two different
+     numbers side by side. The comparison now lives only in Net worth mode, where both lines are
+     net worth from the very scenarios the table uses, so their end points ARE the table. */
+  const NWM = CHART_MODE==='nw';
+  const oppVD = [];
   const oppEnd  = OPPC.sellEnd;
   const keepEnd = OPPC.keepEnd;
 
@@ -2679,11 +2724,36 @@ function render(){
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
   svg.setAttribute('width',W); svg.setAttribute('height',H);
   const iw=W-m.l-m.r, ih=H-m.t-m.b, n=VD.length;
+  /* Net worth by day for both scenarios, from the same engine and scenarios as the panel.
+     netWorth is costly (it walks both loans), so it is sampled weekly — plus the last day, so the
+     end points match the table exactly — interpolated between, and cached with the comparison. */
+  let nwK=null, nwS=null;
+  if(NWM){
+    if(!OPPC.nw){
+      const kc=oppWalk(oppKeep,RATES,true), sc=OPPC.full||(OPPC.full=oppWalk(oppSell,RATES,true));
+      const at=(S,cash,j)=>{ const x=S.built;
+        return netWorth({series:[cash[j]], buyDate:x.buyDate, carPayoffDate:x.carPayoffDate,
+                         carPayoff:x.carPayoff, suspendedByYear:x.suspendedByYear},
+                        S.sale, S.rent, home, cash[j].d).nw; };
+      const N=kc.length, idx=[]; for(let j=0;j<N;j+=7) idx.push(j); if(idx[idx.length-1]!==N-1) idx.push(N-1);
+      const line=(S,cash)=>{ const out=new Array(N); let pj=idx[0], pv=at(S,cash,pj); out[pj]=pv;
+        for(let k=1;k<idx.length;k++){ const j=idx[k], v=at(S,cash,j);
+          for(let t=pj+1;t<=j;t++) out[t]=pv+(v-pv)*(t-pj)/(j-pj); pj=j; pv=v; }
+        return out; };
+      OPPC.nw={keep:line(oppKeep,kc), sell:line(oppSell,sc), start:kc[0].d};
+    }
+    const off=nDays(OPPC.nw.start, VD[0].d);
+    nwK=OPPC.nw.keep.slice(off,off+n); nwS=OPPC.nw.sell.slice(off,off+n);
+  }
+  const VAL = NWM? (i=>nwK[i]) : (i=>VD[i].b);
   // The comparison line has to be inside the scale or it draws off the top of the chart.
   let oLo=Infinity, oHi=-Infinity;
   for(const d of oppVD){ if(d.b<oLo) oLo=d.b; if(d.b>oHi) oHi=d.b; }
-  const bmin=Math.min(0, isFinite(oLo)?oLo:Infinity, ...VD.map(d=>Math.min(d.b, realAt(d.b,d.d))));
-  const bmax=Math.max(isFinite(oHi)?oHi:-Infinity, ...VD.map(d=>d.b));
+  let bmin, bmax;
+  if(NWM){ bmin=0; bmax=-Infinity;
+    for(let i=0;i<n;i++){ bmin=Math.min(bmin,nwK[i],nwS[i]); bmax=Math.max(bmax,nwK[i],nwS[i]); } }
+  else { bmin=Math.min(0, isFinite(oLo)?oLo:Infinity, ...VD.map(d=>Math.min(d.b, realAt(d.b,d.d))));
+         bmax=Math.max(isFinite(oHi)?oHi:-Infinity, ...VD.map(d=>d.b)); }
   // Snap the scale to the STEP, not a fixed 10k, or the labels read $990k / $1,990k.
   const niceStep=v=>{const m=Math.pow(10,Math.floor(Math.log10(Math.max(1,v)))), r=v/m;
                      return (r<=1?1:r<=2?2:r<=2.5?2.5:r<=5?5:10)*m;};
@@ -2762,10 +2832,10 @@ function render(){
      keeping X(i) indexed on the full array so hit-testing and the readout stay exact. */
   const pstep = Math.max(1, Math.ceil(n/1500));
   const keep = i => i%pstep===0 || i===n-1;
-  // Buying power first, so the nominal line paints over it where they cross.
+  // Buying power first, so the nominal line paints over it where they cross. Cash mode only.
   const RY = i => Y(realAt(VD[i].b, VD[i].d));
   let rpath=''; let rprev=-1;
-  VD.forEach((d,i)=>{ if(!keep(i)) return; const x=X(i),y=RY(i);
+  if(!NWM) VD.forEach((d,i)=>{ if(!keep(i)) return; const x=X(i),y=RY(i);
     rpath+= rprev<0?`M${x} ${y}`:`L${x} ${RY(rprev)} L${x} ${y}`; rprev=i;});
   // The gap between the two IS the inflation bite, so shade it rather than leaving it implied.
   // Forward along the nominal, then back along the real with the steps mirrored, then close.
@@ -2778,12 +2848,10 @@ function render(){
   band+='Z';
   // Sell-now-and-invest, drawn first so both real lines paint over it. Same index space as VD,
   // so the two are directly comparable day for day.
-  if(oppVD.length===n){
-    let opath=''; let oprev=-1;
-    oppVD.forEach((d,i)=>{ if(!keep(i)) return; const x=X(i),y=Y(d.b);
-      opath+= oprev<0?`M${x} ${y}`:`L${x} ${Y(oppVD[oprev].b)} L${x} ${y}`; oprev=i;});
-    add('path',{d:opath,fill:'none',stroke:'var(--s8)','stroke-width':1.8,
-                'stroke-linejoin':'round',opacity:.9});
+  if(NWM){
+    let opath='';
+    kept.forEach((i,k)=>{ opath+=(k? 'L':'M')+X(i)+' '+Y(nwS[i]); });
+    add('path',{d:opath,fill:'none',stroke:'var(--s8)','stroke-width':2,'stroke-linejoin':'round'});
   }
   // A soft wash under the balance line, fading down to the floor of the scale.
   {
@@ -2794,15 +2862,19 @@ function render(){
       st.setAttribute('offset',o); st.style.stopColor='var(--s1)'; st.style.stopOpacity=a; lg.appendChild(st); });
     defs.appendChild(lg);
     let area='';
-    kept.forEach((i,k)=>{ area+= k===0? `M${X(i)} ${Y(VD[i].b)}` : `L${X(i)} ${Y(VD[kept[k-1]].b)} L${X(i)} ${Y(VD[i].b)}`; });
+    // Cash moves in steps; net worth is a sampled curve, so it is drawn straight.
+    kept.forEach((i,k)=>{ area+= k===0? `M${X(i)} ${Y(VAL(i))}`
+      : NWM? `L${X(i)} ${Y(VAL(i))}` : `L${X(i)} ${Y(VAL(kept[k-1]))} L${X(i)} ${Y(VAL(i))}`; });
     area+=`L${X(kept[kept.length-1])} ${Y(y0)} L${X(kept[0])} ${Y(y0)} Z`;
     add('path',{d:area,fill:'url(#balfill)',stroke:'none'});
   }
-  add('path',{d:band,fill:'var(--s7)',stroke:'none',opacity:.08});
-  add('path',{d:rpath,fill:'none',stroke:'var(--s7)','stroke-width':1.6,'stroke-linejoin':'round'});
+  if(!NWM){
+    add('path',{d:band,fill:'var(--s7)',stroke:'none',opacity:.08});
+    add('path',{d:rpath,fill:'none',stroke:'var(--s7)','stroke-width':1.6,'stroke-linejoin':'round'});
+  }
   let path=''; let pprev=-1;
-  VD.forEach((d,i)=>{ if(!keep(i)) return; const x=X(i),y=Y(d.b);
-    path+= pprev<0?`M${x} ${y}`:`L${x} ${Y(VD[pprev].b)} L${x} ${y}`; pprev=i;});
+  VD.forEach((d,i)=>{ if(!keep(i)) return; const x=X(i),y=Y(VAL(i));
+    path+= pprev<0?`M${x} ${y}` : NWM? `L${x} ${y}` : `L${x} ${Y(VAL(pprev))} L${x} ${y}`; pprev=i;});
   add('path',{d:path,fill:'none',stroke:'var(--s1)','stroke-width':2,'stroke-linejoin':'round'});
   /* At $800 a 53-month window draws hundreds of triangles and the line disappears behind them.
      Raise the bar with the span so a wide view marks only the genuinely large moves — the
@@ -2817,7 +2889,7 @@ function render(){
   mags.sort((a,b)=>b-a);
   const CAP = mobile? 10 : 18;
   const markMin = mags.length>CAP ? Math.max(markFloor, mags[CAP]) : markFloor;
-  VD.forEach((d,i)=>{
+  if(!NWM) VD.forEach((d,i)=>{
     d.ev.forEach(e=>{
       if(e.a>markMin) add('text',{x:X(i),y:Y(d.b)-9,'text-anchor':'middle',fill:'var(--goodtext)','font-size':10}).textContent='▲';
       else if(e.a<-markMin) add('text',{x:X(i),y:Y(d.b)+16,'text-anchor':'middle',fill:'var(--crit)','font-size':10}).textContent='▼';
@@ -2836,11 +2908,21 @@ function render(){
     const rect=svg.getBoundingClientRect();
     const px=(cx2-rect.left)*(W/rect.width);
     let i=Math.round((px-m.l)/iw*(n-1)); i=Math.max(0,Math.min(n-1,i));
-    const d=VD[i], x=X(i), y=Y(d.b);
+    const d=VD[i], x=X(i), y=Y(VAL(i));
     cross.setAttribute('x1',x);cross.setAttribute('x2',x);cross.setAttribute('visibility','visible');
     dot.setAttribute('r',isTouch?6:4.5);
     dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.setAttribute('visibility','visible');
     const ds=dd(d.d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    if(NWM){
+      const g=nwK[i]-nwS[i];
+      tip.innerHTML=`<div class="d">${ds} · net worth</div><div class="b">${fmt(nwK[i])}</div>`
+        +`<div style="color:var(--ink-2);font-size:11px;margin:-1px 0 4px">keep &amp; rent</div>`
+        +`<ul><li><span style="color:var(--s8)">Sell ${esc(nice(oppExitDate(rent)))}</span><span>${fmt(nwS[i])}</span></li>`
+        +`<li><span>Keeping is ${g>=0?'ahead':'behind'} by</span><span><b>${fmt(Math.abs(g))}</b></span></li></ul>`
+        +`<div style="color:var(--muted);font-size:10.5px;margin-top:5px">cash + home equity − car loan − taxes owed</div>`;
+      tip.style.display='block';
+      return placeTip(cx2,cy2,isTouch);
+    }
     let h=`<div class="d">${ds}</div><div class="b">${fmt(d.b)}</div>`
          +`<div style="color:var(--s7);font-size:11px;margin:-1px 0 3px">`
          +`${fmt(realAt(d.b,d.d))} in ${YR(T0)} dollars</div>`;
@@ -2861,6 +2943,9 @@ function render(){
       if(d.rec.note) h+=`<div style="color:var(--muted);margin-top:3px">“${esc(d.rec.note)}”</div>`;
     }
     tip.innerHTML=h; tip.style.display='block';
+    placeTip(cx2,cy2,isTouch);
+  }
+  function placeTip(cx2,cy2,isTouch){
     if(isTouch){
       liveTouch={x:cx2,y:cy2};
       // Dock to the edge of the screen furthest from the finger, so it is never covered.
@@ -3049,7 +3134,8 @@ function render(){
     OPPBE.verdict==='sell' ? 'selling wins outright'
     : OPPBE.rate===null ? `keeping wins below ${(OPP_MAX*100).toFixed(0)}%`
     : `break-even ${(OPPBE.rate*100).toFixed(1)}%`;
-  document.getElementById('keyoppwrap').hidden = !oppShown;
+  document.getElementById('keyoppwrap').hidden = !NWM;
+  document.getElementById('keyrow').classList.toggle('nw', NWM);
   document.getElementById('keyopp').textContent = `sell ${nice(oppExitDate(rent))}`;
   /* The panel body depends on nothing that VIEW changes, and its exits table alone costs six
      buildEvents. Fill it once per real input change, not once per view switch. */
@@ -3435,7 +3521,17 @@ $pr.addEventListener('input',()=>{showPrice(+$pr.value);markDirty();});
 const onDateEdit=(id,fn)=>{ const el=document.getElementById(id);
   el.addEventListener('input',fn); el.addEventListener('change',fn); };
 onDateEdit('saledate',()=>{SALE_MODE='pick';markDirty();previewDates(true);});
-document.getElementById('oppwrap').addEventListener('toggle',render);
+function setChartMode(m){
+  CHART_MODE=m;
+  [['cmcash','cash'],['cmnw','nw']].forEach(([id,v])=>{ const b=document.getElementById(id);
+    b.classList.toggle('on',m===v); b.setAttribute('aria-pressed',String(m===v)); });
+  render();
+}
+document.getElementById('cmcash').addEventListener('click',()=>setChartMode('cash'));
+document.getElementById('cmnw').addEventListener('click',()=>setChartMode('nw'));
+// The panel compares net worth, so the chart follows it open and closed.
+document.getElementById('oppwrap').addEventListener('toggle',()=>
+  setChartMode(document.getElementById('oppwrap').open? 'nw' : 'cash'));
 /* One listener per field, in the right order: re-arm tracking FIRST, then preview, or the
    preview runs against the stale flag and has to be corrected by a second pass. */
 // Changing the lease says when the tenant leaves, so the sale date starts tracking it again.
