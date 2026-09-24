@@ -111,6 +111,14 @@
   #opptable tr.now td{background:color-mix(in srgb,var(--s1) 7%,transparent)}
   #oppexits tr.cliff td{background:color-mix(in srgb,var(--crit) 8%,transparent)}
   #oppexits tr.berow td{background:color-mix(in srgb,var(--good) 8%,transparent)}
+  /* Exits are choices: the picked one is the sell side of every comparison above. */
+  #oppexits tbody tr{cursor:pointer}
+  #oppexits tbody tr:hover td{background:color-mix(in srgb,var(--s1) 5%,transparent)}
+  #oppexits tbody tr.sel td{background:color-mix(in srgb,var(--s1) 10%,transparent)}
+  #oppexits tbody tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--s1);font-weight:600}
+  #oppexits tbody tr:focus-visible{outline:2px solid var(--s1);outline-offset:-2px}
+  .selmark{color:var(--s1);margin-right:6px;font-weight:700}
+  .exithint{font-size:12px;color:var(--muted);margin:-4px 0 8px}
   #oppexits{min-width:600px}
   .oppwin{color:var(--goodtext);font-weight:600}
   .opplose{color:var(--crit);font-weight:600}
@@ -900,6 +908,8 @@
           <th style="text-align:right">Difference</th>
           <th style="text-align:right">Break-even</th></tr></thead><tbody></tbody></table></div>
         <p class="oppnote" id="oppexitintro"></p>
+        <p class="oppnote exithint">Tap an exit to compare it above — the table, the break-even and the
+          net worth chart all follow. Tap it again to go back to the default.</p>
         <div class="opptw"><table id="oppexits"><thead><tr><th>Exit</th><th>Date</th>
           <th style="text-align:right" title="Projected value on that date, at your appreciation rate">Sale price</th>
           <th style="text-align:right">Seller costs</th>
@@ -2120,12 +2130,16 @@ const sellRent = rent => { if(!rent) return rent; const x=oppExitDate(rent);
    same tenancy up to Sept 30 2027 and diverge only after it, which is the decision actually in
    front of the reader: re-let, or get out when the lease is up. */
 const OPP_EXIT='2027-10-01';          // the day after the signed lease is up
+/* The exit the reader picked in the exits table, or null for the default (OPP_EXIT). */
+let OPP_SEL=null;
 function oppExitDate(rent){
-  /* Fixed, not derived from the lease. The question is "what if I got out once the signed
+  /* Not derived from the lease. The default question is "what if I got out once the signed
      term is served", and that date must not move when the tenancy is extended — extending it
-     is the very thing being compared against. */
-  if(lt(T1, OPP_EXIT)) return T1;
-  return OPP_EXIT>SALE_FLOOR? OPP_EXIT : SALE_FLOOR;
+     is the very thing being compared against. The reader can pick another exit; it is still a
+     fixed date, clamped into the window. */
+  const want = OPP_SEL || OPP_EXIT;
+  if(lt(T1, want)) return T1;
+  return want>SALE_FLOOR? want : SALE_FLOOR;
 }
 
 /* keep-minus-sell is monotonically DECREASING in the rate: the selling side is holding more
@@ -2554,7 +2568,8 @@ function fillOppPanel(rent, home, rates){
   }).join('');
   document.getElementById('oppintro').innerHTML =
     `<b>Keep</b> re-lets to the end of the window. <b>Sell</b> sells `
-    +`${esc(nice(oppExitDate(rent)))}, when the lease is up, and invests. Both earn `
+    +`${esc(nice(oppExitDate(rent)))}${lt(oppExitDate(rent), LEASE.end)
+        ? `, breaking the lease early (${fmt0(LEASE.rent*BREAK_MONTHS)})` : ', once the lease is up'}, and invests. Both earn `
     +`<b>${(roi*100).toFixed(2)}%</b> on cash above the floor. Break-even is the return where they tie.`;
 
   // The exits. Every figure comes from the engine, so the relo window and the loss credit are
@@ -2611,7 +2626,11 @@ function fillOppPanel(rent, home, rates){
     const {b,brk,hand}=x;
     const cliff = prev!==null && hand < prev-5000;
     prev=hand;
-    return `<tr class="${cliff?'cliff':''}${x.be?' berow':''}"><td>${esc(x.l)}`
+    const isSel = x.d===(OPP_SEL||OPP_EXIT), isDef = x.d===OPP_EXIT;
+    return `<tr class="${cliff?'cliff':''}${x.be?' berow':''}${isSel?' sel':''}" data-d="${x.d}" tabindex="0"`
+      +` aria-selected="${isSel}" title="${isSel? 'Being compared above' : 'Compare selling on this date'}"><td>`
+      +(isSel? '<span class="selmark" aria-hidden="true">✓</span>' : '')+esc(x.l)
+      +(isDef? '<span style="color:var(--muted)"> · default</span>' : '')
       +(brk? `<span style="color:var(--s4)"> · breaks the lease, ${fmt0(-brk)}</span>`:'')
       +(x.be && x.d>T1? `<span style="color:var(--muted)"> · past this horizon</span>`:'')
       +`</td><td>${esc(nice(x.d))}</td>`
@@ -2710,7 +2729,7 @@ function render(){
      rebuild two scenarios and re-run a 24-step bisection to produce a number that cannot have
      changed. */
   const oppKeyStr = JSON.stringify([rent,home,RATES,MID_VALUE_TODAY,MID_APPREC,
-                                    DOWN_PCT,INFL_PCT,T1,sale,price,RECON]);
+                                    DOWN_PCT,INFL_PCT,T1,sale,price,RECON,OPP_SEL]);
   if(OPPC.key!==oppKeyStr){
     const keepSc=oppScenario(null, rent? keepRent(rent,T1) : null, home);
     const sellSc=oppScenario(oppExitDate(rent), sellRent(rent), home);
@@ -3558,6 +3577,19 @@ $pr.addEventListener('input',()=>{showPrice(+$pr.value);markDirty();});
 const onDateEdit=(id,fn)=>{ const el=document.getElementById(id);
   el.addEventListener('input',fn); el.addEventListener('change',fn); };
 onDateEdit('saledate',()=>{SALE_MODE='pick';markDirty();previewDates(true);});
+/* Pick an exit: it becomes the sell side everywhere. Picking the chosen one again (or the
+   default row) returns to the default. */
+function pickExit(d){
+  OPP_SEL = (!d || d===OPP_EXIT || d===OPP_SEL)? null : d;
+  OPPC={key:null};                    // the comparison, its chart lines and the panel all rebuild
+  render();
+}
+{
+  const tb=document.getElementById('oppexits').querySelector('tbody');
+  tb.addEventListener('click',e=>{ const tr=e.target.closest('tr[data-d]'); if(tr) pickExit(tr.dataset.d); });
+  tb.addEventListener('keydown',e=>{ if(e.key!=='Enter' && e.key!==' ') return;
+    const tr=e.target.closest('tr[data-d]'); if(tr){ e.preventDefault(); pickExit(tr.dataset.d); } });
+}
 function setChartMode(m){
   CHART_MODE=m;
   [['cmcash','cash'],['cmnw','nw']].forEach(([id,v])=>{ const b=document.getElementById(id);
