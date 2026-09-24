@@ -1269,6 +1269,8 @@ function buildEvents(sale, price, rent, home){
    ['2027-09-22',270],['2027-10-25',200],['2027-11-22',250],['2027-12-22',300]]
     .concat(seasonal(NH_UTIL_DAYS,NH_UTIL_AMTS,2028,YR(T1)))
     .forEach(([d,a])=>{ if(ownedFrom && d>=ownedFrom) E(d,-a,'New-home utilities (est.)'); });
+  // New-home pest control: first service Nov 22 2026, then three more at 3-month intervals.
+  [0,3,6,9].forEach(n=>E(addM('2026-11-22',n),-119.00,'New-home pest control'));
 
   // ---- rules 3 & 4: the March 2027 bonus and the IRS payment ----
   yearsAhead().forEach(y=>{
