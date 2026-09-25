@@ -1667,9 +1667,11 @@ function buildEvents(sale, price, rent, home){
   monthDays(14,'2027-01',TM()).forEach(d=>E(d,-21.65*inflAt(d),'Claude subscription (Apple.com)'));
   monthDays(15,'2027-01',TM()).forEach(d=>E(d,-0.99*inflAt(d),'iCloud+ (Apple.com)'));
   monthly(18,'2027-01',TM()).forEach(d=>E(d,-20.56*inflAt(d),'Spotify'));
-  E('2026-09-25',-940.00,'Car insurance (6-mo, switched)');
-  yearsAhead().forEach(y=>[bumpWk(y+'-03-25'),bumpWk(y+'-09-25')]
-    .forEach(d=>E(d,-940.00*inflAt(d),'Car insurance (6-mo renewal)')));
+  // Car insurance: $841 per 6-month term, first paid Sep 24 2026, then every Mar 24 / Sep 24.
+  const CAR_INS=841.00;
+  E('2026-09-24',-CAR_INS,'Car insurance (6-mo)');
+  yearsAhead().forEach(y=>[bumpWk(y+'-03-24'),bumpWk(y+'-09-24')]
+    .forEach(d=>E(d,-CAR_INS*inflAt(d),'Car insurance (6-mo renewal)')));
   // OG&E + ONG + OKC water/trash, seasonal estimates (gas peak in winter, AC peak in summer).
   // Only charged for months you actually own the place.
   const NH_UTIL_DAYS=[25,22,22,26,24,22,26,23,22,25,22,22];
