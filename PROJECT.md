@@ -44,7 +44,7 @@ A volume at `/data` is mandatory or reconciliations vanish on redeploy. Health c
 | `/api/state` | GET | today, hour, unlockHour, range, saveEnabled, storage, all reconciles + edit log |
 | `/api/verify` | POST | `{passcode}` → 200 or 401; gates the PIN screen |
 | `/api/reconciles` | POST | new entry `{date, actual, note, passcode}`; once per date; not future; today only after the unlock hour |
-| `/api/reconciles` | PUT | correct an entry; the previous value is written to `reconcile_edits` first |
+| `/api/reconciles` | PUT | correct an entry; every later entry moves by the same delta (their variances are kept), all in one transaction, each logged to `reconcile_edits` |
 
 Lockout: 8 failed passcodes per IP per 15 min. The IP is the **last** `X-Forwarded-For`
 entry (the one Railway's edge appends — earlier entries are client-supplied). A malformed

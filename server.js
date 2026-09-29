@@ -54,7 +54,9 @@ try {
     logEdit: e => db.prepare(`INSERT INTO reconcile_edits
       (date,prev_actual,prev_note,new_actual,new_note,reason,edited_at) VALUES (?,?,?,?,?,?,?)`)
       .run(e.date, e.prev_actual, e.prev_note, e.new_actual, e.new_note, e.reason, e.edited_at),
-    edits: () => db.prepare('SELECT date, prev_actual, new_actual, reason, edited_at FROM reconcile_edits ORDER BY edited_at').all()
+    edits: () => db.prepare('SELECT date, prev_actual, new_actual, reason, edited_at FROM reconcile_edits ORDER BY edited_at').all(),
+    // All-or-nothing: a correction and the entries it shifts land together or not at all.
+    tx: fn => { db.exec('BEGIN'); try { fn(); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; } }
   };
 } catch (err) {
   const file = path.join(DATA_DIR, 'reconciles.json');
@@ -71,7 +73,8 @@ try {
     update: r => { const rows = read(); const i = rows.findIndex(x => x.date === r.date);
                    if (i >= 0) { rows[i].actual = r.actual; rows[i].note = r.note; write(rows); } },
     logEdit: e => { const rows = readE(); rows.push(e); fs.writeFileSync(efile, JSON.stringify(rows, null, 2)); },
-    edits: () => readE()
+    edits: () => readE(),
+    tx: fn => fn()
   };
   console.log('[store] node:sqlite unavailable (' + err.code + ') — using JSON file');
 }
@@ -200,11 +203,32 @@ const server = http.createServer((req, res) => {
       if (actual === prev.actual && note === prev.note)
         return json(res, 400, { error: 'That is the same figure already recorded.' });
 
-      const edit = { date, prev_actual: prev.actual, prev_note: prev.note || '',
-                     new_actual: actual, new_note: note, reason, edited_at: new Date().toISOString() };
-      try { store.logEdit(edit); store.update({ date, actual, note }); }
-      catch { return json(res, 500, { error: 'Could not save the correction.' }); }
-      return json(res, 200, { date, actual, note, corrected: true, prev_actual: prev.actual });
+      /* ⚠️ A correction CASCADES. Each entry is stored as the resulting balance, but what the
+         reader enters is that day's variance — that day's unplanned spending. Fixing an earlier
+         day must therefore move every later balance by the same amount, so their variances stay
+         as entered. Left alone, the next entry silently absorbed the difference (its variance
+         changed by -delta) and today's balance never moved. Every shifted entry is audited. */
+      const delta = Math.round((actual - prev.actual) * 100) / 100;
+      const later = delta ? store.all().filter(r => r.date > date) : [];
+      const at = new Date().toISOString();
+      const shifted = [];
+      try {
+        store.tx(() => {
+          store.logEdit({ date, prev_actual: prev.actual, prev_note: prev.note || '',
+                          new_actual: actual, new_note: note, reason, edited_at: at });
+          store.update({ date, actual, note });
+          for (const r of later) {
+            const moved = Math.round((r.actual + delta) * 100) / 100;
+            store.logEdit({ date: r.date, prev_actual: r.actual, prev_note: r.note || '',
+                            new_actual: moved, new_note: r.note || '',
+                            reason: `moved ${delta > 0 ? '+' : ''}${delta.toFixed(2)} with the ${date} correction`,
+                            edited_at: at });
+            store.update({ date: r.date, actual: moved, note: r.note || '' });
+            shifted.push({ date: r.date, actual: moved });
+          }
+        });
+      } catch { return json(res, 500, { error: 'Could not save the correction.' }); }
+      return json(res, 200, { date, actual, note, corrected: true, prev_actual: prev.actual, delta, shifted });
     });
     return;
   }

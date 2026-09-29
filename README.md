@@ -43,9 +43,11 @@ Railway sets `PORT` automatically — don't set it yourself.
 - **Today** can be reconciled only after **19:00 America/Chicago**.
 - **Past dates** with no entry stay open indefinitely — no time-of-day restriction.
 - **Future dates** can never be reconciled.
-- Each date can be reconciled **once**. A mistake is fixed with **Correct an entry**
-  (`PUT /api/reconciles`): the entry is updated and the previous value is kept in an audit
-  log (`reconcile_edits`). Entries cannot be deleted.
+- Each date can be reconciled **once**. A mistake is fixed with **Correct an entry** — tap
+  the entry in the "Recorded" list (`PUT /api/reconciles`). Every **later** entry moves by
+  the same amount, so the variances you entered on later days stay exactly as entered; the
+  correction and every entry it moves are written to the audit log (`reconcile_edits`) in one
+  transaction. Entries cannot be deleted.
 - A variance of **$0.00 is valid** — it records that actual matched projection.
 - Saving requires the passcode. Eight failed attempts from one IP triggers a 15-minute lockout.
 - There is no confirmation dialog: the sheet shows the projected balance, the variance and the

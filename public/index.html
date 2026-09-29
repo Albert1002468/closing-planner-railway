@@ -337,6 +337,11 @@
   .resultbox .r.big{border-top:1px solid var(--grid);margin-top:6px;padding-top:8px;font-size:15px;font-weight:650;color:var(--ink)}
   .reclist{margin-top:14px;font-size:12px;border-top:1px solid var(--grid);padding-top:10px}
   .reclist div{display:flex;justify-content:space-between;gap:12px;padding:2.5px 0;font-variant-numeric:tabular-nums}
+  .reclist .recpick{cursor:pointer;margin:0 -8px;padding:5px 8px;border-radius:8px}
+  .reclist .recpick:hover{background:var(--fill)}
+  .reclist .recpick.on{background:color-mix(in srgb,var(--s1) 12%,transparent);box-shadow:inset 3px 0 0 var(--s1)}
+  .reclist .recpick:focus-visible{outline:2px solid var(--s1);outline-offset:-2px}
+  .reclist .recpick .trunc{cursor:pointer}
   .reclist .n{color:var(--muted)}
   tr.recrowT.vp td{color:var(--vpos)}     /* came in over projection */
   tr.recrowT.vn td{color:var(--vneg)}     /* came in short */
@@ -3351,7 +3356,7 @@ document.getElementById('todaybar').addEventListener('click',e=>{
   },{passive:true});
   ['pointerup','pointercancel','scroll'].forEach(ev=>document.addEventListener(ev,clear,{passive:true,capture:true}));
   document.addEventListener('click',e=>{
-    const t=e.target.closest('.trunc'); if(!t) return;
+    const t=e.target.closest('.trunc'); if(!t || t.closest('[data-pick]')) return;
     if(held){ held=false; return; }          // the hold already opened it
     t.classList.toggle('open');
   });
@@ -3859,8 +3864,9 @@ function fillForm(){
   $('modefix').disabled = reconciledDates().length===0;
   $('rechint').textContent=(SRV.online?'':'Offline — can’t save. ')+
     (isFix
-      ? 'Enter what the variance should have been. The old figure is logged.'
+      ? 'Enter what the variance should have been. Later entries move with it, so their variances stay as entered. Every change is logged.'
       : `Today opens at ${UNLOCK_HOUR%12||12} ${UNLOCK_HOUR<12?'am':'pm'}. Check the preview below — saving is immediate, and mistakes can be corrected.`);
+  if(isFix && fillForm.keepDate) $('recdate').value=fillForm.keepDate;
   if(isFix) prefillFromExisting();
   /* Newest first, a page at a time. Reconciling daily makes this list grow by one a day, and
      all of it at once pushed the form's own buttons a long scroll away. */
@@ -3874,11 +3880,13 @@ function fillForm(){
       +`<button type="button" data-p="1" aria-label="Older"${RECPAGE>=pages-1?' disabled':''}>&rsaquo;</button></div>`
     : '';
   $('reclist').innerHTML = keys.length
-    ? `<div class="n"><span>Recorded · newest first</span><span></span></div>`+keys.map(k=>{
+    ? `<div class="n"><span>Recorded · newest first · tap one to correct it</span><span></span></div>`+keys.map(k=>{
         const p=projectedFor(k), delta=p==null?null:+(RECON[k].actual-p).toFixed(2);
         const col = delta==null||delta===0? '' : ` style="color:var(${delta>0?'--vpos':'--vneg'})"`;
         const txt=`${dd(k).toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${fmt(RECON[k].actual)}${RECON[k].note?' · '+esc(RECON[k].note):''}`;
-        return `<div><span class="trunc" title="${txt}">${txt}</span><span${col}>${delta==null?'':fmt(delta)}</span></div>`;
+        const on = isFix && $('recdate').value===k;
+        return `<div class="recpick${on?' on':''}" data-pick="${k}" role="button" tabindex="0"`
+          +` title="Correct ${txt}"><span class="trunc">${txt}</span><span${col}>${delta==null?'':fmt(delta)}</span></div>`;
       }).join('')+pager
     : '<div class="n"><span>No reconciliations recorded yet.</span><span></span></div>';
   updatePreview();
@@ -3905,8 +3913,13 @@ function updatePreview(){
     `<div class="r"><span>Projected balance</span><span>${fmt(proj)}</span></div>`+
     `<div class="r"><span>Variance entered</span><span style="color:${col}">${v==null?'—':fmt(v)}</span></div>`+
     `<div class="r big"><span>New balance</span><span${nb<0?' style="color:var(--crit)"':''}>${fmt(nb)}</span></div>`+
-    (v!==null&&v!==0? `<div class="r" style="color:var(--muted)"><span>All later balances shift by ${fmt(v)}</span><span></span></div>`
-                    : (v===0? '<div class="r" style="color:var(--muted)"><span>No variance — recorded, hidden from the table</span><span></span></div>':''));
+    /* A correction moves later balances by the CHANGE, not by the whole variance. */
+    (RECMODE==='fix' && RECON[date] && v!==null
+      ? (()=>{ const shift=+(nb-RECON[date].actual).toFixed(2);
+          return `<div class="r" style="color:var(--muted)"><span>${shift
+            ? `This and every later balance move by ${fmt(shift)}` : 'No change to any balance'}</span><span></span></div>`; })()
+      : v!==null&&v!==0? `<div class="r" style="color:var(--muted)"><span>All later balances shift by ${fmt(v)}</span><span></span></div>`
+      : (v===0? '<div class="r" style="color:var(--muted)"><span>No variance — recorded, hidden from the table</span><span></span></div>':''));
 }
 
 /* modal open/close */
@@ -3929,9 +3942,23 @@ $('recbtn').addEventListener('click',openModal);
 sheetDrag($('recmodal'), closeModal);
 sheetDrag(document.getElementById('setmodal'), cancelSet);
 $('reclist').addEventListener('click',e=>{
-  const b=e.target.closest('button[data-p]'); if(!b||b.disabled) return;
-  RECPAGE+=+b.dataset.p; fillForm();
+  const b=e.target.closest('button[data-p]');
+  if(b){ if(!b.disabled){ RECPAGE+=+b.dataset.p; fillForm(); } return; }
+  const r=e.target.closest('[data-pick]'); if(r) pickRecord(r.dataset.pick);
 });
+$('reclist').addEventListener('keydown',e=>{
+  if(e.key!=='Enter' && e.key!==' ') return;
+  const r=e.target.closest('[data-pick]'); if(r){ e.preventDefault(); pickRecord(r.dataset.pick); }
+});
+/* Tap a recorded entry to correct it: switch to Correct, select that date, load its variance and
+   note, and bring the form into view — no guessing which date in the menu it was. */
+function pickRecord(date){
+  RECMODE='fix'; fillForm();
+  $('recdate').value=date; prefillFromExisting(); updatePreview();
+  fillForm.keepDate=date; fillForm(); fillForm.keepDate=null;   // re-mark the picked row
+  $('recsheet').scrollTo({top:0, behavior:'smooth'});
+  setTimeout(()=>$('recvar').focus({preventScroll:true}),250);
+}
 $('pincancel').addEventListener('click',closeModal);
 $('reccancel').addEventListener('click',closeModal);
 $('recmodal').addEventListener('mousedown',e=>{ if(e.target===$('recmodal')) closeModal(); });
@@ -4006,9 +4033,16 @@ $('recsave').addEventListener('click',async ()=>{
     const body=await r.json().catch(()=>({}));
     if(!r.ok){ msg.className='recmsg err'; msg.textContent=body.error||'Could not save.'; btn.disabled=false; btnLoading(btn,false); return; }
     RECON[date]={actual:body.actual,note:body.note};
+    // A correction moves every later entry by the same amount (server-side, audited), so their
+    // variances stay as entered. Mirror it here.
+    (body.shifted||[]).forEach(x=>{ if(RECON[x.date]) RECON[x.date].actual=x.actual; });
     $('recvar').value=''; $('recnote').value=''; $('recreason').value=''; setSign(-1);
     msg.className='recmsg ok';
-    msg.textContent = isFix? `Corrected — was ${fmt(body.prev_actual)}, now ${fmt(body.actual)}.` : 'Saved.';
+    const n=(body.shifted||[]).length;
+    msg.textContent = isFix
+      ? `Corrected — was ${fmt(body.prev_actual)}, now ${fmt(body.actual)}.`
+        + (n? ` ${n} later entr${n===1?'y':'ies'} moved ${body.delta>0?'+':''}${fmt(body.delta)} with it, keeping their variances.` : '')
+      : 'Saved.';
     render(); refreshTrigger();
     if(!isFix && eligibleDates().length===0){ setTimeout(closeModal,1600); } else fillForm();
   }catch(e){
