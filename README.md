@@ -53,6 +53,16 @@ Railway sets `PORT` automatically — don't set it yourself.
 - There is no confirmation dialog: the sheet shows the projected balance, the variance and the
   new balance live before you save.
 
+### Adjusting a transaction
+
+The same PIN-protected sheet has an **Adjust** mode for a known difference in one projected
+transaction — a paycheck that came in higher, a bill that was lower. Pick the day, tap the
+transaction, enter what actually happened (`PUT /api/adjustments`). The projection uses that
+amount from then on and the line is marked *adjusted*; **Use projection** removes it
+(`DELETE /api/adjustments`). A reconciled balance is a real bank figure, so it stays as
+recorded and its variance shrinks by what the adjustment now explains. Any day in the window
+works, including future ones (a bill you already know).
+
 ### What a reconcile does
 
 You enter the **variance** (actual − projected) for that day. The modal shows the projected

@@ -42,8 +42,19 @@ try {
     prev_actual REAL NOT NULL, prev_note TEXT NOT NULL DEFAULT '',
     new_actual REAL NOT NULL, new_note TEXT NOT NULL DEFAULT '',
     reason TEXT NOT NULL DEFAULT '', edited_at TEXT NOT NULL)`);
+  /* Adjustments: the ACTUAL amount of one projected transaction (a paycheck that came in higher,
+     a bill that was lower). Keyed by the page as `date|label`; one row per transaction. */
+  db.exec(`CREATE TABLE IF NOT EXISTS adjustments (
+    key TEXT PRIMARY KEY, date TEXT NOT NULL, label TEXT NOT NULL, amount REAL NOT NULL,
+    projected REAL NOT NULL, note TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL)`);
   store = {
     kind: 'sqlite',
+    adjustments: () => db.prepare('SELECT key, date, label, amount, projected, note, updated_at FROM adjustments ORDER BY date').all(),
+    setAdjustment: a => db.prepare(`INSERT INTO adjustments (key,date,label,amount,projected,note,updated_at)
+      VALUES (?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET amount=excluded.amount,
+      projected=excluded.projected, note=excluded.note, label=excluded.label, updated_at=excluded.updated_at`)
+      .run(a.key, a.date, a.label, a.amount, a.projected, a.note, a.updated_at),
+    clearAdjustment: k => db.prepare('DELETE FROM adjustments WHERE key = ?').run(k),
     all: () => db.prepare('SELECT date, actual, note, created_at FROM reconciles ORDER BY date').all(),
     has: d => !!db.prepare('SELECT 1 AS x FROM reconciles WHERE date = ?').get(d),
     get: d => db.prepare('SELECT date, actual, note, created_at FROM reconciles WHERE date = ?').get(d),
@@ -64,8 +75,14 @@ try {
   const read = () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return []; } };
   const readE = () => { try { return JSON.parse(fs.readFileSync(efile, 'utf8')); } catch { return []; } };
   const write = rows => fs.writeFileSync(file, JSON.stringify(rows, null, 2));
+  const afile = path.join(DATA_DIR, 'adjustments.json');
+  const readA = () => { try { return JSON.parse(fs.readFileSync(afile, 'utf8')); } catch { return []; } };
+  const writeA = rows => fs.writeFileSync(afile, JSON.stringify(rows, null, 2));
   store = {
     kind: 'json',
+    adjustments: () => readA().sort((a, b) => a.date < b.date ? -1 : 1),
+    setAdjustment: a => { const rows = readA().filter(x => x.key !== a.key); rows.push(a); writeA(rows); },
+    clearAdjustment: k => writeA(readA().filter(x => x.key !== k)),
     all: () => read().slice().sort((a, b) => a.date < b.date ? -1 : 1),
     has: d => read().some(r => r.date === d),
     get: d => read().find(r => r.date === d) || null,
@@ -130,7 +147,7 @@ const server = http.createServer((req, res) => {
       today: now.date, hour: now.hour, unlockHour: UNLOCK_HOUR, timezone: TZ,
       rangeStart: RANGE_START, rangeEnd: RANGE_END,
       saveEnabled: !!PASSCODE, storage: store.kind,
-      reconciles: store.all(), edits: store.edits()
+      reconciles: store.all(), edits: store.edits(), adjustments: store.adjustments()
     });
   }
 
@@ -229,6 +246,38 @@ const server = http.createServer((req, res) => {
         });
       } catch { return json(res, 500, { error: 'Could not save the correction.' }); }
       return json(res, 200, { date, actual, note, corrected: true, prev_actual: prev.actual, delta, shifted });
+    });
+    return;
+  }
+
+  /* Adjust one projected transaction (PUT sets its actual amount, DELETE returns it to the
+     projection). Same passcode and lockout as reconciling. Any date in the planning window —
+     past (what actually cleared) or future (a bill you already know). */
+  if (url.pathname === '/api/adjustments' && (req.method === 'PUT' || req.method === 'DELETE')) {
+    let raw = '';
+    req.on('data', c => { raw += c; if (raw.length > 8192) req.destroy(); });
+    req.on('end', () => {
+      let b; try { b = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'Malformed request.' }); }
+      if (throttled(ip)) return json(res, 429, { error: 'Too many failed attempts. Try again in 15 minutes.' });
+      if (!PASSCODE) return json(res, 503, { error: 'Saving is disabled: RECONCILE_PASSCODE is not set on the server.' });
+      if (!passOk(b.passcode)) { noteFail(ip); return json(res, 401, { error: 'Incorrect passcode.' }); }
+      const key = String(b.key ?? '');
+      if (!/^\d{4}-\d{2}-\d{2}\|.{1,200}$/.test(key)) return json(res, 400, { error: 'Invalid transaction.' });
+      if (req.method === 'DELETE') {
+        try { store.clearAdjustment(key); } catch { return json(res, 500, { error: 'Could not remove the adjustment.' }); }
+        return json(res, 200, { key, cleared: true });
+      }
+      const date = key.slice(0, 10);
+      if (date < RANGE_START || date > RANGE_END) return json(res, 400, { error: 'Date is outside the planning window.' });
+      const amount = Number(b.amount), projected = Number(b.projected);
+      if (!Number.isFinite(amount) || !Number.isFinite(projected)) return json(res, 400, { error: 'Amount must be a number.' });
+      const label = String(b.label ?? '').trim().slice(0, 200);
+      const note = String(b.note ?? '').trim();
+      if (note.length > 500) return json(res, 400, { error: 'Note too long (500 characters max).' });
+      const row = { key, date, label, amount: Math.round(amount * 100) / 100,
+                    projected: Math.round(projected * 100) / 100, note, updated_at: new Date().toISOString() };
+      try { store.setAdjustment(row); } catch { return json(res, 500, { error: 'Could not save the adjustment.' }); }
+      return json(res, 200, row);
     });
     return;
   }
