@@ -44,7 +44,7 @@ A volume at `/data` is mandatory or reconciliations vanish on redeploy. Health c
 | `/api/state` | GET | today, hour, unlockHour, range, saveEnabled, storage, all reconciles + edit log |
 | `/api/verify` | POST | `{passcode}` → 200 or 401; gates the PIN screen |
 | `/api/reconciles` | POST | new entry `{date, actual, note, passcode}`; once per date; not future; today only after the unlock hour |
-| `/api/adjustments` | PUT / DELETE | set (or clear) the actual amount of one projected transaction, keyed `date\|label` |
+| `/api/adjustments` | PUT / DELETE | set (or clear) the actual amount — and optionally the day (`moveTo`) — of one projected transaction, keyed `date\|label` |
 | `/api/reconciles` | PUT | correct an entry; every later entry moves by the same delta (their variances are kept), all in one transaction, each logged to `reconcile_edits` |
 
 Lockout: 8 failed passcodes per IP per 15 min. The IP is the **last** `X-Forwarded-For`
@@ -106,8 +106,8 @@ the sale figures. Categories:
 
 **Adjustments** (`ADJ`, from `/api/state`): `E()` keys every line `date|label` — the label
 without its trailing `(…)` detail, which moves as the model recalculates (`adjBase`), plus
-`#n` for a repeat on the same day — and swaps in the stored actual amount, keeping the
-projection as `proj`. They apply in every scenario. Adjusting a loan payment changes the cash
+`#n` for a repeat on the same day — and swaps in the stored actual amount (and day, if it
+moved), keeping the projection as `proj` and the original day as `from`. They apply in every scenario. Adjusting a loan payment changes the cash
 only, not the amortisation.
 
 **`buildSeries`** walks each day: interest first (`accrue`: two tiers — cash rate up to the

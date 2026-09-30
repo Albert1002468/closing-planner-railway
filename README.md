@@ -43,10 +43,10 @@ Railway sets `PORT` automatically — don't set it yourself.
 - **Today** can be reconciled only after **19:00 America/Chicago**.
 - **Past dates** with no entry stay open indefinitely — no time-of-day restriction.
 - **Future dates** can never be reconciled.
-- Each date can be reconciled **once**. A mistake is fixed with **Correct an entry** — tap
-  the entry in the "Recorded" list (`PUT /api/reconciles`). Every **later** entry moves by
-  the same amount, so the variances you entered on later days stay exactly as entered; the
-  correction and every entry it moves are written to the audit log (`reconcile_edits`) in one
+- Each date can be reconciled **once**. To change a saved day, tap it in the "Recorded" list: it
+  opens in **Adjust** with that day's reconciled variance picked (`PUT /api/reconciles`). Every
+  **later** reconciled balance moves by the same amount, so their variances stay as entered;
+  the change and every entry it moves are written to the audit log (`reconcile_edits`) in one
   transaction. Entries cannot be deleted.
 - A variance of **$0.00 is valid** — it records that actual matched projection.
 - Saving requires the passcode. Eight failed attempts from one IP triggers a 15-minute lockout.
@@ -56,10 +56,12 @@ Railway sets `PORT` automatically — don't set it yourself.
 ### Adjusting a transaction
 
 The same PIN-protected sheet has an **Adjust** mode for a known difference in one projected
-transaction — a paycheck that came in higher, a bill that was lower. Pick the day, tap the
-transaction, enter what actually happened (`PUT /api/adjustments`). The projection uses that
-amount from then on and the line is marked *adjusted*; **Use projection** removes it
-(`DELETE /api/adjustments`). A reconciled balance is a real bank figure, so it stays as
+transaction — a paycheck that came in higher, a bill that was lower, or one that cleared on a
+different day. Pick the day, tap the transaction, enter what actually happened and, if it
+moved, the **date it happened** (`PUT /api/adjustments`). The projection uses that from then
+on and the line is marked *adjusted* or *moved*; **Use projection** removes it
+(`DELETE /api/adjustments`). A reconciled day also lists its **reconciled variance**, which
+can be changed here the same way. A reconciled balance is a real bank figure, so it stays as
 recorded and its variance shrinks by what the adjustment now explains. Any day in the window
 works, including future ones (a bill you already know).
 

@@ -47,13 +47,17 @@ try {
   db.exec(`CREATE TABLE IF NOT EXISTS adjustments (
     key TEXT PRIMARY KEY, date TEXT NOT NULL, label TEXT NOT NULL, amount REAL NOT NULL,
     projected REAL NOT NULL, note TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL)`);
+  // Added later: the day it actually happened, when that differs from the projection's day.
+  // A table created before this has no such column, so add it once (it throws if present).
+  try { db.exec('ALTER TABLE adjustments ADD COLUMN move_to TEXT'); } catch { /* already there */ }
   store = {
     kind: 'sqlite',
-    adjustments: () => db.prepare('SELECT key, date, label, amount, projected, note, updated_at FROM adjustments ORDER BY date').all(),
-    setAdjustment: a => db.prepare(`INSERT INTO adjustments (key,date,label,amount,projected,note,updated_at)
-      VALUES (?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET amount=excluded.amount,
-      projected=excluded.projected, note=excluded.note, label=excluded.label, updated_at=excluded.updated_at`)
-      .run(a.key, a.date, a.label, a.amount, a.projected, a.note, a.updated_at),
+    adjustments: () => db.prepare('SELECT key, date, label, amount, projected, note, move_to AS moveTo, updated_at FROM adjustments ORDER BY date').all(),
+    setAdjustment: a => db.prepare(`INSERT INTO adjustments (key,date,label,amount,projected,note,move_to,updated_at)
+      VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET amount=excluded.amount,
+      projected=excluded.projected, note=excluded.note, label=excluded.label, move_to=excluded.move_to,
+      updated_at=excluded.updated_at`)
+      .run(a.key, a.date, a.label, a.amount, a.projected, a.note, a.moveTo, a.updated_at),
     clearAdjustment: k => db.prepare('DELETE FROM adjustments WHERE key = ?').run(k),
     all: () => db.prepare('SELECT date, actual, note, created_at FROM reconciles ORDER BY date').all(),
     has: d => !!db.prepare('SELECT 1 AS x FROM reconciles WHERE date = ?').get(d),
@@ -272,10 +276,14 @@ const server = http.createServer((req, res) => {
       const amount = Number(b.amount), projected = Number(b.projected);
       if (!Number.isFinite(amount) || !Number.isFinite(projected)) return json(res, 400, { error: 'Amount must be a number.' });
       const label = String(b.label ?? '').trim().slice(0, 200);
+      // Optional: the day it actually happened. null = the projection's own day.
+      let moveTo = b.moveTo == null || b.moveTo === '' || b.moveTo === date ? null : String(b.moveTo);
+      if (moveTo !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(moveTo) || moveTo < RANGE_START || moveTo > RANGE_END))
+        return json(res, 400, { error: 'The new date is outside the planning window.' });
       const note = String(b.note ?? '').trim();
       if (note.length > 500) return json(res, 400, { error: 'Note too long (500 characters max).' });
       const row = { key, date, label, amount: Math.round(amount * 100) / 100,
-                    projected: Math.round(projected * 100) / 100, note, updated_at: new Date().toISOString() };
+                    projected: Math.round(projected * 100) / 100, note, moveTo, updated_at: new Date().toISOString() };
       try { store.setAdjustment(row); } catch { return json(res, 500, { error: 'Could not save the adjustment.' }); }
       return json(res, 200, row);
     });
