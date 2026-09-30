@@ -3338,9 +3338,11 @@ document.getElementById('todaybar').addEventListener('click',e=>{
   const b=e.target.closest('.tbnext'); if(!b) return;
   const tw=document.getElementById('tblwrap');
   tw.open=true;
-  // Today's month if it has lines, else the month the next item lands in.
-  TPAGE = PMONTHS.includes(TODAY_ISO.slice(0,7))? TODAY_ISO.slice(0,7) : b.dataset.ym;
-  TPAGE_PINNED=true; render();
+  /* ⚠️ The month the NEXT item lands in — that is what the line names. Preferring today's month
+     whenever it had lines meant "Next · Oct 1" on Sep 30 opened September. A single-year chart
+     follows the table into a new year (followPage), exactly as paging does. */
+  TPAGE = b.dataset.ym; TPAGE_PINNED=true; followPage();
+  busy([tw, $chartP], render);
   tw.scrollIntoView({behavior:'smooth',block:'start'});
 });
 
