@@ -343,7 +343,7 @@
   .reclist .recpick:focus-visible{outline:2px solid var(--s1);outline-offset:-2px}
   .reclist .recpick .trunc{cursor:pointer}
   .adjlist{display:flex;flex-direction:column;gap:4px}
-  .adjlist .adjitem{display:flex;justify-content:space-between;gap:12px;align-items:center;width:100%;
+  .adjlist .adjitem{display:flex;justify-content:space-between;gap:12px;align-items:center;width:100%;box-sizing:border-box;
     text-align:left;background:var(--fill);border:1px solid transparent;border-radius:12px;padding:10px 12px;
     font:inherit;font-size:14px;color:var(--ink);cursor:pointer;font-variant-numeric:tabular-nums}
   .adjlist .adjitem .trunc{min-width:0}
@@ -351,7 +351,45 @@
   .adjlist .adjitem.on{background:var(--surface-1);border-color:var(--s1);
     box-shadow:0 0 0 3px color-mix(in srgb,var(--s1) 16%,transparent)}
   .adjlist .none{font-size:13px;color:var(--muted);padding:4px 0}
-  #recfields[hidden],#adjfields[hidden],#adjedit[hidden],#adjmovefld[hidden],#adjclear[hidden]{display:none}
+  #adjedit[hidden],#daybar[hidden],#adjmovefld[hidden],#adjclear[hidden]{display:none}
+  .rechead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .ghostbtn{background:none;border:0;color:var(--s1);font:inherit;font-size:14px;font-weight:600;
+            padding:4px 0 4px 10px;cursor:pointer}
+  /* ⚠️ Every field here is 16px: iOS zooms the page into any input smaller than that, which is
+     what made the sheet jump when the old full-width date field was tapped. The day is a compact
+     stepper; the native date input sits invisibly over its label, so a tap still opens the
+     system picker without the field itself taking up (or resizing) the row. */
+  .adjq{width:100%;box-sizing:border-box;background:var(--page);color:var(--ink);border:1px solid var(--axis);
+        border-radius:10px;padding:9px 12px;font-size:16px;font-family:inherit;margin-bottom:10px;
+        -webkit-appearance:none;appearance:none}
+  .daybar{display:flex;align-items:stretch;gap:6px;margin-bottom:10px}
+  .daybar>button{flex:none;width:42px;background:var(--page);color:var(--ink-2);border:1px solid var(--axis);
+                 border-radius:10px;font:inherit;font-size:20px;line-height:1;cursor:pointer}
+  .daybar>button:disabled{opacity:.35;cursor:not-allowed}
+  .daypick{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+           background:var(--page);border:1px solid var(--axis);border-radius:10px;padding:6px 8px;cursor:pointer;
+           font-size:14.5px;font-weight:600;color:var(--ink);line-height:1.2;text-align:center}
+  .daypick .daysub{font-size:11px;font-weight:400;color:var(--muted)}
+  .daypick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:16px;border:0;padding:0;
+                 margin:0;cursor:pointer;-webkit-appearance:none;appearance:none;background:none}
+  .daybar.small{margin:0}
+  .daybar.small>button{width:38px;font-size:18px}
+  .daybar.small .daypick{padding:8px;font-size:14px}
+  .adjitem .lab{display:flex;flex-direction:column;min-width:0;gap:1px}
+  .adjitem .lab b{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .adjitem .lab small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .adjlist .adjitem.balitem{background:transparent;border:1px dashed var(--axis)}
+  .adjlist .adjitem.balitem.todo{border-style:solid;border-color:color-mix(in srgb,var(--s1) 55%,transparent)}
+  .adjlist .adjitem.balitem.todo .amt{color:var(--s1);font-weight:600}
+  .adjlist .adjitem.static{cursor:default}
+  .adjlist .grp{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:6px 0 1px}
+  .adjwhat{margin:14px 0 10px;padding:9px 12px;border-radius:10px;background:var(--fill);font-size:13px;line-height:1.35}
+  .adjwhat b{font-weight:650}
+  .adjwhat small{display:block;color:var(--muted);font-size:11.5px}
+  .reclist .recpick{align-items:center}
+  .reclist .recpick .lab{display:flex;flex-direction:column;min-width:0;padding:0}
+  .reclist .recpick .lab b{font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+  .reclist .recpick .lab small{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
   .adjchip{display:inline-block;margin-right:6px;padding:0 6px;border-radius:999px;font-size:10px;
            font-weight:600;letter-spacing:.02em;vertical-align:1px;color:var(--s1);
            background:color-mix(in srgb,var(--s1) 12%,transparent)}
@@ -1107,64 +1145,53 @@
           </div>
         </div>
         <div id="stageform" hidden>
-          <h3 id="recformtitle">Reconcile balance</h3>
-          <div class="signrow" style="margin-bottom:10px">
-            <button type="button" class="signbtn on" id="modenew" aria-pressed="true">Reconcile</button>
-            <button type="button" class="signbtn" id="modeadj" aria-pressed="false">Adjust</button>
+          <div class="rechead">
+            <h3 id="recformtitle">Adjust &amp; reconcile</h3>
+            <button type="button" id="recdone" class="ghostbtn">Done</button>
           </div>
           <p class="hint" id="rechint"></p>
-          <!-- Adjust: the actual amount of one projected transaction. -->
-          <div id="adjfields" hidden>
-            <div class="fld"><label for="adjdate">Date</label><input type="date" id="adjdate"></div>
-            <div class="fld"><label>Transaction</label><div class="adjlist" id="adjlist"></div></div>
-            <div id="adjedit" hidden>
-              <div class="fld">
-                <label for="adjamt">What actually happened</label>
-                <div class="signrow">
-                  <button type="button" class="signbtn" id="adjout" aria-pressed="false">− Out</button>
-                  <button type="button" class="signbtn" id="adjin" aria-pressed="false">+ In</button>
-                </div>
-                <input type="text" id="adjamt" inputmode="decimal" autocomplete="off" placeholder="0.00">
+          <!-- One view: find a day (stepper or search), tap a line to set what actually happened,
+               or tap the day's balance to reconcile it. -->
+          <input type="search" id="adjq" class="adjq" placeholder="Search — e.g. paycheck, mortgage"
+                 autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
+                 aria-label="Search transactions">
+          <div class="daybar" id="daybar">
+            <button type="button" id="dayprev" aria-label="Previous day">&lsaquo;</button>
+            <label class="daypick">
+              <span id="daylabel"></span><span class="daysub" id="daysub"></span>
+              <input type="date" id="adjdate" aria-label="Pick a day">
+            </label>
+            <button type="button" id="daynext" aria-label="Next day">&rsaquo;</button>
+          </div>
+          <div class="adjlist" id="adjlist"></div>
+          <div id="adjedit" hidden>
+            <div class="adjwhat" id="adjwhat"></div>
+            <div class="fld">
+              <label for="adjamt" id="adjamtlab">What actually happened</label>
+              <div class="signrow">
+                <button type="button" class="signbtn" id="adjout" aria-pressed="false">− Out</button>
+                <button type="button" class="signbtn" id="adjin" aria-pressed="false">+ In</button>
               </div>
-              <div class="fld" id="adjmovefld">
-                <label for="adjmove">Date it happened</label>
-                <input type="date" id="adjmove">
-              </div>
-              <div class="fld"><label for="adjnote">Note (optional)</label>
-                <input type="text" id="adjnote" maxlength="200" placeholder="e.g. extra OT hours"></div>
-              <div class="resultbox" id="adjpreview"></div>
-              <div class="recrow">
-                <button id="adjsave">Save adjustment</button>
-                <button id="adjclear" class="ghost">Use projection</button>
-                <span class="recmsg" id="adjmsg"></span>
+              <input type="text" id="adjamt" inputmode="decimal" autocomplete="off" placeholder="0.00">
+            </div>
+            <div class="fld" id="adjmovefld">
+              <label for="adjmove">Cleared on</label>
+              <div class="daybar small">
+                <button type="button" id="moveprev" aria-label="A day earlier">&lsaquo;</button>
+                <label class="daypick"><span id="movelabel"></span><input type="date" id="adjmove" aria-label="Day it cleared"></label>
+                <button type="button" id="movenext" aria-label="A day later">&rsaquo;</button>
               </div>
             </div>
-            <div class="reclist" id="adjrecent"></div>
-          </div>
-          <div id="recfields">
-          <div class="fld"><label for="recdate">Date</label><select id="recdate"></select></div>
-          <div class="fld">
-            <label for="recvar">Variance — how far off the projection was</label>
-            <div class="signrow">
-              <button type="button" class="signbtn on" id="signneg" aria-pressed="true">− Short</button>
-              <button type="button" class="signbtn" id="signpos" aria-pressed="false">+ Over</button>
+            <div class="fld"><label for="adjnote">Note (optional)</label>
+              <input type="text" id="adjnote" maxlength="500" placeholder="e.g. extra OT hours"></div>
+            <div class="resultbox" id="adjpreview"></div>
+            <div class="recrow">
+              <button id="adjsave">Save</button>
+              <button id="adjclear" class="ghost">Use projection</button>
+              <span class="recmsg" id="adjmsg"></span>
             </div>
-            <input type="text" id="recvar" inputmode="decimal" autocomplete="off"
-                   placeholder="0.00" aria-describedby="signhelp">
-            <div id="signhelp" class="subhint">Enter the amount as a positive number and pick a side above.</div>
           </div>
-          <div class="fld">
-            <label for="recnote">Note (optional)</label>
-            <textarea id="recnote" maxlength="500" placeholder="e.g. forgot the dentist copay"></textarea>
-          </div>
-          <div class="resultbox" id="recpreview"></div>
-          <div class="recrow">
-            <button id="recsave">Save reconcile</button>
-            <button id="reccancel" class="ghost">Cancel</button>
-            <span class="recmsg" id="recmsg"></span>
-          </div>
-          <div class="reclist" id="reclist"></div>
-          </div>
+          <div class="reclist" id="adjrecent"></div>
         </div>
       </div>
     </div>
@@ -3849,21 +3876,6 @@ const TZ='America/Chicago';
 let UNLOCK_HOUR=19;   // synced from the server on load; server is the authority
 let SRV={today:null,hour:null,saveEnabled:false,online:false};
 let PIN='';   // held in memory only for this modal session
-let VSIGN=-1; // -1 = short (actual below projection), +1 = over. Mobile numeric keypads have no minus key.
-function varianceValue(){
-  const raw=($('recvar').value||'').replace(/[^0-9.]/g,'');
-  if(raw==='') return null;
-  const mag=Number(raw);
-  if(!isFinite(mag)) return null;
-  return +(mag===0? 0 : VSIGN*mag).toFixed(2);
-}
-function setSign(sign){
-  VSIGN=sign;
-  const neg=$('signneg'), pos=$('signpos');
-  neg.classList.toggle('on',sign<0); neg.setAttribute('aria-pressed',String(sign<0));
-  pos.classList.toggle('on',sign>0); pos.setAttribute('aria-pressed',String(sign>0));
-  updatePreview();
-}
 
 function localNowFallback(){
   const p=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hour12:false}).formatToParts(new Date());
@@ -3872,101 +3884,281 @@ function localNowFallback(){
   return {today:`${g('year')}-${g('month')}-${g('day')}`, hour};
 }
 function nowInfo(){ return SRV.online? SRV : localNowFallback(); }
-function eligibleDates(){
+// A day can be reconciled once: any past day, and today from the unlock hour.
+function canReconcile(date){
   const {today,hour}=nowInfo();
-  const out=[]; let cur=T0;
-  while(cur<=T1){
-    if(!RECON[cur]){
-      if(cur<today) out.push(cur);
-      else if(cur===today && hour>=UNLOCK_HOUR) out.push(cur);
-    }
-    cur=addD(cur,1);
-  }
-  return out.reverse();
-}
-function projectedFor(dateS){
-  const d=LAST_DATA.find(x=>x.d===dateS);
-  return d? (d.rec? d.rec.projected : d.b) : null;
+  return !RECON[date] && date>=T0 && date<=T1 && (date<today || (date===today && hour>=UNLOCK_HOUR));
 }
 const $=id=>document.getElementById(id);
 
-/* ⚠️ The trigger must also survive "nothing left to reconcile". It used to hide whenever
-   `eligibleDates()` was empty, which is correct only while the sheet can ONLY add entries — once
-   corrections exist, that hid the sheet at exactly the moment a typo needed fixing. Anyone
-   reconciling daily eventually has no eligible days and loses the button entirely. */
-// Always available: adjusting a transaction needs no eligible reconcile date.
+/* ⚠️ The trigger must also survive "nothing left to reconcile". It used to hide whenever there
+   were no eligible days, which is correct only while the sheet can ONLY add entries — once
+   corrections exist, that hid the sheet at exactly the moment a typo needed fixing. */
 function refreshTrigger(){ $('recbtn').hidden = false; }
 
-/* Two modes on one form. Correcting is deliberately a separate mode rather than "just save over
-   it": the date list, the hint, the button and the endpoint all differ, and a correction is
-   logged to an audit trail server-side. */
-let RECMODE='new';
+/* ================= Adjust & reconcile: one view =================
+   Pick a day (stepper, or tap its label for the system picker) or search for a transaction.
+   The day lists its transactions and, last, its balance:
+     - tx  : a projected line — set its actual amount, or move it to the day it cleared
+             (PUT/DELETE /api/adjustments)
+     - new : an unreconciled day that can be reconciled — enter the variance (POST /api/reconciles)
+     - rec : a reconciled day — change its variance (PUT /api/reconciles, which moves every later
+             reconcile with it so their variances stay as entered)
+   Every row says what it is in a second line, so nothing has to be tapped to be identified. */
 const REC_PER=8;
 let RECPAGE=0;
-const reconciledDates = () => Object.keys(RECON).sort().reverse();
-// One owner for the visual state: fillForm. This just picks the mode and re-renders.
-function setRecMode(m){ RECMODE=m; fillForm(); }
-function fillForm(){
-  // With nothing left to reconcile, open in Adjust rather than a form that cannot be submitted.
-  if(RECMODE==='new' && eligibleDates().length===0) RECMODE='adj';
-  const isAdj = RECMODE==='adj';
-  $('modeadj').classList.toggle('on',isAdj); $('modeadj').setAttribute('aria-pressed',String(isAdj));
-  $('recfields').hidden=isAdj; $('adjfields').hidden=!isAdj;
-  if(isAdj){
-    $('modenew').classList.remove('on'); $('modenew').setAttribute('aria-pressed','false');
-    $('modenew').disabled = eligibleDates().length===0;
-    $('recformtitle').textContent='Adjust';
-    $('rechint').textContent=(SRV.online?'':'Offline — can’t save. ')+
-      'Pick a day, then a transaction — or that day\'s reconciled variance — and enter what actually '
-      +'happened. A transaction can also move to the day it really cleared.';
-    fillAdj(); return;
+let ADJSEL=null, ADJSIGN=-1;
+const SEARCH_MAX=30;
+const adjDay = d => LAST_DATA.find(x=>x.d===d);
+const shortDate = d => dd(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+const longDate = d => dd(d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})
+  + (d.slice(0,4)!==TODAY_ISO.slice(0,4)? ', '+d.slice(0,4) : '');
+const signed = n => (n>0?'+':'')+fmt(n);
+const varColor = n => n>0? '--vpos' : n<0? '--vneg' : '--muted';
+const recItem = day => ({key:'rec|'+day.d, kind:'rec', l:'Reconciled balance', a:day.rec.delta,
+  proj:day.rec.projected, actual:RECON[day.d].actual, note:RECON[day.d].note||''});
+function adjItems(date){
+  const day=adjDay(date); if(!day) return [];
+  const items=day.ev.filter(e=>e.key).map(e=>({...e, kind:'tx'}));
+  if(RECON[date] && day.rec) items.push(recItem(day));
+  else if(canReconcile(date)) items.push({key:'new|'+date, kind:'new', l:'Reconcile this day', a:0, proj:day.b});
+  return items;
+}
+// The second line of a row: what the figure is and where it came from.
+function itemDetail(e){
+  if(e.kind==='rec') return `Projected ${fmt(e.proj)} · variance ${signed(e.a)}`+(e.note? ` · “${e.note}”` : '');
+  if(e.kind==='new') return `Projected balance ${fmt(e.proj)} · not reconciled yet`;
+  const note=ADJ[e.key]&&ADJ[e.key].note, bits=[];
+  // The label's trailing "(…)" detail (P&I split, OT hours) reads here, not cut off in the title.
+  const extra=e.l.slice(adjBase(e.l).length).trim().replace(/^\(|\)$/g,'');
+  if(extra) bits.push(extra);
+  if(!e.adj) bits.push('Projected');
+  else {
+    bits.push(e.from? 'Moved from '+shortDate(e.from) : 'Adjusted');
+    if(e.a!==e.proj) bits.push('projected '+fmt(e.proj));
   }
-  const dates = eligibleDates();
-  $('modenew').disabled = dates.length===0;
-  $('modenew').classList.add('on'); $('modenew').setAttribute('aria-pressed','true');
-  $('recformtitle').textContent = 'Reconcile balance';
-  $('recsave').textContent = 'Save reconcile';
-  $('recdate').innerHTML=dates.map(d=>`<option value="${d}">${dd(d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</option>`).join('');
-  $('rechint').textContent=(SRV.online?'':'Offline — can’t save. ')+
-    `Today opens at ${UNLOCK_HOUR%12||12} ${UNLOCK_HOUR<12?'am':'pm'}. Saving is immediate — to change a `
-    +`saved day later, tap it below.`;
-  /* Newest first, a page at a time. Reconciling daily makes this list grow by one a day, and
-     all of it at once pushed the form's own buttons a long scroll away. */
-  const all=Object.keys(RECON).sort().reverse();
+  if(note) bits.push(`“${note}”`);
+  return bits.join(' · ');
+}
+function itemRow(e, date, withDate){
+  const chip = e.kind==='tx' && e.adj? `<span class="adjchip">${e.from?'moved':'adjusted'}</span>` : '';
+  const title = e.kind==='rec'? `Reconciled · ${fmt(e.actual)}` : e.kind==='tx'? adjBase(e.l) : e.l;
+  const amt = e.kind==='rec'? `<span class="amt" style="color:var(${varColor(e.a)})">${signed(e.a)}</span>`
+            : e.kind==='new'? '<span class="amt">Reconcile ›</span>'
+            : `<span class="amt">${fmt(e.a)}</span>`;
+  const cls = e.kind==='rec'? ' balitem' : e.kind==='new'? ' balitem todo' : '';
+  const sub = (withDate? longDate(date)+' · ' : '')+itemDetail(e);
+  return `<button type="button" class="adjitem${cls}${e.key===ADJSEL?' on':''}" data-key="${esc(e.key)}" data-date="${date}"`
+    +` title="${esc(title+' — '+sub)}"><span class="lab"><b>${chip}${esc(title)}</b><small>${esc(sub)}</small></span>${amt}</button>`;
+}
+function searchHits(q){
+  const words=q.toLowerCase().split(/\s+/).filter(Boolean);
+  const match=t=>{ t=t.toLowerCase(); return words.every(w=>t.includes(w)); };
+  const hits=[];
+  for(const day of LAST_DATA){
+    for(const e of day.ev) if(e.key && match(e.l+' '+((ADJ[e.key]&&ADJ[e.key].note)||'')))
+      hits.push({d:day.d, e:{...e, kind:'tx'}});
+    if(day.rec && RECON[day.d] && match('reconciled balance '+(RECON[day.d].note||'')))
+      hits.push({d:day.d, e:recItem(day)});
+  }
+  // The ones nearest today are the ones worth adjusting; show them in date order.
+  const t=dd(TODAY_ISO);
+  const near=hits.slice().sort((a,b)=>Math.abs(dd(a.d)-t)-Math.abs(dd(b.d)-t)).slice(0,SEARCH_MAX)
+                 .sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+  return {near, total:hits.length};
+}
+function fillAdj(){
+  const $d=$('adjdate'), q=$('adjq').value.trim();
+  $d.min=T0; $d.max=T1;
+  if(!$d.value || $d.value<T0 || $d.value>T1) $d.value = TODAY_ISO>=T0 && TODAY_ISO<=T1? TODAY_ISO : T0;
+  const date=$d.value, {today,hour}=nowInfo();
+  $('rechint').textContent=(SRV.online?'':'Offline — can’t save. ')
+    +'Tap a line to enter what actually happened. Reconcile a day from its balance at the bottom.';
+
+  // Day bar
+  const rel = date===today? 'Today' : date===addD(today,-1)? 'Yesterday' : date===addD(today,1)? 'Tomorrow' : '';
+  const status = RECON[date]? 'Reconciled' : canReconcile(date)? 'Not reconciled' : '';
+  $('daylabel').textContent=longDate(date);
+  $('daysub').textContent=[rel,status].filter(Boolean).join(' · ') || 'Projected';
+  $('dayprev').disabled = date<=T0; $('daynext').disabled = date>=T1;
+  $('daybar').hidden = !!q;
+
+  if(q){
+    const {near,total}=searchHits(q);
+    $('adjlist').innerHTML = near.length
+      ? `<div class="grp">${total} match${total===1?'':'es'}${total>near.length?` · ${near.length} nearest today`:''}</div>`
+        + near.map(h=>itemRow(h.e, h.d, true)).join('')
+      : '<div class="none">Nothing matches.</div>';
+    $('adjedit').hidden=true;
+  } else {
+    const items=adjItems(date), day=adjDay(date);
+    if(ADJSEL && !items.some(e=>e.key===ADJSEL)) ADJSEL=null;
+    let html = items.filter(e=>e.kind==='tx').map(e=>itemRow(e,date)).join('')
+            || '<div class="none">No transactions on this day.</div>';
+    const bal=items.find(e=>e.kind!=='tx');
+    if(bal) html+=itemRow(bal,date);
+    else if(day) html+=`<div class="adjitem balitem static"><span class="lab"><b>End-of-day balance</b><small>`
+      +(date===today? `Projected · today can be reconciled from ${UNLOCK_HOUR%12||12} ${UNLOCK_HOUR<12?'am':'pm'}` : 'Projected')
+      +`</small></span><span class="amt">${fmt(day.b)}</span></div>`;
+    $('adjlist').innerHTML=html;
+    fillEditor(items.find(e=>e.key===ADJSEL));
+  }
+  fillRecent();
+}
+function fillEditor(sel){
+  $('adjedit').hidden=!sel;
+  if(!sel) return;
+  const tx = sel.kind==='tx', date=$('adjdate').value;
+  $('adjwhat').innerHTML=`<b>${esc(sel.kind==='rec'? 'Reconciled balance' : sel.kind==='tx'? adjBase(sel.l) : sel.l)}</b>`
+    +`<small>${esc(longDate(date)+' · '+itemDetail(sel))}</small>`;
+  $('adjamtlab').textContent = tx? 'What actually happened' : 'Variance — how far off the projected balance';
+  $('adjout').textContent = tx? '− Out' : '− Short';
+  $('adjin').textContent  = tx? '+ In'  : '+ Over';
+  $('adjmovefld').hidden = !tx;
+  $('adjclear').hidden = !tx;
+  $('adjsave').textContent = sel.kind==='new'? 'Save reconcile' : sel.kind==='rec'? 'Save variance' : 'Save adjustment';
+  if(!fillAdj.keep){
+    if(sel.kind==='new'){ $('adjamt').value=''; adjSign(-1,true); $('adjnote').value=''; }
+    else { $('adjamt').value=Math.abs(sel.a).toFixed(2); adjSign(sel.a<0?-1:1, true); }
+    if(sel.kind==='rec') $('adjnote').value=sel.note;
+    if(tx){
+      $('adjnote').value=(ADJ[sel.key]&&ADJ[sel.key].note)||'';
+      $('adjmove').value=date;                    // where it lands now (moved or not)
+    }
+    $('adjnote').placeholder = tx? 'e.g. extra OT hours' : 'e.g. forgot the dentist copay';
+  }
+  $('adjmove').min=T0; $('adjmove').max=T1;
+  $('adjclear').disabled=!sel.adj;
+  adjPreview();
+}
+// Every reconcile and adjustment on record, newest first, a page at a time: tap one to open it.
+function fillRecent(){
+  const all=[...Object.keys(RECON).map(d=>({t:'rec', d})),
+             ...Object.keys(ADJ).map(k=>({t:'adj', k, d:ADJ[k].moveTo||ADJ[k].date}))]
+    .sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:(a.t==='rec'?1:-1));
   const pages=Math.max(1,Math.ceil(all.length/REC_PER));
   RECPAGE=Math.min(Math.max(0,RECPAGE),pages-1);
-  const keys=all.slice(RECPAGE*REC_PER,(RECPAGE+1)*REC_PER);
+  const rows=all.slice(RECPAGE*REC_PER,(RECPAGE+1)*REC_PER);
   const pager = all.length>REC_PER
     ? `<div class="recpg"><button type="button" data-p="-1" aria-label="Newer"${RECPAGE===0?' disabled':''}>&lsaquo;</button>`
-      +`<span>${RECPAGE*REC_PER+1}–${RECPAGE*REC_PER+keys.length} of ${all.length}</span>`
+      +`<span>${RECPAGE*REC_PER+1}–${RECPAGE*REC_PER+rows.length} of ${all.length}</span>`
       +`<button type="button" data-p="1" aria-label="Older"${RECPAGE>=pages-1?' disabled':''}>&rsaquo;</button></div>`
     : '';
-  $('reclist').innerHTML = keys.length
-    ? `<div class="n"><span>Recorded · newest first · tap one to adjust it</span><span></span></div>`+keys.map(k=>{
-        const p=projectedFor(k), delta=p==null?null:+(RECON[k].actual-p).toFixed(2);
-        const col = delta==null||delta===0? '' : ` style="color:var(${delta>0?'--vpos':'--vneg'})"`;
-        const txt=`${dd(k).toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${fmt(RECON[k].actual)}${RECON[k].note?' · '+esc(RECON[k].note):''}`;
-        return `<div class="recpick" data-pick="${k}" role="button" tabindex="0"`
-          +` title="Adjust ${txt}"><span class="trunc">${txt}</span><span${col}>${delta==null?'':fmt(delta)}</span></div>`;
+  const row=(attr, on, b, small, right, col)=>`<div class="recpick${on?' on':''}" ${attr} role="button" tabindex="0" title="${esc(b+' — '+small)}">`
+    +`<span class="lab"><b>${esc(b)}</b><small>${esc(small)}</small></span><span style="color:var(${col})">${right}</span></div>`;
+  $('adjrecent').innerHTML = rows.length
+    ? '<div class="n"><span>Recent changes · tap one to open it</span><span></span></div>'+rows.map(r=>{
+        if(r.t==='rec'){
+          const day=adjDay(r.d), x=RECON[r.d], v=day&&day.rec? day.rec.delta : null;
+          return row(`data-rec="${r.d}"`, ADJSEL==='rec|'+r.d, `${shortDate(r.d)} · Reconciled ${fmt(x.actual)}`,
+            (day&&day.rec? `projected ${fmt(day.rec.projected)}` : 'reconciled')+(x.note? ` · “${x.note}”` : ''),
+            v==null? '' : signed(v), varColor(v||0));
+        }
+        const x=ADJ[r.k], diff=+(x.amount-x.projected).toFixed(2);
+        return row(`data-adj="${esc(r.k)}"`, ADJSEL===r.k, `${shortDate(x.date)} · ${x.label}`,
+          `${fmt(x.amount)}`+(diff? ` · projected ${fmt(x.projected)}` : ' · as projected')
+            +(x.moveTo? ` · cleared ${shortDate(x.moveTo)}` : '')+(x.note? ` · “${x.note}”` : ''),
+          diff? signed(diff) : 'moved', diff>=0? '--vpos' : '--vneg');
       }).join('')+pager
-    : '<div class="n"><span>No reconciliations recorded yet.</span><span></span></div>';
-  updatePreview();
+    : '<div class="n"><span>Nothing reconciled or adjusted yet.</span><span></span></div>';
 }
-function updatePreview(){
-  const date=$('recdate').value;
-  const proj=projectedFor(date);
-  const box=$('recpreview');
-  if(!date||proj==null){ box.innerHTML=''; return; }
-  const v=varianceValue();
-  const nb = v==null? proj : +(proj+v).toFixed(2);
-  const col = v==null||v===0? 'var(--ink-2)' : (v<0?'var(--crit)':'var(--goodtext)');
+function adjSign(sign, quiet){
+  ADJSIGN=sign;
+  $('adjout').classList.toggle('on',sign<0); $('adjout').setAttribute('aria-pressed',String(sign<0));
+  $('adjin').classList.toggle('on',sign>0); $('adjin').setAttribute('aria-pressed',String(sign>0));
+  if(!quiet) adjPreview();
+}
+function adjValue(){
+  const raw=($('adjamt').value||'').replace(/[^0-9.]/g,'');
+  if(raw==='') return null; const m=Number(raw); return isFinite(m)? +(m===0? 0 : ADJSIGN*m).toFixed(2) : null;
+}
+const selected = () => adjItems($('adjdate').value).find(e=>e.key===ADJSEL);
+function adjPreview(){
+  const on=$('adjdate').value, sel=selected(), box=$('adjpreview');
+  $('movelabel').textContent = $('adjmove').value? longDate($('adjmove').value) : '';
+  $('moveprev').disabled = $('adjmove').value<=T0; $('movenext').disabled = $('adjmove').value>=T1;
+  if(!sel){ box.innerHTML=''; return; }
+  const v=adjValue(), muted=t=>`<div class="r" style="color:var(--muted)"><span>${t}</span><span></span></div>`;
+  if(sel.kind!=='tx'){
+    // projected + variance = the day's balance.
+    const nb = v==null? null : +(sel.proj+v).toFixed(2);
+    let note;
+    if(sel.kind==='rec'){
+      // Changing it moves this and every later reconciled balance, keeping their variances.
+      const shift = nb==null? 0 : +(nb-RECON[on].actual).toFixed(2);
+      note = shift? `This and every later reconciled balance move by ${fmt(shift)} — their variances stay as entered`
+                  : 'No change to any balance';
+    } else {
+      const nextRec=Object.keys(RECON).sort().find(d=>d>on);
+      note = !v? (v===0? 'No variance — recorded, hidden from the table' : '')
+           : nextRec? `Balances move by ${fmt(v)} until ${esc(nice(nextRec))}, which stays as reconciled`
+           : `Every later balance moves by ${fmt(v)}`;
+    }
+    box.innerHTML =
+      `<div class="r"><span>Projected balance</span><span>${fmt(sel.proj)}</span></div>`
+      +`<div class="r"><span>Variance</span><span style="color:var(${varColor(v||0)})">${v==null?'—':signed(v)}</span></div>`
+      +`<div class="r big"><span>Balance</span><span${nb!=null&&nb<0?' style="color:var(--crit)"':''}>${nb==null?'—':fmt(nb)}</span></div>`
+      +(note? muted(note) : '');
+    return;
+  }
+  const proj = sel.adj? sel.proj : sel.a, diff = v==null? null : +(v-proj).toFixed(2);
+  const orig = sel.key.slice(0,10), to = $('adjmove').value || on;
+  const nextRec=Object.keys(RECON).sort().find(d=>d>=to);
   box.innerHTML =
-    `<div class="r"><span>Projected balance</span><span>${fmt(proj)}</span></div>`+
-    `<div class="r"><span>Variance entered</span><span style="color:${col}">${v==null?'—':fmt(v)}</span></div>`+
-    `<div class="r big"><span>New balance</span><span${nb<0?' style="color:var(--crit)"':''}>${fmt(nb)}</span></div>`+
-    (v!==null&&v!==0? `<div class="r" style="color:var(--muted)"><span>All later balances shift by ${fmt(v)}</span><span></span></div>`
-      : (v===0? '<div class="r" style="color:var(--muted)"><span>No variance — recorded, hidden from the table</span><span></span></div>':''));
+    `<div class="r"><span>Projected</span><span>${fmt(proj)} · ${shortDate(orig)}</span></div>`
+    +`<div class="r"><span>Actual</span><span>${v==null?'—':fmt(v)} · ${shortDate(to)}</span></div>`
+    +`<div class="r big"><span>Difference</span><span style="color:var(${diff==null||diff===0?'--ink':diff>0?'--goodtext':'--crit'})">${diff==null?'—':signed(diff)}</span></div>`
+    +(to!==orig? muted(`Moves from ${shortDate(orig)} to ${shortDate(to)} — the days between ${lt(to,orig)?'gain':'lose'} it`) : '')
+    +(diff? muted(nextRec
+        ? `Balances move by ${fmt(diff)} until ${esc(nice(nextRec))}, whose reconciled balance stays — its variance changes by ${fmt(-diff)}`
+        : `Every balance after this moves by ${fmt(diff)}`) : '');
 }
+// Open one item: its day, selected, with the editor in view. No auto-focus — on a phone that
+// pops the keyboard and shoves the sheet around before you have read what you picked.
+function openItem(date, key){
+  $('adjq').value=''; $('adjdate').value=date; ADJSEL=key; $('adjmsg').textContent='';
+  fillAdj();
+  if(!$('adjedit').hidden) requestAnimationFrame(()=>$('adjedit').scrollIntoView({block:'nearest', behavior:'smooth'}));
+}
+function stepDay(n){
+  const d=addD($('adjdate').value,n); if(d<T0||d>T1) return;
+  $('adjdate').value=d; ADJSEL=null; $('adjmsg').textContent=''; fillAdj();
+}
+$('dayprev').addEventListener('click',()=>stepDay(-1));
+$('daynext').addEventListener('click',()=>stepDay(1));
+$('adjdate').addEventListener('change',()=>{ ADJSEL=null; $('adjmsg').textContent=''; fillAdj(); });
+$('adjq').addEventListener('input',()=>{ ADJSEL=null; fillAdj(); });
+$('adjq').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); }});
+$('adjlist').addEventListener('click',e=>{ const b=e.target.closest('button[data-key]'); if(!b) return;
+  if($('adjq').value.trim()){ $('adjq').blur(); openItem(b.dataset.date, b.dataset.key); return; }
+  ADJSEL = ADJSEL===b.dataset.key? null : b.dataset.key;      // tap again to close
+  $('adjmsg').textContent=''; fillAdj();
+  if(ADJSEL) requestAnimationFrame(()=>$('adjedit').scrollIntoView({block:'nearest', behavior:'smooth'}));
+});
+function recentPick(e){
+  const p=e.target.closest('button[data-p]');
+  if(p){ if(!p.disabled){ RECPAGE+=+p.dataset.p; fillRecent(); } return true; }
+  const r=e.target.closest('[data-rec]'); if(r){ openItem(r.dataset.rec, 'rec|'+r.dataset.rec); return true; }
+  const a=e.target.closest('[data-adj]'); if(a){ const x=ADJ[a.dataset.adj]; if(x) openItem(x.moveTo||x.date, x.key); return true; }
+  return false;
+}
+$('adjrecent').addEventListener('click',recentPick);
+$('adjrecent').addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ') && recentPick(e)) e.preventDefault(); });
+$('adjout').addEventListener('click',()=>adjSign(-1));
+$('adjin').addEventListener('click',()=>adjSign(1));
+$('adjmove').addEventListener('change',adjPreview);
+// The date inputs sit invisibly over their labels; desktop browsers only open the picker from
+// the (hidden) calendar icon, so ask for it on click.
+['adjdate','adjmove'].forEach(id=>$(id).addEventListener('click',e=>{ try{ e.target.showPicker(); }catch(_){} }));
+const stepMove=n=>{ const d=addD($('adjmove').value||$('adjdate').value,n); if(d<T0||d>T1) return; $('adjmove').value=d; adjPreview(); };
+$('moveprev').addEventListener('click',()=>stepMove(-1));
+$('movenext').addEventListener('click',()=>stepMove(1));
+$('adjamt').addEventListener('input',e=>{
+  const had=e.target.value;
+  if(/[-−]/.test(had)) adjSign(-1,true); else if(/\+/.test(had)) adjSign(1,true);
+  const clean=had.replace(/[^0-9.]/g,''); if(clean!==had) e.target.value=clean;
+  adjPreview();
+});
 
 /* modal open/close */
 function openModal(){
@@ -3980,33 +4172,15 @@ function openModal(){
 function closeModal(){
   $('recmodal').hidden=true;
   document.body.style.overflow='';
-  PIN=''; $('pinput').value=''; $('recvar').value=''; $('recnote').value='';
-  RECMODE='new'; setSign(-1);
-  ADJSEL=null; $('adjmsg').textContent=''; $('adjdate').value='';
-  $('recmsg').textContent=''; $('recmsg').className='recmsg';
+  PIN=''; $('pinput').value='';
+  ADJSEL=null; $('adjq').value=''; $('adjdate').value='';
+  $('adjmsg').textContent=''; $('adjmsg').className='recmsg';
 }
 $('recbtn').addEventListener('click',openModal);
 sheetDrag($('recmodal'), closeModal);
 sheetDrag(document.getElementById('setmodal'), cancelSet);
-$('reclist').addEventListener('click',e=>{
-  const b=e.target.closest('button[data-p]');
-  if(b){ if(!b.disabled){ RECPAGE+=+b.dataset.p; fillForm(); } return; }
-  const r=e.target.closest('[data-pick]'); if(r) pickRecord(r.dataset.pick);
-});
-$('reclist').addEventListener('keydown',e=>{
-  if(e.key!=='Enter' && e.key!==' ') return;
-  const r=e.target.closest('[data-pick]'); if(r){ e.preventDefault(); pickRecord(r.dataset.pick); }
-});
-/* Tap a recorded entry to change it: open Adjust on that day with its reconciled variance picked
-   — no guessing which date in a menu it was. */
-function pickRecord(date){
-  RECMODE='adj'; $('adjdate').value=date; ADJSEL='rec|'+date; $('adjmsg').textContent='';
-  fillForm();
-  $('recsheet').scrollTo({top:0, behavior:'smooth'});
-  setTimeout(()=>$('adjamt').focus({preventScroll:true}),250);
-}
 $('pincancel').addEventListener('click',closeModal);
-$('reccancel').addEventListener('click',closeModal);
+$('recdone').addEventListener('click',closeModal);
 $('recmodal').addEventListener('mousedown',e=>{ if(e.target===$('recmodal')) closeModal(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('recmodal').hidden) closeModal(); });
 
@@ -4018,117 +4192,6 @@ function btnLoading(btn,on){
   if(!on && r) r.remove();
 }
 
-/* ---- Adjust: a transaction's actual amount or day, or a day's reconciled variance ---- */
-let ADJSEL=null, ADJSIGN=-1;
-const adjDay = d => LAST_DATA.find(x=>x.d===d);
-/* What can be adjusted on a day: its transactions and, if the day is reconciled, its variance.
-   The variance is an item like any other, so changing a reconcile is just another adjustment
-   (it goes to PUT /api/reconciles, which moves every later reconcile with it). */
-function adjItems(date){
-  const day=adjDay(date), items = day? day.ev.filter(e=>e.key).map(e=>({...e})) : [];
-  if(RECON[date] && day && day.rec) items.push({key:'rec|'+date, l:'Reconciled variance', a:day.rec.delta,
-    rec:true, proj:day.rec.projected, note:RECON[date].note||''});
-  return items;
-}
-function fillAdj(){
-  const $d=$('adjdate');
-  $d.min=T0; $d.max=T1;
-  if(!$d.value || $d.value<T0 || $d.value>T1) $d.value = TODAY_ISO>=T0 && TODAY_ISO<=T1? TODAY_ISO : T0;
-  const items=adjItems($d.value);
-  if(ADJSEL && !items.some(e=>e.key===ADJSEL)) ADJSEL=null;
-  $('adjlist').innerHTML = items.length
-    ? items.map(e=>`<button type="button" class="adjitem${e.key===ADJSEL?' on':''}${e.rec?' recitem':''}" data-key="${esc(e.key)}">`
-        +`<span class="trunc">${e.adj?`<span class="adjchip">${e.from?'moved':'adjusted'}</span>`:''}${esc(e.l)}</span>`
-        +`<span class="amt">${fmt(e.a)}</span></button>`).join('')
-    : '<div class="none">Nothing is projected or reconciled on this day.</div>';
-  const sel=items.find(e=>e.key===ADJSEL);
-  $('adjedit').hidden=!sel;
-  if(sel){
-    // A variance is short/over; a transaction is out/in. A variance cannot move or be cleared.
-    $('adjout').textContent = sel.rec? '− Short' : '− Out';
-    $('adjin').textContent  = sel.rec? '+ Over'  : '+ In';
-    $('adjmovefld').hidden = !!sel.rec;
-    $('adjclear').hidden = !!sel.rec;
-    $('adjsave').textContent = sel.rec? 'Save variance' : 'Save adjustment';
-    if(!fillAdj.keep){
-      $('adjamt').value=Math.abs(sel.a).toFixed(2); adjSign(sel.a<0?-1:1, true);
-      $('adjnote').value = sel.rec? sel.note : ((ADJ[sel.key]&&ADJ[sel.key].note)||'');
-      $('adjmove').value = $d.value;                 // where it lands now (moved or not)
-      $('adjmove').min=T0; $('adjmove').max=T1;
-    }
-    $('adjclear').disabled=!sel.adj;
-    adjPreview();
-  }
-  // Every transaction adjustment on record, newest first: tap one to open it.
-  const keys=Object.keys(ADJ).sort((a,b)=>a<b?1:-1);
-  $('adjrecent').innerHTML = keys.length
-    ? '<div class="n"><span>Adjusted · tap one to change it</span><span></span></div>'+keys.map(k=>{
-        const x=ADJ[k], diff=+(x.amount-x.projected).toFixed(2);
-        const txt=`${dd(x.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})} — ${esc(x.label)}: ${fmt(x.amount)}`
-          +(x.amount!==x.projected? ` (projected ${fmt(x.projected)})` : '')
-          +(x.moveTo? ` · moved to ${dd(x.moveTo).toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : '')
-          +(x.note?' · '+esc(x.note):'');
-        return `<div class="recpick${k===ADJSEL?' on':''}" data-adj="${esc(k)}" role="button" tabindex="0" title="${txt}">`
-          +`<span class="trunc">${txt}</span><span style="color:var(${diff>=0?'--vpos':'--vneg'})">${diff? (diff>0?'+':'')+fmt(diff) : 'moved'}</span></div>`;
-      }).join('')
-    : '<div class="n"><span>No adjustments yet.</span><span></span></div>';
-}
-function adjSign(sign, quiet){
-  ADJSIGN=sign;
-  $('adjout').classList.toggle('on',sign<0); $('adjout').setAttribute('aria-pressed',String(sign<0));
-  $('adjin').classList.toggle('on',sign>0); $('adjin').setAttribute('aria-pressed',String(sign>0));
-  if(!quiet) adjPreview();
-}
-function adjValue(){
-  const raw=($('adjamt').value||'').replace(/[^0-9.]/g,'');
-  if(raw==='') return null; const m=Number(raw); return isFinite(m)? +(ADJSIGN*m).toFixed(2) : null;
-}
-const shortDate = d => dd(d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
-function adjPreview(){
-  const on=$('adjdate').value, sel=adjItems(on).find(e=>e.key===ADJSEL), box=$('adjpreview');
-  if(!sel){ box.innerHTML=''; return; }
-  const v=adjValue(), muted=t=>`<div class="r" style="color:var(--muted)"><span>${t}</span><span></span></div>`;
-  if(sel.rec){
-    // Same arithmetic as reconciling: projected + variance = the day's balance. Changing it moves
-    // this and every later reconciled balance by the change, keeping their variances.
-    const nb = v==null? null : +(sel.proj+v).toFixed(2), shift = nb==null? 0 : +(nb-RECON[on].actual).toFixed(2);
-    box.innerHTML =
-      `<div class="r"><span>Projected balance</span><span>${fmt(sel.proj)}</span></div>`
-      +`<div class="r"><span>Variance</span><span>${v==null?'—':fmt(v)}</span></div>`
-      +`<div class="r big"><span>Balance</span><span>${nb==null?'—':fmt(nb)}</span></div>`
-      +muted(shift? `This and every later reconciled balance move by ${fmt(shift)} — their variances stay as entered`
-                  : 'No change to any balance');
-    return;
-  }
-  const proj = sel.adj? sel.proj : sel.a, diff = v==null? null : +(v-proj).toFixed(2);
-  const orig = sel.key.slice(0,10), to = $('adjmove').value || on;
-  const nextRec=Object.keys(RECON).sort().find(d=>d>=to);
-  box.innerHTML =
-    `<div class="r"><span>Projected</span><span>${fmt(proj)} · ${shortDate(orig)}</span></div>`
-    +`<div class="r"><span>Actual</span><span>${v==null?'—':fmt(v)} · ${shortDate(to)}</span></div>`
-    +`<div class="r big"><span>Difference</span><span style="color:var(${diff==null||diff===0?'--ink':diff>0?'--goodtext':'--crit'})">${diff==null?'—':(diff>0?'+':'')+fmt(diff)}</span></div>`
-    +(to!==orig? muted(`Moves from ${shortDate(orig)} to ${shortDate(to)} — the days between ${lt(to,orig)?'gain':'lose'} it`) : '')
-    +(diff? muted(nextRec
-        ? `Balances move by ${fmt(diff)} until ${esc(nice(nextRec))}, whose reconciled balance stays — its variance changes by ${fmt(-diff)}`
-        : `Every balance after this moves by ${fmt(diff)}`) : '');
-}
-$('modeadj').addEventListener('click',()=>{ ADJSEL=null; setRecMode('adj'); });
-$('adjdate').addEventListener('change',()=>{ ADJSEL=null; $('adjmsg').textContent=''; fillAdj(); });
-$('adjlist').addEventListener('click',e=>{ const b=e.target.closest('[data-key]'); if(!b) return;
-  ADJSEL=b.dataset.key; $('adjmsg').textContent=''; fillAdj(); setTimeout(()=>$('adjamt').focus({preventScroll:true}),60); });
-$('adjrecent').addEventListener('click',e=>{ const r=e.target.closest('[data-adj]'); if(!r) return;
-  const x=ADJ[r.dataset.adj]; if(!x) return;
-  $('adjdate').value=x.moveTo||x.date; ADJSEL=x.key; $('adjmsg').textContent=''; fillAdj();
-  $('recsheet').scrollTo({top:0,behavior:'smooth'}); });
-$('adjout').addEventListener('click',()=>adjSign(-1));
-$('adjin').addEventListener('click',()=>adjSign(1));
-$('adjmove').addEventListener('change',adjPreview);
-$('adjamt').addEventListener('input',e=>{
-  const had=e.target.value;
-  if(/[-−]/.test(had)) adjSign(-1,true); else if(/\+/.test(had)) adjSign(1,true);
-  const clean=had.replace(/[^0-9.]/g,''); if(clean!==had) e.target.value=clean;
-  adjPreview();
-});
 async function adjSend(url, method, body, btn){
   const msg=$('adjmsg'); msg.className='recmsg';
   if(!SRV.online||!PIN){ msg.className='recmsg err'; msg.textContent='Not authenticated.'; return null; }
@@ -4142,34 +4205,44 @@ async function adjSend(url, method, body, btn){
   }catch(e){ msg.className='recmsg err'; msg.textContent='Network error — not saved.'; return null; }
   finally{ btn.disabled=false; btnLoading(btn,false); }
 }
+const refill = () => { fillAdj.keep=true; fillAdj(); fillAdj.keep=false; };
 $('adjsave').addEventListener('click',async ()=>{
-  const on=$('adjdate').value, sel=adjItems(on).find(e=>e.key===ADJSEL), v=adjValue(), msg=$('adjmsg');
+  const on=$('adjdate').value, sel=selected(), v=adjValue(), msg=$('adjmsg'), note=$('adjnote').value.trim();
   if(!sel){ msg.className='recmsg err'; msg.textContent='Pick something to adjust.'; return; }
   if(v==null){ msg.className='recmsg err'; msg.textContent='Enter the amount (0 is valid).'; return; }
-  if(sel.rec){
-    const actual=+(sel.proj+v).toFixed(2), note=$('adjnote').value.trim();
+  if(sel.kind==='new'){
+    // No confirmation dialog: the preview already shows projected, variance and the new balance.
+    const out=await adjSend('/api/reconciles','POST',{date:on, actual:+(sel.proj+v).toFixed(2), note}, $('adjsave'));
+    if(!out) return;
+    RECON[on]={actual:out.actual, note:out.note};
+    ADJSEL='rec|'+on; OPPC={key:null}; render(); refill();
+    msg.className='recmsg ok'; msg.textContent=`Reconciled — balance ${fmt(out.actual)}.`;
+    return;
+  }
+  if(sel.kind==='rec'){
+    const actual=+(sel.proj+v).toFixed(2);
     if(actual===RECON[on].actual && note===(RECON[on].note||'')){
       msg.className='recmsg err'; msg.textContent='That is what is already recorded.'; return; }
     const out=await adjSend('/api/reconciles','PUT',{date:on, actual, note, reason:'adjusted variance'}, $('adjsave'));
     if(!out) return;
     RECON[on]={actual:out.actual, note:out.note};
     (out.shifted||[]).forEach(x=>{ if(RECON[x.date]) RECON[x.date].actual=x.actual; });
-    OPPC={key:null}; render(); fillAdj.keep=true; fillAdj(); fillAdj.keep=false;
+    OPPC={key:null}; render(); refill();
     const n=(out.shifted||[]).length;
     msg.className='recmsg ok';
-    msg.textContent=`Saved — variance ${fmt(v)}.`
-      +(n? ` ${n} later reconcile${n===1?'':'s'} moved ${out.delta>0?'+':''}${fmt(out.delta)} with it.` : '');
+    msg.textContent=`Saved — variance ${signed(v)}.`
+      +(n? ` ${n} later reconcile${n===1?'':'s'} moved ${signed(out.delta)} with it.` : '');
     return;
   }
   const proj = sel.adj? sel.proj : sel.a, orig=sel.key.slice(0,10), to=$('adjmove').value||on;
   if(to<T0 || to>T1){ msg.className='recmsg err'; msg.textContent='Pick a day inside the projection.'; return; }
   const out=await adjSend('/api/adjustments','PUT',{key:sel.key, label:adjBase(sel.l), amount:v, projected:proj,
-                                 moveTo: to!==orig? to : null, note:$('adjnote').value}, $('adjsave'));
+                                 moveTo: to!==orig? to : null, note}, $('adjsave'));
   if(!out) return;
   ADJ[out.key]=out; OPPC={key:null};
   render();
   $('adjdate').value = out.moveTo || out.date;      // follow it to the day it now lands on
-  fillAdj.keep=true; fillAdj(); fillAdj.keep=false;
+  refill();
   msg.className='recmsg ok';
   msg.textContent=`Saved — ${fmt(out.amount)}`+(out.moveTo? ` on ${shortDate(out.moveTo)}` : '')
     +(out.amount!==out.projected? ` instead of ${fmt(out.projected)}` : '')+'.';
@@ -4196,9 +4269,9 @@ async function submitPin(){
     const body=await r.json().catch(()=>({}));
     if(!r.ok){ msg.className='recmsg err'; msg.textContent=body.error||'Incorrect PIN.'; $('pinput').value=''; $('pinput').focus(); btn.disabled=false; btnLoading(btn,false); return; }
     PIN=val;
+    $('pinput').blur();
     $('stagepin').hidden=true; $('stageform').hidden=false;
-    fillForm();
-    setTimeout(()=>$('recvar').focus(),40);
+    fillAdj();
   }catch(e){
     msg.className='recmsg err'; msg.textContent='Network error.';
   }
@@ -4206,48 +4279,6 @@ async function submitPin(){
 }
 $('pinok').addEventListener('click',submitPin);
 $('pinput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); submitPin(); }});
-
-/* stage 2 — form */
-$('recvar').addEventListener('input',e=>{
-  const el=e.target, had=el.value;
-  if(/[-−]/.test(had)) setSign(-1);            // typed a minus on a keyboard that has one
-  else if(/\+/.test(had)) setSign(1);
-  const clean=had.replace(/[^0-9.]/g,'');
-  if(clean!==had) el.value=clean;
-  updatePreview();
-});
-$('signneg').addEventListener('click',()=>setSign(-1));
-$('signpos').addEventListener('click',()=>setSign(1));
-$('modenew').addEventListener('click',()=>setRecMode('new'));
-$('recdate').addEventListener('change',updatePreview);
-
-$('recsave').addEventListener('click',async ()=>{
-  const msg=$('recmsg'), btn=$('recsave');
-  const date=$('recdate').value, note=$('recnote').value;
-  const variance=varianceValue();
-  msg.className='recmsg';
-  if(!date){ msg.className='recmsg err'; msg.textContent='Pick a date.'; return; }
-  if(variance===null){ msg.className='recmsg err'; msg.textContent='Enter the variance (0 is valid).'; return; }
-  if(!SRV.online||!PIN){ msg.className='recmsg err'; msg.textContent='Not authenticated.'; return; }
-  const proj=projectedFor(date), actual=+(proj+variance).toFixed(2);
-  // No confirmation dialog: the sheet already shows projected, variance and the new balance
-  // before Save, and a slip is one tap away in Adjust.
-  btn.disabled=true; btnLoading(btn,true); msg.textContent='Saving…';
-  try{
-    const r=await fetch('/api/reconciles',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,actual,note,passcode:PIN})});
-    const body=await r.json().catch(()=>({}));
-    if(!r.ok){ msg.className='recmsg err'; msg.textContent=body.error||'Could not save.'; btn.disabled=false; btnLoading(btn,false); return; }
-    RECON[date]={actual:body.actual,note:body.note};
-    $('recvar').value=''; $('recnote').value=''; setSign(-1);
-    msg.className='recmsg ok'; msg.textContent='Saved.';
-    render(); refreshTrigger();
-    if(eligibleDates().length===0){ setTimeout(closeModal,1600); } else fillForm();
-  }catch(e){
-    msg.className='recmsg err'; msg.textContent='Network error — not saved.';
-  }
-  btn.disabled=false; btnLoading(btn,false);
-});
 
 (async function loadState(){
   try{

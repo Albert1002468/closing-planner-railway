@@ -43,8 +43,8 @@ Railway sets `PORT` automatically — don't set it yourself.
 - **Today** can be reconciled only after **19:00 America/Chicago**.
 - **Past dates** with no entry stay open indefinitely — no time-of-day restriction.
 - **Future dates** can never be reconciled.
-- Each date can be reconciled **once**. To change a saved day, tap it in the "Recorded" list: it
-  opens in **Adjust** with that day's reconciled variance picked (`PUT /api/reconciles`). Every
+- Each date can be reconciled **once**. To change a saved day, open it (or tap it under
+  "Recent changes") and tap its reconciled balance (`PUT /api/reconciles`). Every
   **later** reconciled balance moves by the same amount, so their variances stay as entered;
   the change and every entry it moves are written to the audit log (`reconcile_edits`) in one
   transaction. Entries cannot be deleted.
@@ -53,17 +53,22 @@ Railway sets `PORT` automatically — don't set it yourself.
 - There is no confirmation dialog: the sheet shows the projected balance, the variance and the
   new balance live before you save.
 
-### Adjusting a transaction
+### Adjust & reconcile (one view)
 
-The same PIN-protected sheet has an **Adjust** mode for a known difference in one projected
-transaction — a paycheck that came in higher, a bill that was lower, or one that cleared on a
-different day. Pick the day, tap the transaction, enter what actually happened and, if it
-moved, the **date it happened** (`PUT /api/adjustments`). The projection uses that from then
-on and the line is marked *adjusted* or *moved*; **Use projection** removes it
-(`DELETE /api/adjustments`). A reconciled day also lists its **reconciled variance**, which
-can be changed here the same way. A reconciled balance is a real bank figure, so it stays as
-recorded and its variance shrinks by what the adjustment now explains. Any day in the window
-works, including future ones (a bill you already know).
+After the PIN, the sheet shows one day at a time — step with **‹ ›** or tap the date for the
+system picker — or **search** by name ("paycheck", "mortgage", a note) to list the matches
+nearest today. Every row has a second line saying what it is (projected, adjusted, moved, the
+projection it replaced, its note).
+
+- **A transaction**: enter what actually happened and, if it cleared on another day, step
+  **Cleared on** to that day (`PUT /api/adjustments`). The projection uses it from then on and
+  the line is marked *adjusted* or *moved*; **Use projection** removes it
+  (`DELETE /api/adjustments`). Any day in the window works, including future ones. A reconciled
+  balance is a real bank figure, so it stays as recorded and its variance shrinks by what the
+  adjustment now explains.
+- **The day's balance** (last row): *Reconcile this day* when it is eligible (enter the
+  variance, `POST /api/reconciles`), or *Reconciled* to change the variance.
+- **Recent changes** lists every reconcile and adjustment, newest first; tap one to open it.
 
 ### What a reconcile does
 
@@ -75,7 +80,7 @@ resulting actual balance and:
   so all later balances shift by the variance;
 - shows the entry in the **transaction table**, the **Today** panel (if it is today) and the
   **chart readout** — but only when the variance is non-zero. A $0.00 entry is saved and locks
-  the date, yet appears only in the "Recorded" list inside the sheet.
+  the date, yet appears only under "Recent changes" inside the sheet.
 
 The stored value is the resulting balance, so it stays pinned to reality; the variance shown
 later is re-derived against whatever sale scenario is active.

@@ -64,7 +64,8 @@ Top to bottom:
   posts; tapping "Next" opens Transactions at that month.
 - **Chart panel**: year/horizon picker, **Cash | Net worth** switch, the SVG, legend.
 - **Transactions** (month pages), **Keep it or sell it?**, **Assumptions & sources**.
-- **Sheets**: settings ("Home sale scenario") and reconcile. Bottom sheets on phones (drag the
+- **Sheets**: settings ("Home sale scenario") and "Adjust & reconcile" (PIN, then one view: a
+  day stepper or search, the day's lines plus its balance row to reconcile, recent changes). Bottom sheets on phones (drag the
   grabber to dismiss), centred dialogs on desktop.
 
 ## 5. The model
