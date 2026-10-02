@@ -61,7 +61,7 @@ Top to bottom:
   power, Rent net, Car loan, Lowest ahead, Days under $15k ahead, Break-even ROI. Five sale
   tiles (proceeds, payoff, loss credit, relo costs, recapture) show only while a sale is set.
 - **Today panel**: today's lines (and today's reconcile), their net, and the next day anything
-  posts; tapping "Next" opens Transactions at that month.
+  posts with that day's net; tapping "Next" opens Transactions at that month.
 - **Chart panel**: year/horizon picker, **Cash | Net worth** switch, the SVG, legend.
 - **Transactions** (month pages), **Keep it or sell it?**, **Assumptions & sources**.
 - **Sheets**: settings ("Home sale scenario") and "Adjust & reconcile" (PIN, then one view: a

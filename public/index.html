@@ -3411,10 +3411,12 @@ function renderTodayBar(DATA){
   h += '</ul>';
   const nx=DATA.slice(i+1).find(d=>d.ev.length);
   if(nx){
-    const first=nx.ev[0], more=nx.ev.length-1;
+    // The day's net, not its first line: what the balance actually does that day.
+    const n=nx.ev.length, nxNet=+nx.ev.reduce((a,e)=>a+e.a,0).toFixed(2);
+    const what = n===1? nx.ev[0].l : `${n} items · `+nx.ev.map(e=>adjBase(e.l)).join(', ');
     h += `<button type="button" class="tbnext" data-ym="${nx.d.slice(0,7)}" title="Open in Transactions">`
       +`<b>Next · ${dd(nx.d).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</b>`
-      +`<span title="${esc(first.l)}">${esc(first.l)}${more? ` · +${more} more`:''}</span>${sgn(first.a)}<i aria-hidden="true">›</i></button>`;
+      +`<span title="${esc(what)}">${esc(what)}</span>${sgn(nxNet)}<i aria-hidden="true">›</i></button>`;
   }
   bar.innerHTML=h; bar.hidden=false;
 }
