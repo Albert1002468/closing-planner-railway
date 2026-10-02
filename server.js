@@ -59,6 +59,7 @@ try {
       updated_at=excluded.updated_at`)
       .run(a.key, a.date, a.label, a.amount, a.projected, a.note, a.moveTo, a.updated_at),
     clearAdjustment: k => db.prepare('DELETE FROM adjustments WHERE key = ?').run(k),
+    getAdjustment: k => db.prepare('SELECT key, date, label, amount, projected, note, move_to AS moveTo FROM adjustments WHERE key = ?').get(k) || null,
     all: () => db.prepare('SELECT date, actual, note, created_at FROM reconciles ORDER BY date').all(),
     has: d => !!db.prepare('SELECT 1 AS x FROM reconciles WHERE date = ?').get(d),
     get: d => db.prepare('SELECT date, actual, note, created_at FROM reconciles WHERE date = ?').get(d),
@@ -87,6 +88,7 @@ try {
     adjustments: () => readA().sort((a, b) => a.date < b.date ? -1 : 1),
     setAdjustment: a => { const rows = readA().filter(x => x.key !== a.key); rows.push(a); writeA(rows); },
     clearAdjustment: k => writeA(readA().filter(x => x.key !== k)),
+    getAdjustment: k => readA().find(x => x.key === k) || null,
     all: () => read().slice().sort((a, b) => a.date < b.date ? -1 : 1),
     has: d => read().some(r => r.date === d),
     get: d => read().find(r => r.date === d) || null,
@@ -254,6 +256,28 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  /* ⚠️ An adjustment KEEPS EVERY RECONCILED VARIANCE. What the reader enters when reconciling is
+     the day's variance (unplanned spending), so changing a transaction's amount or day must not
+     quietly rewrite it: moving a +$3,300 rent off a reconciled day used to leave that day's
+     balance pinned and turn its $0.00 variance into +$3,300. Instead the line comes off its old
+     day and lands on its new one, and every reconciled balance moves by the net change up to its
+     date — so its projected balance and its actual move together. Runs inside store.tx. */
+  function keepVariances(oldDay, oldAmt, newDay, newAmt, why) {
+    const at = new Date().toISOString(), shifted = [];
+    for (const r of store.all()) {
+      const d = (r.date >= newDay ? newAmt : 0) - (r.date >= oldDay ? oldAmt : 0);
+      const delta = Math.round(d * 100) / 100;
+      if (!delta) continue;
+      const moved = Math.round((r.actual + delta) * 100) / 100;
+      store.logEdit({ date: r.date, prev_actual: r.actual, prev_note: r.note || '', new_actual: moved,
+                      new_note: r.note || '', reason: `moved ${delta > 0 ? '+' : ''}${delta.toFixed(2)}: ${why}`.slice(0, 200),
+                      edited_at: at });
+      store.update({ date: r.date, actual: moved, note: r.note || '' });
+      shifted.push({ date: r.date, actual: moved });
+    }
+    return shifted;
+  }
+
   /* Adjust one projected transaction (PUT sets its actual amount, DELETE returns it to the
      projection). Same passcode and lockout as reconciling. Any date in the planning window —
      past (what actually cleared) or future (a bill you already know). */
@@ -267,9 +291,19 @@ const server = http.createServer((req, res) => {
       if (!passOk(b.passcode)) { noteFail(ip); return json(res, 401, { error: 'Incorrect passcode.' }); }
       const key = String(b.key ?? '');
       if (!/^\d{4}-\d{2}-\d{2}\|.{1,200}$/.test(key)) return json(res, 400, { error: 'Invalid transaction.' });
+      const prev = store.getAdjustment(key);
       if (req.method === 'DELETE') {
-        try { store.clearAdjustment(key); } catch { return json(res, 500, { error: 'Could not remove the adjustment.' }); }
-        return json(res, 200, { key, cleared: true });
+        if (!prev) return json(res, 200, { key, cleared: true, shifted: [] });
+        let shifted;
+        try {
+          store.tx(() => {
+            // Back to the projection: its amount, on its own day.
+            shifted = keepVariances(prev.moveTo || prev.date, prev.amount, prev.date, prev.projected,
+                                    `projection restored for ${prev.label || key}`);
+            store.clearAdjustment(key);
+          });
+        } catch { return json(res, 500, { error: 'Could not remove the adjustment.' }); }
+        return json(res, 200, { key, cleared: true, shifted });
       }
       const date = key.slice(0, 10);
       if (date < RANGE_START || date > RANGE_END) return json(res, 400, { error: 'Date is outside the planning window.' });
@@ -284,8 +318,16 @@ const server = http.createServer((req, res) => {
       if (note.length > 500) return json(res, 400, { error: 'Note too long (500 characters max).' });
       const row = { key, date, label, amount: Math.round(amount * 100) / 100,
                     projected: Math.round(projected * 100) / 100, note, moveTo, updated_at: new Date().toISOString() };
-      try { store.setAdjustment(row); } catch { return json(res, 500, { error: 'Could not save the adjustment.' }); }
-      return json(res, 200, row);
+      let shifted;
+      try {
+        store.tx(() => {
+          // What was there before: the previous adjustment, or else the projection itself.
+          shifted = keepVariances(prev ? (prev.moveTo || prev.date) : date, prev ? prev.amount : row.projected,
+                                  moveTo || date, row.amount, `adjusted ${label || key}`);
+          store.setAdjustment(row);
+        });
+      } catch { return json(res, 500, { error: 'Could not save the adjustment.' }); }
+      return json(res, 200, { ...row, shifted });
     });
     return;
   }

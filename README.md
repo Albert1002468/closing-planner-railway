@@ -63,9 +63,11 @@ projection it replaced, its note).
 - **A transaction**: enter what actually happened and, if it cleared on another day, step
   **Cleared on** to that day (`PUT /api/adjustments`). The projection uses it from then on and
   the line is marked *adjusted* or *moved*; **Use projection** removes it
-  (`DELETE /api/adjustments`). Any day in the window works, including future ones. A reconciled
-  balance is a real bank figure, so it stays as recorded and its variance shrinks by what the
-  adjustment now explains.
+  (`DELETE /api/adjustments`). Any day in the window works, including future ones.
+  **Reconciled variances stay as entered**: the line comes off its old day and lands on its new
+  one, and every reconciled balance moves by the net change up to its date (moving a +$3,300
+  rent off a reconciled day lowers that day's balance by $3,300; its variance is unchanged).
+  The preview says which reconciled balances will move; each move is in the audit log.
 - **The day's balance** (last row): *Reconcile this day* when it is eligible (enter the
   variance, `POST /api/reconciles`), or *Reconciled* to change the variance.
 - **Recent changes** lists every reconcile and adjustment, newest first; tap one to open it.

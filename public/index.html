@@ -4103,16 +4103,26 @@ function adjPreview(){
   }
   const proj = sel.adj? sel.proj : sel.a, diff = v==null? null : +(v-proj).toFixed(2);
   const orig = sel.key.slice(0,10), to = $('adjmove').value || on;
-  const nextRec=Object.keys(RECON).sort().find(d=>d>=to);
+  const recs = v==null? [] : recShifts(on, sel.a, to, v);
   box.innerHTML =
     `<div class="r"><span>Projected</span><span>${fmt(proj)} · ${shortDate(orig)}</span></div>`
     +`<div class="r"><span>Actual</span><span>${v==null?'—':fmt(v)} · ${shortDate(to)}</span></div>`
     +`<div class="r big"><span>Difference</span><span style="color:var(${diff==null||diff===0?'--ink':diff>0?'--goodtext':'--crit'})">${diff==null?'—':signed(diff)}</span></div>`
     +(to!==orig? muted(`Moves from ${shortDate(orig)} to ${shortDate(to)} — the days between ${lt(to,orig)?'gain':'lose'} it`) : '')
-    +(diff? muted(nextRec
-        ? `Balances move by ${fmt(diff)} until ${esc(nice(nextRec))}, whose reconciled balance stays — its variance changes by ${fmt(-diff)}`
-        : `Every balance after this moves by ${fmt(diff)}`) : '');
+    +(diff? muted(`Every balance after this moves by ${fmt(diff)}`) : '')
+    +(recs.length===1? muted(`Reconciled ${shortDate(recs[0].d)} moves by ${signed(recs[0].by)} — its variance stays as entered`)
+      : recs.length? muted(`${recs.length} reconciled balances move with it — their variances stay as entered`) : '');
 }
+/* Mirrors the server's keepVariances: the line comes off oldDay and lands on newDay, and each
+   reconciled balance moves by the net change up to its date, so its variance is unchanged. */
+function recShifts(oldDay, oldAmt, newDay, newAmt){
+  return Object.keys(RECON).sort().map(d=>({d, by:+(((d>=newDay?newAmt:0)-(d>=oldDay?oldAmt:0))).toFixed(2)}))
+    .filter(x=>x.by);
+}
+const recNote = sh => !sh||!sh.length? '' : sh.length===1
+  ? ` Reconciled ${shortDate(sh[0].date)} is now ${fmt(sh[0].actual)}, same variance.`
+  : ` ${sh.length} reconciled balances moved with it, same variances.`;
+const applyShifted = out => (out.shifted||[]).forEach(x=>{ if(RECON[x.date]) RECON[x.date].actual=x.actual; });
 // Open one item: its day, selected, with the editor in view. No auto-focus — on a phone that
 // pops the keyboard and shoves the sheet around before you have read what you picked.
 function openItem(date, key){
@@ -4239,22 +4249,24 @@ $('adjsave').addEventListener('click',async ()=>{
   const out=await adjSend('/api/adjustments','PUT',{key:sel.key, label:adjBase(sel.l), amount:v, projected:proj,
                                  moveTo: to!==orig? to : null, note}, $('adjsave'));
   if(!out) return;
+  const moved=recNote(out.shifted); applyShifted(out); delete out.shifted;
   ADJ[out.key]=out; OPPC={key:null};
   render();
   $('adjdate').value = out.moveTo || out.date;      // follow it to the day it now lands on
   refill();
   msg.className='recmsg ok';
   msg.textContent=`Saved — ${fmt(out.amount)}`+(out.moveTo? ` on ${shortDate(out.moveTo)}` : '')
-    +(out.amount!==out.projected? ` instead of ${fmt(out.projected)}` : '')+'.';
+    +(out.amount!==out.projected? ` instead of ${fmt(out.projected)}` : '')+'.'+moved;
 });
 $('adjclear').addEventListener('click',async ()=>{
   if(!ADJSEL || !ADJ[ADJSEL]) return;
   const key=ADJSEL, home=ADJ[key].date;
   const out=await adjSend('/api/adjustments','DELETE',{key}, $('adjclear'));
   if(!out) return;
+  const moved=recNote(out.shifted); applyShifted(out);
   delete ADJ[key]; OPPC={key:null};
   render(); $('adjdate').value=home; fillAdj();
-  $('adjmsg').className='recmsg ok'; $('adjmsg').textContent='Back to the projection.';
+  $('adjmsg').className='recmsg ok'; $('adjmsg').textContent='Back to the projection.'+moved;
 });
 
 /* stage 1 — PIN */
