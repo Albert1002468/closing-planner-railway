@@ -1444,16 +1444,19 @@ const LEASE={
   manager:'Brandon Beckett', notice:60
 };
 /* The $3,300 security deposit: the manager handed it over on Oct 2, 2026, and it goes back to
-   the tenants when they move out — the end of the tenancy, or the sale if that comes first.
+   THESE tenants when they move out: the end of their signed lease (Sept 30, 2027), or earlier if
+   the tenancy ends or the house sells first. Holding the house past the lease is modelled as
+   re-letting, and a later tenant's deposit is not this one.
    ⚠️ It is the tenants' money, not yours: it lifts the cash balance while you hold it, so
-   netWorth carries it as a liability until it is refunded. A tenancy that runs to the horizon
-   has no move-out inside the model, so there is no refund line (rather than a fake one on the
-   last day) — the liability stays on the books instead. */
+   netWorth carries it as a liability until it is refunded. */
 const DEPOSIT_IN='2026-10-02';
 function depositBackOn(sale, rent){
   if(!rent) return null;
-  const end=rentSchedule(rent).end, out=(sale && lt(sale,end))? sale : end;
-  return lt(out,T1)? out : null;
+  let out=LEASE.end;
+  const end=rentSchedule(rent).end;
+  if(lt(end,out)) out=end;
+  if(sale && lt(sale,out)) out=sale;
+  return lt(T1,out)? null : out;
 }
 // Held on asOf: received (only if the tenants were in by then) and not yet refunded.
 function depositHeld(sale, rent, asOf){
@@ -1717,7 +1720,7 @@ function buildEvents(sale, price, rent, home){
   if(depositHeld(sale,rent,DEPOSIT_IN)){
     E(DEPOSIT_IN, LEASE.deposit, 'Security deposit from the manager (owed back to the tenants)');
     const back=depositBackOn(sale,rent);
-    if(back) E(back, -LEASE.deposit, 'Security deposit refunded to the tenants (move-out)');
+    if(back) E(back, -LEASE.deposit, 'Security deposit refunded to the tenants (lease ends / move-out)');
   }
   // From MOVE-IN, not from the first full payment — this gates utilities, Vivint and the relo
   // reimbursement, all of which stop the day the tenant is in the house.
@@ -2527,7 +2530,7 @@ function syncSaleDate(rent, home, fromSaleDate){
     +`<dt>Term</dt><dd>${esc(nice(LEASE.start))} → ${esc(nice(LEASE.end))}</dd>`
     +`<dt>Rent</dt><dd>${fmt(LEASE.rent)}/mo on the 1st · no increases in term</dd>`
     +`<dt>Move-in</dt><dd>${fmt(LEASE.prorated)} prorated · ${fmt(LEASE.deposit)} deposit `
-      +`(with you from ${esc(nice(DEPOSIT_IN))}; refunded at move-out)</dd>`
+      +`(with you from ${esc(nice(DEPOSIT_IN))}; refunded when this lease ends)</dd>`
     +`<dt>Tenants</dt><dd>${esc(LEASE.tenants)}</dd>`
     +`<dt>Manager</dt><dd>${esc(LEASE.manager)}</dd>`
     +`<dt>Notice</dt><dd>${LEASE.notice} days either side, else month-to-month</dd>`
