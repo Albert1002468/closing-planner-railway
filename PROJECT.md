@@ -92,7 +92,9 @@ the sale figures. Categories:
   prorated at a sale, escrow refund or deficiency at a sale.
 - *Letting*: `rentSchedule` (prorated move-in, then the 1st of each month), management and
   maintenance (`maintPerYear` ramps toward 1% of value after the warranty), placement fee,
-  early-termination fee if the tenancy ends before `LEASE.end`, Schedule E taxed at
+  early-termination fee if the tenancy ends before `LEASE.end`, the $3,300 security deposit
+  (in on `DEPOSIT_IN` 2026-10-02, refunded at move-out or the sale — `depositBackOn` — and a
+  net-worth liability while held, `depositHeld`), Schedule E taxed at
   `RENT_TAX_RATE`; losses are suspended (`suspendedByYear`) and released at a sale.
 - *Sale*: `payoffOn(sale)`; seller costs are 0 inside the relo window (`RELO_DEADLINE`
   2027-07-20) and 7.5% after; loss credit = half the loss under $425k, max $25k, inside the

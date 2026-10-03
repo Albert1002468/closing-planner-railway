@@ -1443,8 +1443,25 @@ const LEASE={
   landlords:'You and Hailea', tenants:'Michaelle Guzman, Danica Guzman, Hunter Sharp',
   manager:'Brandon Beckett', notice:60
 };
-/* ⚠️ The $3,300 deposit is NOT modelled: the property manager holds it, so it never reaches
-   this account. Modelling it as cash in and back out flattered the autumn trough by $3,300. */
+/* The $3,300 security deposit: the manager handed it over on Oct 2, 2026, and it goes back to
+   the tenants when they move out — the end of the tenancy, or the sale if that comes first.
+   ⚠️ It is the tenants' money, not yours: it lifts the cash balance while you hold it, so
+   netWorth carries it as a liability until it is refunded. A tenancy that runs to the horizon
+   has no move-out inside the model, so there is no refund line (rather than a fake one on the
+   last day) — the liability stays on the books instead. */
+const DEPOSIT_IN='2026-10-02';
+function depositBackOn(sale, rent){
+  if(!rent) return null;
+  const end=rentSchedule(rent).end, out=(sale && lt(sale,end))? sale : end;
+  return lt(out,T1)? out : null;
+}
+// Held on asOf: received (only if the tenants were in by then) and not yet refunded.
+function depositHeld(sale, rent, asOf){
+  if(!rent || lt(asOf,DEPOSIT_IN) || !(DEPOSIT_IN>=rent.start && lt(DEPOSIT_IN,rentSchedule(rent).end))) return 0;
+  if(sale && !lt(DEPOSIT_IN,sale)) return 0;
+  const back=depositBackOn(sale,rent);
+  return back && !lt(asOf,back)? 0 : LEASE.deposit;
+}
 
 /* --- renting somewhere yourself instead of closing on Sept 18 --- */
 // A later purchase: relo absorbs the buyer closing costs only inside the window.
@@ -1697,6 +1714,11 @@ function buildEvents(sale, price, rent, home){
     (TAXDUE[taxYear]=TAXDUE[taxYear]||[]).push({label,amt:+amt.toFixed(2)});
   };
   const {dates:rentDates, end:rentEnd, pro:rentPro}=rentSchedule(rent);
+  if(depositHeld(sale,rent,DEPOSIT_IN)){
+    E(DEPOSIT_IN, LEASE.deposit, 'Security deposit from the manager (owed back to the tenants)');
+    const back=depositBackOn(sale,rent);
+    if(back) E(back, -LEASE.deposit, 'Security deposit refunded to the tenants (move-out)');
+  }
   // From MOVE-IN, not from the first full payment — this gates utilities, Vivint and the relo
   // reimbursement, all of which stop the day the tenant is in the house.
   /* ⚠️ Nothing is let after the house is sold, whatever tenancy the caller passed in. The UI
@@ -2351,8 +2373,9 @@ function netWorth(res, sale, rent, home, asOf){
   // 3. debts the cash balance never sees
   const carSettled = res.carPayoffDate && res.carPayoffDate<=asOf && res.carPayoff>0;
   const car = carSettled? 0 : carPayoffOn(asOf, true);
-  return {nw:+(cash + okc + mid - car - midTaxOwed - deferred).toFixed(2),
-          cash, okc:+okc.toFixed(2), mid:+mid.toFixed(2), car:+car.toFixed(2),
+  const deposit = depositHeld(sale, rent, asOf);      // the tenants' money, sitting in cash
+  return {nw:+(cash + okc + mid - car - midTaxOwed - deferred - deposit).toFixed(2),
+          cash, okc:+okc.toFixed(2), mid:+mid.toFixed(2), car:+car.toFixed(2), deposit,
           midTaxOwed:+midTaxOwed.toFixed(2), deferred:+deferred.toFixed(2)};
 }
 
@@ -2504,7 +2527,7 @@ function syncSaleDate(rent, home, fromSaleDate){
     +`<dt>Term</dt><dd>${esc(nice(LEASE.start))} → ${esc(nice(LEASE.end))}</dd>`
     +`<dt>Rent</dt><dd>${fmt(LEASE.rent)}/mo on the 1st · no increases in term</dd>`
     +`<dt>Move-in</dt><dd>${fmt(LEASE.prorated)} prorated · ${fmt(LEASE.deposit)} deposit `
-      +`(held by the manager)</dd>`
+      +`(with you from ${esc(nice(DEPOSIT_IN))}; refunded at move-out)</dd>`
     +`<dt>Tenants</dt><dd>${esc(LEASE.tenants)}</dd>`
     +`<dt>Manager</dt><dd>${esc(LEASE.manager)}</dd>`
     +`<dt>Notice</dt><dd>${LEASE.notice} days either side, else month-to-month</dd>`
