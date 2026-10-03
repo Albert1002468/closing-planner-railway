@@ -351,7 +351,7 @@
   .adjlist .adjitem.on{background:var(--surface-1);border-color:var(--s1);
     box-shadow:0 0 0 3px color-mix(in srgb,var(--s1) 16%,transparent)}
   .adjlist .none{font-size:13px;color:var(--muted);padding:4px 0}
-  #adjedit[hidden],#daybar[hidden],#adjmovefld[hidden],#adjclear[hidden]{display:none}
+  #adjmulti[hidden],#adjedit[hidden],#daybar[hidden],#adjmovefld[hidden],#adjclear[hidden]{display:none}
   .rechead{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .ghostbtn{background:none;border:0;color:var(--s1);font:inherit;font-size:14px;font-weight:600;
             padding:4px 0 4px 10px;cursor:pointer}
@@ -383,6 +383,19 @@
   .adjlist .adjitem.balitem.todo .amt{color:var(--s1);font-weight:600}
   .adjlist .adjitem.static{cursor:default}
   .adjlist .grp{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:6px 0 1px}
+  .adjtools{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:22px;
+            font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px}
+  .adjtools:empty{display:none}
+  .adjtools button{background:none;border:0;color:var(--s1);font:inherit;font-size:13px;font-weight:600;
+                   text-transform:none;letter-spacing:0;padding:2px 0 2px 12px;cursor:pointer}
+  .adjitem .tick{flex:none;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--axis);
+                 display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
+  .adjitem.picked .tick{background:var(--s1);border-color:var(--s1)}
+  .adjlist .adjitem.picked{border-color:var(--s1)}
+  .adjitem .tickwrap{display:flex;align-items:center;gap:10px;min-width:0}
+  #adjmulti{margin-top:12px}
+  .daymsg{margin-top:8px}
+  .daymsg:empty{display:none}
   .adjwhat{margin:14px 0 10px;padding:9px 12px;border-radius:10px;background:var(--fill);font-size:13px;line-height:1.35}
   .adjwhat b{font-weight:650}
   .adjwhat small{display:block;color:var(--muted);font-size:11.5px}
@@ -1163,7 +1176,26 @@
             </label>
             <button type="button" id="daynext" aria-label="Next day">&rsaquo;</button>
           </div>
+          <div class="adjtools" id="adjtools"></div>
           <div class="adjlist" id="adjlist"></div>
+          <!-- Select mode: move several of the day's lines to another day in one save. -->
+          <div id="adjmulti" hidden>
+            <div class="fld">
+              <label>Move to</label>
+              <div class="daybar small">
+                <button type="button" id="multiprev" aria-label="A day earlier">&lsaquo;</button>
+                <label class="daypick"><span id="multilabel"></span><input type="date" id="multito" aria-label="Day they cleared"></label>
+                <button type="button" id="multinext" aria-label="A day later">&rsaquo;</button>
+              </div>
+            </div>
+            <div class="resultbox" id="multipreview"></div>
+            <div class="recrow">
+              <button id="multisave">Move</button>
+              <button id="multicancel" class="ghost">Cancel</button>
+              <span class="recmsg" id="multimsg"></span>
+            </div>
+          </div>
+          <div class="recmsg ok daymsg" id="daymsg" role="status"></div>
           <div id="adjedit" hidden>
             <div class="adjwhat" id="adjwhat"></div>
             <div class="fld">
@@ -3979,8 +4011,14 @@ function itemRow(e, date, withDate){
             : `<span class="amt">${fmt(e.a)}</span>`;
   const cls = e.kind==='rec'? ' balitem' : e.kind==='new'? ' balitem todo' : '';
   const sub = (withDate? longDate(date)+' · ' : '')+itemDetail(e);
+  const lab = `<span class="lab"><b>${chip}${esc(title)}</b><small>${esc(sub)}</small></span>`;
+  if(MULTI && e.kind==='tx'){
+    const on=MULTI.keys.has(e.key);
+    return `<button type="button" class="adjitem${on?' picked':''}" data-key="${esc(e.key)}" data-date="${date}" aria-pressed="${on}"`
+      +` title="${esc(title+' — '+sub)}"><span class="tickwrap"><span class="tick" aria-hidden="true">${on?'✓':''}</span>${lab}</span>${amt}</button>`;
+  }
   return `<button type="button" class="adjitem${cls}${e.key===ADJSEL?' on':''}" data-key="${esc(e.key)}" data-date="${date}"`
-    +` title="${esc(title+' — '+sub)}"><span class="lab"><b>${chip}${esc(title)}</b><small>${esc(sub)}</small></span>${amt}</button>`;
+    +` title="${esc(title+' — '+sub)}">${lab}${amt}</button>`;
 }
 function searchHits(q){
   const words=q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -4003,6 +4041,7 @@ function fillAdj(){
   $d.min=T0; $d.max=T1;
   if(!$d.value || $d.value<T0 || $d.value>T1) $d.value = TODAY_ISO>=T0 && TODAY_ISO<=T1? TODAY_ISO : T0;
   const date=$d.value, {today,hour}=nowInfo();
+  if(MULTI && (q || MULTI.day!==date)) MULTI=null;          // select mode belongs to one day
   $('rechint').textContent=(SRV.online?'':'Offline — can’t save. ')
     +'Tap a line to enter what actually happened. Reconcile a day from its balance at the bottom.';
 
@@ -4020,19 +4059,27 @@ function fillAdj(){
       ? `<div class="grp">${total} match${total===1?'':'es'}${total>near.length?` · ${near.length} nearest today`:''}</div>`
         + near.map(h=>itemRow(h.e, h.d, true)).join('')
       : '<div class="none">Nothing matches.</div>';
-    $('adjedit').hidden=true;
+    $('adjedit').hidden=true; $('adjtools').innerHTML=''; $('adjmulti').hidden=true;
   } else {
-    const items=adjItems(date), day=adjDay(date);
+    const items=adjItems(date), day=adjDay(date), txs=items.filter(e=>e.kind==='tx');
     if(ADJSEL && !items.some(e=>e.key===ADJSEL)) ADJSEL=null;
-    let html = items.filter(e=>e.kind==='tx').map(e=>itemRow(e,date)).join('')
+    if(MULTI) ADJSEL=null;
+    $('adjtools').innerHTML = !txs.length? ''
+      : MULTI? `<span>${MULTI.keys.size} of ${txs.length} selected</span>`
+          +`<button type="button" data-tool="all">${MULTI.keys.size===txs.length?'Select none':'Select all'}</button>`
+      : `<span>${txs.length} transaction${txs.length===1?'':'s'}</span>`
+          +(txs.length>1? '<button type="button" data-tool="select">Select to move</button>' : '');
+    let html = txs.map(e=>itemRow(e,date)).join('')
             || '<div class="none">No transactions on this day.</div>';
     const bal=items.find(e=>e.kind!=='tx');
-    if(bal) html+=itemRow(bal,date);
+    if(MULTI) {}                                             // the balance row is not movable
+    else if(bal) html+=itemRow(bal,date);
     else if(day) html+=`<div class="adjitem balitem static"><span class="lab"><b>End-of-day balance</b><small>`
       +(date===today? `Projected · today can be reconciled from ${UNLOCK_HOUR%12||12} ${UNLOCK_HOUR<12?'am':'pm'}` : 'Projected')
       +`</small></span><span class="amt">${fmt(day.b)}</span></div>`;
     $('adjlist').innerHTML=html;
     fillEditor(items.find(e=>e.key===ADJSEL));
+    fillMulti(txs);
   }
   fillRecent();
 }
@@ -4161,6 +4208,9 @@ function openItem(date, key){
   fillAdj();
   if(!$('adjedit').hidden) requestAnimationFrame(()=>$('adjedit').scrollIntoView({block:'nearest', behavior:'smooth'}));
 }
+const clearDayMsg=()=>{ $('daymsg').textContent=''; };
+['adjlist','adjtools','dayprev','daynext','adjrecent'].forEach(id=>$(id).addEventListener('click',clearDayMsg,true));
+['adjdate','adjq'].forEach(id=>$(id).addEventListener('input',clearDayMsg,true));
 function stepDay(n){
   const d=addD($('adjdate').value,n); if(d<T0||d>T1) return;
   $('adjdate').value=d; ADJSEL=null; $('adjmsg').textContent=''; fillAdj();
@@ -4171,10 +4221,75 @@ $('adjdate').addEventListener('change',()=>{ ADJSEL=null; $('adjmsg').textConten
 $('adjq').addEventListener('input',()=>{ ADJSEL=null; fillAdj(); });
 $('adjq').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); }});
 $('adjlist').addEventListener('click',e=>{ const b=e.target.closest('button[data-key]'); if(!b) return;
+  if(MULTI){ const k=b.dataset.key; MULTI.keys.has(k)? MULTI.keys.delete(k) : MULTI.keys.add(k);
+    $('multimsg').textContent=''; fillAdj(); return; }
   if($('adjq').value.trim()){ $('adjq').blur(); openItem(b.dataset.date, b.dataset.key); return; }
   ADJSEL = ADJSEL===b.dataset.key? null : b.dataset.key;      // tap again to close
   $('adjmsg').textContent=''; fillAdj();
   if(ADJSEL) requestAnimationFrame(()=>$('adjedit').scrollIntoView({block:'nearest', behavior:'smooth'}));
+});
+/* ---- Select mode: move several of one day's lines to another day in one save ----
+   Each keeps its current amount and note; only the day changes. Moving a line back to its own
+   day at its projected amount clears it. One PUT with `items`, so the lines and every reconciled
+   balance they shift land together (the server's keepVariances, once per line). */
+let MULTI=null;   // {day, keys:Set} while selecting
+function multiItems(){ return MULTI? adjItems(MULTI.day).filter(e=>e.kind==='tx' && MULTI.keys.has(e.key)) : []; }
+function fillMulti(txs){
+  $('adjmulti').hidden=!MULTI;
+  if(!MULTI) return;
+  const to=$('multito'); to.min=T0; to.max=T1;
+  if(!to.value) to.value = MULTI.day<T1? addD(MULTI.day,1) : MULTI.day;
+  $('multilabel').textContent=longDate(to.value);
+  $('multiprev').disabled=to.value<=T0; $('multinext').disabled=to.value>=T1;
+  const sel=multiItems(), net=+sel.reduce((a,e)=>a+e.a,0).toFixed(2), n=sel.length;
+  $('multisave').textContent = n? `Move ${n} to ${shortDate(to.value)}` : 'Move';
+  $('multisave').disabled = !n || to.value===MULTI.day;
+  const muted=t=>`<div class="r" style="color:var(--muted)"><span>${t}</span><span></span></div>`;
+  // Reconciled balances that move with them, summed over the lines (as the server does).
+  const by={}; sel.forEach(e=>recShifts(MULTI.day, e.a, to.value, e.a).forEach(x=>{ by[x.d]=+((by[x.d]||0)+x.by).toFixed(2); }));
+  const recs=Object.entries(by).filter(([,v])=>v);
+  $('multipreview').innerHTML = !n? muted('Tap the transactions to move.')
+    : `<div class="r"><span>${n} transaction${n===1?'':'s'}</span><span>${signed(net)}</span></div>`
+      +`<div class="r big"><span>${shortDate(MULTI.day)} → ${shortDate(to.value)}</span><span>${signed(net)}</span></div>`
+      +(to.value===MULTI.day? muted('Pick another day.')
+        : muted(`Balances until ${shortDate(lt(to.value,MULTI.day)? MULTI.day : to.value)} change by `
+            +`${signed(lt(to.value,MULTI.day)? net : -net)}; after that, nothing changes`))
+      +(recs.length===1? muted(`Reconciled ${shortDate(recs[0][0])} moves by ${signed(recs[0][1])} — its variance stays as entered`)
+        : recs.length? muted(`${recs.length} reconciled balances move with them — their variances stay as entered`) : '');
+}
+$('adjtools').addEventListener('click',e=>{
+  const b=e.target.closest('[data-tool]'); if(!b) return;
+  const date=$('adjdate').value, txs=adjItems(date).filter(x=>x.kind==='tx');
+  if(b.dataset.tool==='select'){ MULTI={day:date, keys:new Set()}; ADJSEL=null; $('multito').value=''; $('multimsg').textContent=''; }
+  else if(b.dataset.tool==='all') MULTI.keys = MULTI.keys.size===txs.length? new Set() : new Set(txs.map(x=>x.key));
+  fillAdj();
+});
+const stepMulti=n=>{ const d=addD($('multito').value,n); if(d<T0||d>T1) return; $('multito').value=d; fillAdj(); };
+$('multiprev').addEventListener('click',()=>stepMulti(-1));
+$('multinext').addEventListener('click',()=>stepMulti(1));
+$('multito').addEventListener('change',()=>fillAdj());
+$('multito').addEventListener('click',e=>{ try{ e.target.showPicker(); }catch(_){} });
+$('multicancel').addEventListener('click',()=>{ MULTI=null; fillAdj(); });
+$('multisave').addEventListener('click',async ()=>{
+  const sel=multiItems(), to=$('multito').value, msg=$('multimsg'), from=MULTI.day;
+  if(!sel.length || !to || to===from) return;
+  if(!SRV.online||!PIN){ msg.className='recmsg err'; msg.textContent='Not authenticated.'; return; }
+  const btn=$('multisave'); btn.disabled=true; btnLoading(btn,true); msg.className='recmsg'; msg.textContent='Saving…';
+  try{
+    const items=sel.map(e=>{ const orig=e.key.slice(0,10), x=ADJ[e.key];
+      return {key:e.key, label:adjBase(e.l), amount:e.a, projected: e.adj? e.proj : e.a,
+              moveTo: to!==orig? to : null, note: (x&&x.note)||''}; });
+    const r=await fetch('/api/adjustments',{method:'PUT',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({items, passcode:PIN})});
+    const out=await r.json().catch(()=>({}));
+    if(!r.ok){ msg.className='recmsg err'; msg.textContent=out.error||'Could not save.'; return; }
+    const moved=recNote(out.shifted); applyShifted(out);
+    (out.items||[]).forEach(x=>{ if(x.cleared) delete ADJ[x.key]; else ADJ[x.key]=x; });
+    OPPC={key:null}; MULTI=null; render();
+    $('adjdate').value=to; fillAdj();                     // follow them to their new day
+    $('daymsg').textContent=`Moved ${sel.length} from ${shortDate(from)} to ${shortDate(to)}.`+moved;
+  }catch(e){ msg.className='recmsg err'; msg.textContent='Network error — not saved.'; }
+  finally{ btn.disabled=false; btnLoading(btn,false); }
 });
 function recentPick(e){
   const p=e.target.closest('button[data-p]');
@@ -4214,7 +4329,7 @@ function closeModal(){
   $('recmodal').hidden=true;
   document.body.style.overflow='';
   PIN=''; $('pinput').value='';
-  ADJSEL=null; $('adjq').value=''; $('adjdate').value='';
+  ADJSEL=null; MULTI=null; $('adjq').value=''; $('adjdate').value=''; $('daymsg').textContent='';
   $('adjmsg').textContent=''; $('adjmsg').className='recmsg';
 }
 $('recbtn').addEventListener('click',openModal);

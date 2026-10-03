@@ -68,6 +68,10 @@ projection it replaced, its note).
   one, and every reconciled balance moves by the net change up to its date (moving a +$3,300
   rent off a reconciled day lowers that day's balance by $3,300; its variance is unchanged).
   The preview says which reconciled balances will move; each move is in the audit log.
+- **Several at once**: tap **Select to move**, tick the lines (or **Select all**), step **Move
+  to** to the day they cleared and tap **Move**. One save (`PUT /api/adjustments` with
+  `items`): each keeps its amount and note, reconciled variances stay as entered, and moving a
+  line back to its own day clears it.
 - **The day's balance** (last row): *Reconcile this day* when it is eligible (enter the
   variance, `POST /api/reconciles`), or *Reconciled* to change the variance.
 - **Recent changes** lists every reconcile and adjustment, newest first; tap one to open it.

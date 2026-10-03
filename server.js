@@ -278,19 +278,81 @@ const server = http.createServer((req, res) => {
     return shifted;
   }
 
+  const KEY_RE = /^\d{4}-\d{2}-\d{2}\|.{1,200}$/;
+  // One adjustment's fields, validated. Shared by the single PUT and the batch.
+  function parseAdjustment(b, key) {
+    const date = key.slice(0, 10);
+    if (date < RANGE_START || date > RANGE_END) return { error: 'Date is outside the planning window.' };
+    const amount = Number(b.amount), projected = Number(b.projected);
+    if (!Number.isFinite(amount) || !Number.isFinite(projected)) return { error: 'Amount must be a number.' };
+    const label = String(b.label ?? '').trim().slice(0, 200);
+    // Optional: the day it actually happened. null = the projection's own day.
+    const moveTo = b.moveTo == null || b.moveTo === '' || b.moveTo === date ? null : String(b.moveTo);
+    if (moveTo !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(moveTo) || moveTo < RANGE_START || moveTo > RANGE_END))
+      return { error: 'The new date is outside the planning window.' };
+    const note = String(b.note ?? '').trim();
+    if (note.length > 500) return { error: 'Note too long (500 characters max).' };
+    return { row: { key, date, label, amount: Math.round(amount * 100) / 100,
+                    projected: Math.round(projected * 100) / 100, note, moveTo, updated_at: new Date().toISOString() } };
+  }
+  // Runs inside store.tx. What was there before: the previous adjustment, or else the projection.
+  function saveAdjustment(row, prev) {
+    const shifted = keepVariances(prev ? (prev.moveTo || prev.date) : row.date, prev ? prev.amount : row.projected,
+                                  row.moveTo || row.date, row.amount, `adjusted ${row.label || row.key}`);
+    store.setAdjustment(row);
+    return { ...row, shifted };
+  }
+
   /* Adjust one projected transaction (PUT sets its actual amount, DELETE returns it to the
      projection). Same passcode and lockout as reconciling. Any date in the planning window —
      past (what actually cleared) or future (a bill you already know). */
   if (url.pathname === '/api/adjustments' && (req.method === 'PUT' || req.method === 'DELETE')) {
     let raw = '';
-    req.on('data', c => { raw += c; if (raw.length > 8192) req.destroy(); });
+    req.on('data', c => { raw += c; if (raw.length > 131072) req.destroy(); });
     req.on('end', () => {
       let b; try { b = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'Malformed request.' }); }
       if (throttled(ip)) return json(res, 429, { error: 'Too many failed attempts. Try again in 15 minutes.' });
       if (!PASSCODE) return json(res, 503, { error: 'Saving is disabled: RECONCILE_PASSCODE is not set on the server.' });
       if (!passOk(b.passcode)) { noteFail(ip); return json(res, 401, { error: 'Incorrect passcode.' }); }
+      /* Several at once (moving a day's worth of lines): { items: [...] }, each shaped like a single
+         PUT. All validated first, then saved in ONE transaction — every line and every reconcile it
+         shifts lands together or none do. A line moved back to its own day, at its projected amount
+         and with no note, is simply cleared. */
+      if (req.method === 'PUT' && Array.isArray(b.items)) {
+        if (!b.items.length || b.items.length > 200) return json(res, 400, { error: 'Pick 1–200 transactions.' });
+        const rows = [];
+        for (const x of b.items) {
+          const k = String(x && x.key || '');
+          if (!KEY_RE.test(k)) return json(res, 400, { error: 'Invalid transaction.' });
+          const p = parseAdjustment(x, k);
+          if (p.error) return json(res, 400, { error: p.error });
+          rows.push(p.row);
+        }
+        if (new Set(rows.map(r => r.key)).size !== rows.length) return json(res, 400, { error: 'A transaction is listed twice.' });
+        const saved = [], finalAct = new Map();
+        try {
+          store.tx(() => {
+            for (const row of rows) {
+              const prev = store.getAdjustment(row.key);
+              if (!row.moveTo && row.amount === row.projected && !row.note) {
+                if (prev) {
+                  keepVariances(prev.moveTo || prev.date, prev.amount, prev.date, prev.projected,
+                                `projection restored for ${prev.label || row.key}`).forEach(x => finalAct.set(x.date, x.actual));
+                  store.clearAdjustment(row.key);
+                }
+                saved.push({ key: row.key, cleared: true });
+              } else {
+                const o = saveAdjustment(row, prev);
+                o.shifted.forEach(x => finalAct.set(x.date, x.actual));
+                delete o.shifted; saved.push(o);
+              }
+            }
+          });
+        } catch { return json(res, 500, { error: 'Could not save the moves.' }); }
+        return json(res, 200, { items: saved, shifted: [...finalAct].map(([date, actual]) => ({ date, actual })) });
+      }
       const key = String(b.key ?? '');
-      if (!/^\d{4}-\d{2}-\d{2}\|.{1,200}$/.test(key)) return json(res, 400, { error: 'Invalid transaction.' });
+      if (!KEY_RE.test(key)) return json(res, 400, { error: 'Invalid transaction.' });
       const prev = store.getAdjustment(key);
       if (req.method === 'DELETE') {
         if (!prev) return json(res, 200, { key, cleared: true, shifted: [] });
@@ -305,29 +367,12 @@ const server = http.createServer((req, res) => {
         } catch { return json(res, 500, { error: 'Could not remove the adjustment.' }); }
         return json(res, 200, { key, cleared: true, shifted });
       }
-      const date = key.slice(0, 10);
-      if (date < RANGE_START || date > RANGE_END) return json(res, 400, { error: 'Date is outside the planning window.' });
-      const amount = Number(b.amount), projected = Number(b.projected);
-      if (!Number.isFinite(amount) || !Number.isFinite(projected)) return json(res, 400, { error: 'Amount must be a number.' });
-      const label = String(b.label ?? '').trim().slice(0, 200);
-      // Optional: the day it actually happened. null = the projection's own day.
-      let moveTo = b.moveTo == null || b.moveTo === '' || b.moveTo === date ? null : String(b.moveTo);
-      if (moveTo !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(moveTo) || moveTo < RANGE_START || moveTo > RANGE_END))
-        return json(res, 400, { error: 'The new date is outside the planning window.' });
-      const note = String(b.note ?? '').trim();
-      if (note.length > 500) return json(res, 400, { error: 'Note too long (500 characters max).' });
-      const row = { key, date, label, amount: Math.round(amount * 100) / 100,
-                    projected: Math.round(projected * 100) / 100, note, moveTo, updated_at: new Date().toISOString() };
-      let shifted;
-      try {
-        store.tx(() => {
-          // What was there before: the previous adjustment, or else the projection itself.
-          shifted = keepVariances(prev ? (prev.moveTo || prev.date) : date, prev ? prev.amount : row.projected,
-                                  moveTo || date, row.amount, `adjusted ${label || key}`);
-          store.setAdjustment(row);
-        });
-      } catch { return json(res, 500, { error: 'Could not save the adjustment.' }); }
-      return json(res, 200, { ...row, shifted });
+      const parsed = parseAdjustment(b, key);
+      if (parsed.error) return json(res, 400, { error: parsed.error });
+      let out;
+      try { store.tx(() => { out = saveAdjustment(parsed.row, prev); }); }
+      catch { return json(res, 500, { error: 'Could not save the adjustment.' }); }
+      return json(res, 200, out);
     });
     return;
   }

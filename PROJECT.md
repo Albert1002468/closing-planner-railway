@@ -44,7 +44,7 @@ A volume at `/data` is mandatory or reconciliations vanish on redeploy. Health c
 | `/api/state` | GET | today, hour, unlockHour, range, saveEnabled, storage, all reconciles + edit log |
 | `/api/verify` | POST | `{passcode}` → 200 or 401; gates the PIN screen |
 | `/api/reconciles` | POST | new entry `{date, actual, note, passcode}`; once per date; not future; today only after the unlock hour |
-| `/api/adjustments` | PUT / DELETE | set (or clear) the actual amount — and optionally the day (`moveTo`) — of one projected transaction, keyed `date\|label`; every reconciled balance moves by the net cash change up to its date so its variance is kept (`keepVariances`, audited), returned as `shifted` |
+| `/api/adjustments` | PUT / DELETE | set (or clear) the actual amount — and optionally the day (`moveTo`) — of one projected transaction, keyed `date\|label`; every reconciled balance moves by the net cash change up to its date so its variance is kept (`keepVariances`, audited), returned as `shifted`. `{items:[…]}` saves several in one transaction (select-to-move) |
 | `/api/reconciles` | PUT | correct an entry; every later entry moves by the same delta (their variances are kept), all in one transaction, each logged to `reconcile_edits` |
 
 Lockout: 8 failed passcodes per IP per 15 min. The IP is the **last** `X-Forwarded-For`
