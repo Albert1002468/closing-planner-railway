@@ -93,7 +93,7 @@ the sale figures. Categories:
 - *Letting*: `rentSchedule` (prorated move-in, then the 1st of each month), management and
   maintenance (`maintPerYear` ramps toward 1% of value after the warranty), placement fee,
   early-termination fee if the tenancy ends before `LEASE.end`, the $3,300 security deposit
-  (in on `DEPOSIT_IN` 2026-10-02, refunded at `LEASE.end`, or the tenancy's end or the sale if earlier — `depositBackOn` — and a
+  (in on `DEPOSIT_IN` 2026-10-02, refunded at move-out or the sale — `depositBackOn` — and a
   net-worth liability while held, `depositHeld`), Schedule E taxed at
   `RENT_TAX_RATE`; losses are suspended (`suspendedByYear`) and released at a sale.
 - *Sale*: `payoffOn(sale)`; seller costs are 0 inside the relo window (`RELO_DEADLINE`
