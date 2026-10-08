@@ -59,7 +59,9 @@ except health and auth returns 401 (`signedOut: true`, the page reloads into sig
 page request gets `public/login.html` (icons and the manifest stay public). **Passkey on every
 open**: a session serves the planner page once (`page_served`) — reopening or reloading ends it;
 the page signs itself out after `LOCK_AFTER_MS` (1 min) in the background or a bfcache restore.
-The cookie is a browser-session cookie (no Max-Age; 12 h server ceiling), HttpOnly +
+Sign-ins from the installed app (`navigator.standalone` / display-mode standalone, sent as
+`trusted`) are **trusted sessions**: 30-day cookie, no once-per-page rule, no background lock.
+An ordinary cookie is a browser-session cookie (no Max-Age; 12 h server ceiling), HttpOnly +
 SameSite=Lax (+ Secure on https), only its SHA-256 is stored;
 POSTs with a foreign `Origin` are refused. WebAuthn is verified by hand (`cbor`, `coseToJwk`,
 `parseAuthData`, `checkClient`, `checkFlags`): challenge single-use (5 min, in memory), origin,

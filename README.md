@@ -42,10 +42,13 @@ and every API returns 401.
 - **First time / a new device**: tap **Set up this device**, enter the PIN, and approve the
   passkey (Face ID on an iPhone). That signs you in. On Apple devices the passkey syncs through
   iCloud Keychain, so your other devices can usually just **Sign in with Face ID**.
-- **Every time you open the app** it asks for Face ID (the prompt starts by itself; the button
-  is there if the browser wants a tap first). Opening or reloading the page always needs it,
-  and so does coming back after **1 minute or more** in the background (`LOCK_AFTER_MS` in
-  `index.html`); a quick switch to another app does not. **Sign out of this device** is at the
+- **The installed home-screen app** is trusted: sign in once from it and it opens straight in
+  for **30 days** (your iPhone's own Face ID unlock is the gate), then asks for the passkey
+  again. iOS will not run a passkey from a web app without a tap on its own sheet, so "Face ID on
+  every open, no tap" is not possible for a web app.
+- **In a browser** (Safari, Chrome, a computer) it asks for Face ID every time you open the
+  site (the prompt starts by itself; the button is there if the browser wants a tap first), and
+  again after **1 minute or more** in the background (`LOCK_AFTER_MS` in `index.html`). **Sign out of this device** is at the
   bottom of the Adjust & reconcile sheet.
 - The PIN is never used to sign in directly — only to create a passkey. Eight wrong PINs
   from one IP lock setup for 15 minutes.

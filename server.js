@@ -31,6 +31,7 @@ const UNLOCK_HOUR = Number(process.env.RECONCILE_UNLOCK_HOUR ?? 19); // today un
 
 if (!PASSCODE) console.warn('[warn] RECONCILE_PASSCODE not set — no device can be set up to sign in.');
 const SESSION_HOURS = 12;   // hard ceiling; in practice a session ends when the page does
+const TRUSTED_DAYS = 30;    // the installed home-screen app: signed in this long, then the passkey again
 const RP_ID_ENV = process.env.RP_ID || '';
 
 /* ------------------------- storage ------------------------- */
@@ -64,6 +65,7 @@ try {
   db.exec(`CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY, passkey_id TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)`);
   try { db.exec('ALTER TABLE sessions ADD COLUMN page_served INTEGER NOT NULL DEFAULT 0'); } catch { /* already there */ }
+  try { db.exec('ALTER TABLE sessions ADD COLUMN trusted INTEGER NOT NULL DEFAULT 0'); } catch { /* already there */ }
   store = {
     kind: 'sqlite',
     passkeys: () => db.prepare('SELECT id, jwk, alg, sign_count, name, created_at, last_used FROM passkeys ORDER BY created_at').all(),
@@ -71,9 +73,9 @@ try {
     addPasskey: k => db.prepare('INSERT OR REPLACE INTO passkeys (id,jwk,alg,sign_count,name,created_at) VALUES (?,?,?,?,?,?)')
                       .run(k.id, k.jwk, k.alg, k.sign_count, k.name, k.created_at),
     usePasskey: (id, count, at) => db.prepare('UPDATE passkeys SET sign_count = ?, last_used = ? WHERE id = ?').run(count, at, id),
-    addSession: x => db.prepare('INSERT INTO sessions (token_hash,passkey_id,created_at,expires_at) VALUES (?,?,?,?)')
-                      .run(x.token_hash, x.passkey_id, x.created_at, x.expires_at),
-    getSession: h => db.prepare('SELECT token_hash, passkey_id, expires_at, page_served FROM sessions WHERE token_hash = ?').get(h) || null,
+    addSession: x => db.prepare('INSERT INTO sessions (token_hash,passkey_id,created_at,expires_at,trusted) VALUES (?,?,?,?,?)')
+                      .run(x.token_hash, x.passkey_id, x.created_at, x.expires_at, x.trusted ? 1 : 0),
+    getSession: h => db.prepare('SELECT token_hash, passkey_id, expires_at, page_served, trusted FROM sessions WHERE token_hash = ?').get(h) || null,
     markServed: h => db.prepare('UPDATE sessions SET page_served = 1 WHERE token_hash = ?').run(h),
     dropSession: h => db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(h),
     pruneSessions: now => db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now),
@@ -267,14 +269,20 @@ function sessionOf(req) {
   const s = store.getSession(sha256(t).toString('hex'));
   return s && s.expires_at > new Date().toISOString() ? s : null;
 }
-function startSession(req, res, passkeyId) {
+/* Two kinds. Ordinary: ends when the page does (see THE GATE). Trusted — signed in from the
+   installed home-screen app — stays signed in for TRUSTED_DAYS and opens straight in, the
+   iPhone's own Face ID unlock being the gate. (iOS will not run a passkey without a tap on its
+   sheet, so "Face ID on every open with no tap" is not something a web app can do.) Only the
+   owner's passkey can start either kind; the flag just chooses how long it lasts. */
+function startSession(req, res, passkeyId, trusted) {
   const token = b64u(crypto.randomBytes(32)), now = new Date();
-  const exp = new Date(now.getTime() + SESSION_HOURS * 36e5);
+  const exp = new Date(now.getTime() + (trusted ? TRUSTED_DAYS * 864e5 : SESSION_HOURS * 36e5));
   try { store.pruneSessions(now.toISOString()); } catch { /* best effort */ }
   store.addSession({ token_hash: sha256(token).toString('hex'), passkey_id: passkeyId,
-                     created_at: now.toISOString(), expires_at: exp.toISOString() });
-  // No Max-Age: a browser-session cookie, gone when the browser or home-screen app is closed.
+                     created_at: now.toISOString(), expires_at: exp.toISOString(), trusted: !!trusted });
+  // Ordinary: no Max-Age, a browser-session cookie. Trusted: kept for TRUSTED_DAYS.
   res.setHeader('Set-Cookie', `sid=${token}; Path=/; HttpOnly; SameSite=Lax`
+                              + (trusted ? `; Max-Age=${TRUSTED_DAYS * 86400}` : '')
                               + (rpFor(req).secure ? '; Secure' : ''));
 }
 const readBody = (req, max, cb) => {
@@ -328,7 +336,7 @@ function authRoutes(req, res, url, ip) {
         const id = b64u(a.credId);
         store.addPasskey({ id, jwk: JSON.stringify(jwk), alg, sign_count: a.signCount,
                            name: String(b.name || '').slice(0, 80), created_at: new Date().toISOString() });
-        startSession(req, res, id);
+        startSession(req, res, id, b.trusted === true);
         json(res, 200, { ok: true });
       } catch (e) { json(res, 400, { error: e.message || 'Could not register the passkey.' }); }
     });
@@ -357,7 +365,7 @@ function authRoutes(req, res, url, ip) {
         // A counter that goes backwards means a cloned authenticator. Synced passkeys report 0.
         if (a.signCount && key.sign_count && a.signCount <= key.sign_count) throw new Error('Passkey counter went backwards.');
         store.usePasskey(key.id, a.signCount, new Date().toISOString());
-        startSession(req, res, key.id);
+        startSession(req, res, key.id, b.trusted === true);
         json(res, 200, { ok: true });
       } catch (e) { json(res, 401, { error: e.message || 'Sign-in failed.' }); }
     });
@@ -406,7 +414,7 @@ const server = http.createServer((req, res) => {
   // not /favicon.ico, which browsers fetch on their own and must not use up the session.
   const isApi = url.pathname.startsWith('/api/'), isPublic = PUBLIC_FILES.has(url.pathname);
   const isPage = !isApi && !isPublic && (/\.html$/i.test(url.pathname) || !/\.[a-z0-9]+$/i.test(url.pathname));
-  if (sess && isPage) {
+  if (sess && isPage && !sess.trusted) {
     if (sess.page_served) { store.dropSession(sess.token_hash); signedIn = false; }
     else store.markServed(sess.token_hash);
   }
@@ -428,7 +436,7 @@ const server = http.createServer((req, res) => {
     return json(res, 200, {
       today: now.date, hour: now.hour, unlockHour: UNLOCK_HOUR, timezone: TZ,
       rangeStart: RANGE_START, rangeEnd: RANGE_END,
-      saveEnabled: true, storage: store.kind,
+      saveEnabled: true, storage: store.kind, trusted: !!(sess && sess.trusted),
       reconciles: store.all(), edits: store.edits(), adjustments: store.adjustments()
     });
   }

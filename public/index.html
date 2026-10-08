@@ -4416,13 +4416,15 @@ function lockApp(){
   document.body.style.visibility='hidden';
   fetch('/api/auth/logout',{method:'POST',keepalive:true}).catch(()=>{}).finally(()=>location.replace('/'));
 }
+let TRUSTED=false;   // signed in from the installed app: stays open (set from /api/state)
 document.addEventListener('visibilitychange',()=>{
+  if(TRUSTED) return;
   if(document.hidden){ HIDDEN_AT=Date.now(); return; }
   if(HIDDEN_AT && Date.now()-HIDDEN_AT>=LOCK_AFTER_MS) lockApp();
   HIDDEN_AT=null;
 });
 // Restored from the back/forward cache: the page did not load again, so the server never saw it.
-window.addEventListener('pageshow',e=>{ if(e.persisted) lockApp(); });
+window.addEventListener('pageshow',e=>{ if(e.persisted && !TRUSTED) lockApp(); });
 
 (async function loadState(){
   try{
@@ -4434,6 +4436,7 @@ window.addEventListener('pageshow',e=>{ if(e.persisted) lockApp(); });
     if(!r.ok) throw new Error('bad status');
     const s=await r.json();
     SRV={today:s.today,hour:s.hour,saveEnabled:s.saveEnabled,online:true};
+    TRUSTED=!!s.trusted;
     if(Number.isFinite(s.unlockHour)) UNLOCK_HOUR=s.unlockHour;
     if(s.today){ TODAY_ISO=s.today; SALE_FLOOR = TODAY_ISO > T0 ? TODAY_ISO : T0; }
     (s.reconciles||[]).forEach(x=>{ RECON[x.date]={actual:x.actual,note:x.note}; });
