@@ -323,7 +323,6 @@
   .signbtn{flex:1;background:var(--page);color:var(--ink-2);border:1px solid var(--axis);border-radius:8px;
            padding:9px 10px;font-size:14px;font-family:inherit;cursor:pointer;font-weight:600}
   .signbtn.on{background:var(--s1);border-color:var(--s1);color:#fff}
-  .pin{text-align:center;letter-spacing:.5em;font-size:24px!important;padding:12px 10px!important;font-variant-numeric:tabular-nums}
   .recrow{display:flex;gap:10px;align-items:center;margin-top:13px;flex-wrap:wrap}
   .recrow button{background:var(--s1);color:#fff;border:0;border-radius:8px;padding:10px 18px;
                  font-size:14px;font-family:inherit;cursor:pointer;font-weight:600}
@@ -394,6 +393,7 @@
   .adjlist .adjitem.picked{border-color:var(--s1)}
   .adjitem .tickwrap{display:flex;align-items:center;gap:10px;min-width:0}
   #adjmulti{margin-top:12px}
+  .signout{display:block;margin:18px auto 2px;background:none;border:0;color:var(--muted);font:inherit;font-size:12.5px;cursor:pointer;padding:6px}
   .daymsg{margin-top:8px}
   .daymsg:empty{display:none}
   .adjwhat{margin:14px 0 10px;padding:9px 12px;border-radius:10px;background:var(--fill);font-size:13px;line-height:1.35}
@@ -798,7 +798,6 @@
   #setdone{order:2} #setapply{order:3}
   .resultbox{background:var(--fill);border:0;border-radius:14px;padding:12px 14px}
   .reclist{border-top-color:var(--grid)}
-  .pin{background:var(--fill)!important}
 
   .tip{background:var(--surface-1);border:1px solid var(--ring);border-radius:14px;
        box-shadow:0 12px 32px rgba(0,0,0,.14)}
@@ -1142,22 +1141,9 @@
     </div>
   </div>
 
-    <div class="modal" id="recmodal" hidden role="dialog" aria-modal="true" aria-labelledby="rectitle">
+    <div class="modal" id="recmodal" hidden role="dialog" aria-modal="true" aria-labelledby="recformtitle">
       <div class="sheet" id="recsheet">
-        <div id="stagepin">
-          <h3 id="rectitle">Enter PIN</h3>
-          <p class="hint">Enter your PIN to reconcile.</p>
-          <div class="fld">
-            <input class="pin" id="pinput" type="password" inputmode="numeric" autocomplete="off"
-                   autocapitalize="off" spellcheck="false" placeholder="••••" aria-label="PIN">
-          </div>
-          <div class="recrow">
-            <button id="pinok">Unlock</button>
-            <button id="pincancel" class="ghost">Cancel</button>
-            <span class="recmsg" id="pinmsg"></span>
-          </div>
-        </div>
-        <div id="stageform" hidden>
+        <div id="stageform">
           <div class="rechead">
             <h3 id="recformtitle">Adjust &amp; reconcile</h3>
             <button type="button" id="recdone" class="ghostbtn">Done</button>
@@ -1224,6 +1210,7 @@
             </div>
           </div>
           <div class="reclist" id="adjrecent"></div>
+          <button type="button" class="signout" id="signout">Sign out of this device</button>
         </div>
       </div>
     </div>
@@ -1290,7 +1277,7 @@ const nhCashToClose = () =>
 /* ---------- Scenario engine ---------- */
 const RECON = {};                           // date -> {actual, note}; loaded from /api/state
 /* Adjustments: key -> {amount, projected, note, label}. The actual amount of ONE projected
-   transaction, entered in the PIN-protected sheet (a paycheck that came in higher, a bill that
+   transaction, entered in the Adjust & reconcile sheet (a paycheck that came in higher, a bill that
    was lower). Keyed by `date|label`, label without its trailing "(…)" detail — that part moves
    as the model recalculates (a car payment's interest, a mortgage's escrow split), and the
    adjustment must stay attached to its transaction when it does. */
@@ -3938,7 +3925,6 @@ render();
 const TZ='America/Chicago';
 let UNLOCK_HOUR=19;   // synced from the server on load; server is the authority
 let SRV={today:null,hour:null,saveEnabled:false,online:false};
-let PIN='';   // held in memory only for this modal session
 
 function localNowFallback(){
   const p=new Intl.DateTimeFormat('en-CA',{timeZone:TZ,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hour12:false}).formatToParts(new Date());
@@ -4273,15 +4259,16 @@ $('multicancel').addEventListener('click',()=>{ MULTI=null; fillAdj(); });
 $('multisave').addEventListener('click',async ()=>{
   const sel=multiItems(), to=$('multito').value, msg=$('multimsg'), from=MULTI.day;
   if(!sel.length || !to || to===from) return;
-  if(!SRV.online||!PIN){ msg.className='recmsg err'; msg.textContent='Not authenticated.'; return; }
+  if(!SRV.online){ msg.className='recmsg err'; msg.textContent='Offline — not saved.'; return; }
   const btn=$('multisave'); btn.disabled=true; btnLoading(btn,true); msg.className='recmsg'; msg.textContent='Saving…';
   try{
     const items=sel.map(e=>{ const orig=e.key.slice(0,10), x=ADJ[e.key];
       return {key:e.key, label:adjBase(e.l), amount:e.a, projected: e.adj? e.proj : e.a,
               moveTo: to!==orig? to : null, note: (x&&x.note)||''}; });
     const r=await fetch('/api/adjustments',{method:'PUT',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({items, passcode:PIN})});
+      body:JSON.stringify({items})});
     const out=await r.json().catch(()=>({}));
+    if(out.signedOut){ location.reload(); return; }
     if(!r.ok){ msg.className='recmsg err'; msg.textContent=out.error||'Could not save.'; return; }
     const moved=recNote(out.shifted); applyShifted(out);
     (out.items||[]).forEach(x=>{ if(x.cleared) delete ADJ[x.key]; else ADJ[x.key]=x; });
@@ -4317,25 +4304,26 @@ $('adjamt').addEventListener('input',e=>{
 });
 
 /* modal open/close */
+// Signing in to the site is the authorisation now (passkey, see login.html), so the sheet opens
+// straight onto today — no PIN.
 function openModal(){
   $('recmodal').hidden=false;
-  $('stagepin').hidden=false; $('stageform').hidden=true;
-  $('pinput').value=''; $('pinmsg').textContent=''; $('pinmsg').className='recmsg';
-  PIN=''; RECPAGE=0;
-  setTimeout(()=>$('pinput').focus(),40);
+  RECPAGE=0; fillAdj();
   document.body.style.overflow='hidden';
 }
 function closeModal(){
   $('recmodal').hidden=true;
   document.body.style.overflow='';
-  PIN=''; $('pinput').value='';
   ADJSEL=null; MULTI=null; $('adjq').value=''; $('adjdate').value=''; $('daymsg').textContent='';
   $('adjmsg').textContent=''; $('adjmsg').className='recmsg';
 }
 $('recbtn').addEventListener('click',openModal);
 sheetDrag($('recmodal'), closeModal);
 sheetDrag(document.getElementById('setmodal'), cancelSet);
-$('pincancel').addEventListener('click',closeModal);
+$('signout').addEventListener('click',async ()=>{
+  try{ await fetch('/api/auth/logout',{method:'POST'}); }catch(e){}
+  location.replace('/');
+});
 $('recdone').addEventListener('click',closeModal);
 $('recmodal').addEventListener('mousedown',e=>{ if(e.target===$('recmodal')) closeModal(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('recmodal').hidden) closeModal(); });
@@ -4350,12 +4338,13 @@ function btnLoading(btn,on){
 
 async function adjSend(url, method, body, btn){
   const msg=$('adjmsg'); msg.className='recmsg';
-  if(!SRV.online||!PIN){ msg.className='recmsg err'; msg.textContent='Not authenticated.'; return null; }
+  if(!SRV.online){ msg.className='recmsg err'; msg.textContent='Offline — not saved.'; return null; }
   btn.disabled=true; btnLoading(btn,true); msg.textContent='Saving…';
   try{
     const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({...body, passcode:PIN})});
+      body:JSON.stringify(body)});
     const out=await r.json().catch(()=>({}));
+    if(out.signedOut){ location.reload(); return null; }    // session expired: back to sign-in
     if(!r.ok){ msg.className='recmsg err'; msg.textContent=out.error||'Could not save.'; return null; }
     return out;
   }catch(e){ msg.className='recmsg err'; msg.textContent='Network error — not saved.'; return null; }
@@ -4415,28 +4404,6 @@ $('adjclear').addEventListener('click',async ()=>{
   $('adjmsg').className='recmsg ok'; $('adjmsg').textContent='Back to the projection.'+moved;
 });
 
-/* stage 1 — PIN */
-async function submitPin(){
-  const msg=$('pinmsg'), btn=$('pinok'), val=$('pinput').value;
-  msg.className='recmsg';
-  if(!val){ msg.className='recmsg err'; msg.textContent='Enter the PIN.'; return; }
-  if(!SRV.online){ msg.className='recmsg err'; msg.textContent='No server connection — cannot unlock.'; return; }
-  btn.disabled=true; btnLoading(btn,true); msg.textContent='Checking…';
-  try{
-    const r=await fetch('/api/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passcode:val})});
-    const body=await r.json().catch(()=>({}));
-    if(!r.ok){ msg.className='recmsg err'; msg.textContent=body.error||'Incorrect PIN.'; $('pinput').value=''; $('pinput').focus(); btn.disabled=false; btnLoading(btn,false); return; }
-    PIN=val;
-    $('pinput').blur();
-    $('stagepin').hidden=true; $('stageform').hidden=false;
-    fillAdj();
-  }catch(e){
-    msg.className='recmsg err'; msg.textContent='Network error.';
-  }
-  btn.disabled=false; btnLoading(btn,false);
-}
-$('pinok').addEventListener('click',submitPin);
-$('pinput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); submitPin(); }});
 
 (async function loadState(){
   try{
@@ -4444,6 +4411,7 @@ $('pinput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefaul
     const ac=new AbortController(), to=setTimeout(()=>ac.abort(),8000);
     const r=await fetch('/api/state',{cache:'no-store', signal:ac.signal});
     clearTimeout(to);
+    if(r.status===401){ location.replace('/'); return; }   // signed out: the server serves the sign-in page
     if(!r.ok) throw new Error('bad status');
     const s=await r.json();
     SRV={today:s.today,hour:s.hour,saveEnabled:s.saveEnabled,online:true};

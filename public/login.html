@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sign in — Cash Flow</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#f7f7f5">
+<script>(function(){ if(matchMedia('(prefers-color-scheme: dark)').matches)
+  document.querySelector('meta[name="theme-color"]').setAttribute('content','#0e0e0f'); })();</script>
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+  :root{color-scheme:light;--surface-1:#fcfcfb;--page:#f9f9f7;--ink:#0b0b0b;--ink-2:#52514e;--muted:#898781;
+        --axis:#c3c2b7;--ring:rgba(11,11,11,0.10);--s1:#2a78d6;--crit:#d03b3b;--goodtext:#006300}
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){color-scheme:dark;--surface-1:#1a1a19;--page:#0d0d0d;--ink:#fff;--ink-2:#c3c2b7;
+      --muted:#898781;--axis:#383835;--ring:rgba(255,255,255,0.10);--s1:#3987e5;--goodtext:#0ca30c}
+  }
+  :root[data-theme="dark"]{color-scheme:dark;--surface-1:#1a1a19;--page:#0d0d0d;--ink:#fff;--ink-2:#c3c2b7;
+      --muted:#898781;--axis:#383835;--ring:rgba(255,255,255,0.10);--s1:#3987e5;--goodtext:#0ca30c}
+  html,body{margin:0;min-height:100%;background:var(--page);color:var(--ink);
+            font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+  main{box-sizing:border-box;min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;
+       padding:max(24px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
+  .card{width:min(360px,100%);text-align:center}
+  .card img{width:72px;height:72px;border-radius:17px;box-shadow:0 6px 20px rgba(0,0,0,.14)}
+  h1{font-size:26px;margin:18px 0 4px;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 26px;line-height:1.45}
+  button{width:100%;box-sizing:border-box;border:0;border-radius:12px;padding:14px 16px;font:inherit;font-size:16px;
+         font-weight:600;cursor:pointer;background:var(--s1);color:#fff;display:flex;align-items:center;justify-content:center;gap:9px}
+  button.ghost{background:transparent;color:var(--s1);font-weight:500;font-size:14.5px;padding:10px}
+  button:disabled{opacity:.55;cursor:default}
+  input{width:100%;box-sizing:border-box;background:var(--surface-1);color:var(--ink);border:1px solid var(--axis);
+        border-radius:12px;padding:13px 12px;font:inherit;font-size:20px;text-align:center;letter-spacing:.4em;margin:0 0 10px}
+  .msg{min-height:20px;font-size:13.5px;margin:12px 0 0;line-height:1.4}
+  .msg.err{color:var(--crit)} .msg.ok{color:var(--goodtext)}
+  [hidden]{display:none!important}
+  .hint{color:var(--muted);font-size:12.5px;margin:0 0 12px;line-height:1.45}
+  .ring{width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;
+        animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <img src="/apple-touch-icon.png" alt="">
+    <h1>Cash Flow</h1>
+    <p class="sub" id="sub">Sign in to see your planner.</p>
+
+    <div id="signin">
+      <button type="button" id="go">Sign in with Face ID</button>
+      <button type="button" class="ghost" id="setupbtn">Set up this device</button>
+    </div>
+
+    <div id="setup" hidden>
+      <p class="hint" id="setuphint">Enter your PIN once to create a passkey on this device.
+        After that, Face ID signs you in.</p>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" aria-label="PIN">
+      <button type="button" id="create">Create passkey</button>
+      <button type="button" class="ghost" id="back">Back to sign in</button>
+    </div>
+    <p class="msg" id="msg" role="status"></p>
+  </div>
+</main>
+<script>
+/* Sign-in for the whole site. A passkey is the device's own unlock (Face ID on an iPhone),
+   synced by iCloud Keychain, so setting it up once covers your other Apple devices too. The PIN
+   is only asked for to create a passkey on a device that has none. */
+const $=id=>document.getElementById(id);
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const unb64u = s => Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'==='.slice((s.length+3)%4)), c=>c.charCodeAt(0));
+const say=(t,cls)=>{ $('msg').className='msg'+(cls?' '+cls:''); $('msg').textContent=t||''; };
+function busy(btn,on,label){ btn.disabled=on; btn.innerHTML = on? '<span class="ring"></span>'+label : label; }
+async function post(url, body){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const out=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(out.error||'Something went wrong.');
+  return out;
+}
+// The user cancelling the Face ID sheet is not an error worth shouting about.
+const cancelled = e => e && (e.name==='NotAllowedError' || e.name==='AbortError');
+const supported = !!(window.PublicKeyCredential && navigator.credentials);
+
+function showSetup(on){
+  $('setup').hidden=!on; $('signin').hidden=on; say('');
+  if(on) setTimeout(()=>$('pin').focus(),50);
+}
+$('setupbtn').onclick=()=>showSetup(true);
+$('back').onclick=()=>showSetup(false);
+
+$('go').onclick=async ()=>{
+  const btn=$('go'), label='Sign in with Face ID';
+  busy(btn,true,'Waiting for Face ID…'); say('');
+  try{
+    const o=await post('/api/auth/login/options');
+    const cred=await navigator.credentials.get({publicKey:{challenge:unb64u(o.challenge), rpId:o.rpId,
+      userVerification:o.userVerification, timeout:o.timeout}});
+    const r=cred.response;
+    await post('/api/auth/login/verify',{id:cred.id, clientDataJSON:b64u(r.clientDataJSON),
+      authenticatorData:b64u(r.authenticatorData), signature:b64u(r.signature)});
+    say('Signed in.','ok'); location.replace('/');
+  }catch(e){ say(cancelled(e)? '' : e.message, 'err'); busy(btn,false,label); }
+};
+
+$('create').onclick=async ()=>{
+  const btn=$('create'), label='Create passkey';
+  if(!$('pin').value){ say('Enter the PIN.','err'); return; }
+  busy(btn,true,'Creating…'); say('');
+  try{
+    const o=await post('/api/auth/register/options',{passcode:$('pin').value});
+    const cred=await navigator.credentials.create({publicKey:{...o, challenge:unb64u(o.challenge),
+      user:{...o.user, id:unb64u(o.user.id)},
+      excludeCredentials:(o.excludeCredentials||[]).map(c=>({...c, id:unb64u(c.id)}))}});
+    const r=cred.response;
+    await post('/api/auth/register/verify',{clientDataJSON:b64u(r.clientDataJSON),
+      attestationObject:b64u(r.attestationObject), name:navigator.platform||''});
+    say('Passkey created. Signing you in…','ok'); location.replace('/');
+  }catch(e){
+    // InvalidStateError: this device already holds one of our passkeys — just sign in with it.
+    if(e && e.name==='InvalidStateError'){ showSetup(false); say('This device already has a passkey. Sign in with Face ID.','ok'); }
+    else say(cancelled(e)? '' : e.message,'err');
+    busy(btn,false,label); $('pin').value='';
+  }
+};
+$('pin').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('create').click(); }});
+
+(async ()=>{
+  if(!supported){ $('signin').hidden=true; say('This browser does not support passkeys. Use Safari or Chrome.','err'); return; }
+  try{
+    const s=await (await fetch('/api/auth/status',{cache:'no-store'})).json();
+    if(s.signedIn){ location.replace('/'); return; }
+    if(!s.hasPasskeys){                       // first run: nothing to sign in with yet
+      $('sub').textContent='Set up sign-in for this planner.';
+      $('setuphint').textContent='Enter your PIN to create the first passkey. After that, Face ID signs you in.';
+      $('back').hidden=true; showSetup(true);
+    }
+  }catch(e){ say('Cannot reach the server.','err'); }
+})();
+</script>
+</body>
+</html>

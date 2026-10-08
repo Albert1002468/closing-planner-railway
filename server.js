@@ -5,8 +5,12 @@
  *
  * Storage: node:sqlite (Node 22+) → planner.db, else JSON file. Both live in DATA_DIR.
  *
+ * Sign-in: passkeys (Face ID / Touch ID) in front of the WHOLE site, 30-day session cookie.
+ * The PIN is only used to register a passkey on a new device (and as recovery).
+ *
  * Env:
- *   RECONCILE_PASSCODE  (required to save) passcode for writing a reconcile
+ *   RECONCILE_PASSCODE  (required) PIN for adding a device's passkey; unset ⇒ nobody can sign in
+ *   RP_ID               (optional) passkey domain; defaults to the request's host
  *   DATA_DIR            (default /data) persistent volume mount path
  *   PORT                (Railway provides)
  */
@@ -24,7 +28,9 @@ const RANGE_START = '2026-08-14';
 const RANGE_END = '2056-12-31';
 const UNLOCK_HOUR = Number(process.env.RECONCILE_UNLOCK_HOUR ?? 19); // today unlocks at 7pm local
 
-if (!PASSCODE) console.warn('[warn] RECONCILE_PASSCODE not set — saving is disabled.');
+if (!PASSCODE) console.warn('[warn] RECONCILE_PASSCODE not set — no device can be set up to sign in.');
+const SESSION_DAYS = 30;
+const RP_ID_ENV = process.env.RP_ID || '';
 
 /* ------------------------- storage ------------------------- */
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch { /* ignore */ }
@@ -50,8 +56,24 @@ try {
   // Added later: the day it actually happened, when that differs from the projection's day.
   // A table created before this has no such column, so add it once (it throws if present).
   try { db.exec('ALTER TABLE adjustments ADD COLUMN move_to TEXT'); } catch { /* already there */ }
+  // Sign-in: one row per registered passkey, and one per signed-in device (token stored hashed).
+  db.exec(`CREATE TABLE IF NOT EXISTS passkeys (
+    id TEXT PRIMARY KEY, jwk TEXT NOT NULL, alg INTEGER NOT NULL, sign_count INTEGER NOT NULL DEFAULT 0,
+    name TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, last_used TEXT)`);
+  db.exec(`CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY, passkey_id TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)`);
   store = {
     kind: 'sqlite',
+    passkeys: () => db.prepare('SELECT id, jwk, alg, sign_count, name, created_at, last_used FROM passkeys ORDER BY created_at').all(),
+    getPasskey: id => db.prepare('SELECT id, jwk, alg, sign_count, name FROM passkeys WHERE id = ?').get(id) || null,
+    addPasskey: k => db.prepare('INSERT OR REPLACE INTO passkeys (id,jwk,alg,sign_count,name,created_at) VALUES (?,?,?,?,?,?)')
+                      .run(k.id, k.jwk, k.alg, k.sign_count, k.name, k.created_at),
+    usePasskey: (id, count, at) => db.prepare('UPDATE passkeys SET sign_count = ?, last_used = ? WHERE id = ?').run(count, at, id),
+    addSession: x => db.prepare('INSERT INTO sessions (token_hash,passkey_id,created_at,expires_at) VALUES (?,?,?,?)')
+                      .run(x.token_hash, x.passkey_id, x.created_at, x.expires_at),
+    getSession: h => db.prepare('SELECT token_hash, passkey_id, expires_at FROM sessions WHERE token_hash = ?').get(h) || null,
+    dropSession: h => db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(h),
+    pruneSessions: now => db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now),
     adjustments: () => db.prepare('SELECT key, date, label, amount, projected, note, move_to AS moveTo, updated_at FROM adjustments ORDER BY date').all(),
     setAdjustment: a => db.prepare(`INSERT INTO adjustments (key,date,label,amount,projected,note,move_to,updated_at)
       VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET amount=excluded.amount,
@@ -83,8 +105,21 @@ try {
   const afile = path.join(DATA_DIR, 'adjustments.json');
   const readA = () => { try { return JSON.parse(fs.readFileSync(afile, 'utf8')); } catch { return []; } };
   const writeA = rows => fs.writeFileSync(afile, JSON.stringify(rows, null, 2));
+  const kfile = path.join(DATA_DIR, 'passkeys.json'), sfile = path.join(DATA_DIR, 'sessions.json');
+  const readK = () => { try { return JSON.parse(fs.readFileSync(kfile, 'utf8')); } catch { return []; } };
+  const writeK = rows => fs.writeFileSync(kfile, JSON.stringify(rows, null, 2));
+  const readS = () => { try { return JSON.parse(fs.readFileSync(sfile, 'utf8')); } catch { return []; } };
+  const writeS = rows => fs.writeFileSync(sfile, JSON.stringify(rows, null, 2));
   store = {
     kind: 'json',
+    passkeys: () => readK(),
+    getPasskey: id => readK().find(k => k.id === id) || null,
+    addPasskey: k => writeK([...readK().filter(x => x.id !== k.id), k]),
+    usePasskey: (id, count, at) => writeK(readK().map(k => k.id === id ? { ...k, sign_count: count, last_used: at } : k)),
+    addSession: x => writeS([...readS(), x]),
+    getSession: h => readS().find(x => x.token_hash === h) || null,
+    dropSession: h => writeS(readS().filter(x => x.token_hash !== h)),
+    pruneSessions: now => writeS(readS().filter(x => x.expires_at >= now)),
     adjustments: () => readA().sort((a, b) => a.date < b.date ? -1 : 1),
     setAdjustment: a => { const rows = readA().filter(x => x.key !== a.key); rows.push(a); writeA(rows); },
     clearAdjustment: k => writeA(readA().filter(x => x.key !== k)),
@@ -139,6 +174,203 @@ const json = (res, code, body) => {
 const MIME = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.png': 'image/png', '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
 
+/* ------------------------- sign-in (passkeys) -------------------------
+   WebAuthn without a library. Registration: check clientDataJSON (type, challenge, origin),
+   then authenticatorData (RP ID hash, user present + VERIFIED — i.e. Face ID actually ran),
+   and keep the credential's public key as a JWK. Sign-in: same checks, plus the signature
+   over authenticatorData ‖ SHA-256(clientDataJSON). Attestation is not requested ('none'):
+   this is one person's planner, not an enterprise device policy. */
+const b64u = buf => Buffer.from(buf).toString('base64url');
+const unb64u = s => Buffer.from(String(s || ''), 'base64url');
+const sha256 = d => crypto.createHash('sha256').update(d).digest();
+
+// Minimal CBOR (RFC 8949) reader: enough for attestationObject and COSE keys.
+function cbor(buf, pos = 0) {
+  const ib = buf[pos++], major = ib >> 5, info = ib & 31;
+  let len;
+  if (info < 24) len = info;
+  else if (info === 24) { len = buf[pos]; pos += 1; }
+  else if (info === 25) { len = buf.readUInt16BE(pos); pos += 2; }
+  else if (info === 26) { len = buf.readUInt32BE(pos); pos += 4; }
+  else if (info === 27) { len = Number(buf.readBigUInt64BE(pos)); pos += 8; }
+  else throw new Error('cbor: unsupported length');
+  switch (major) {
+    case 0: return [len, pos];
+    case 1: return [-1 - len, pos];
+    case 2: return [buf.subarray(pos, pos + len), pos + len];
+    case 3: return [buf.subarray(pos, pos + len).toString('utf8'), pos + len];
+    case 4: { const a = []; for (let i = 0; i < len; i++) { const [v, p] = cbor(buf, pos); a.push(v); pos = p; } return [a, pos]; }
+    case 5: { const m = new Map(); for (let i = 0; i < len; i++) { const [k, p1] = cbor(buf, pos); const [v, p2] = cbor(buf, p1); m.set(k, v); pos = p2; } return [m, pos]; }
+    case 7: return [info === 20 ? false : info === 21 ? true : null, pos];
+    default: throw new Error('cbor: unsupported type');
+  }
+}
+// COSE public key → JWK. ES256 (what iPhones use) and RS256 (Windows Hello).
+function coseToJwk(m) {
+  const kty = m.get(1), alg = m.get(3);
+  if (kty === 2 && alg === -7 && m.get(-1) === 1)
+    return { alg, jwk: { kty: 'EC', crv: 'P-256', x: b64u(m.get(-2)), y: b64u(m.get(-3)) } };
+  if (kty === 3 && alg === -257)
+    return { alg, jwk: { kty: 'RSA', n: b64u(m.get(-1)), e: b64u(m.get(-2)) } };
+  throw new Error('Unsupported passkey type.');
+}
+function parseAuthData(ad) {
+  if (ad.length < 37) throw new Error('Bad authenticator data.');
+  const out = { rpIdHash: ad.subarray(0, 32), flags: ad[32], signCount: ad.readUInt32BE(33) };
+  if (out.flags & 0x40) {                                  // attested credential data
+    const idLen = ad.readUInt16BE(53);
+    out.credId = ad.subarray(55, 55 + idLen);
+    out.cose = cbor(ad, 55 + idLen)[0];
+  }
+  return out;
+}
+// The site's passkey domain and origin. Fixed by RP_ID when set; otherwise this request's host.
+function rpFor(req) {
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost').split(',')[0].trim();
+  const hostname = host.replace(/:\d+$/, '');
+  const proto = String(req.headers['x-forwarded-proto'] || (hostname === 'localhost' ? 'http' : 'https')).split(',')[0].trim();
+  return { id: RP_ID_ENV || hostname, origin: `${proto}://${host}`, secure: proto === 'https' };
+}
+function checkClient(cdjBuf, type, rp) {
+  let c; try { c = JSON.parse(cdjBuf.toString('utf8')); } catch { throw new Error('Bad client data.'); }
+  if (c.type !== type) throw new Error('Wrong ceremony.');
+  const ch = challenges.get(c.challenge);
+  challenges.delete(c.challenge);                          // single use, whatever happens next
+  if (!ch || ch.type !== type || ch.exp < Date.now()) throw new Error('This sign-in request expired. Try again.');
+  if (c.origin !== rp.origin) throw new Error('Wrong site.');
+  return ch;
+}
+function checkFlags(a, rp) {
+  if (!a.rpIdHash.equals(sha256(rp.id))) throw new Error('Passkey is for another site.');
+  if (!(a.flags & 0x01)) throw new Error('No user presence.');
+  if (!(a.flags & 0x04)) throw new Error('Face ID / device unlock was not used.');
+}
+// Challenges live in memory for 5 minutes. A restart only means asking again.
+const challenges = new Map();
+function newChallenge(type) {
+  const c = b64u(crypto.randomBytes(32)), now = Date.now();
+  for (const [k, v] of challenges) if (v.exp < now) challenges.delete(k);
+  challenges.set(c, { type, exp: now + 5 * 60 * 1000 });
+  return c;
+}
+// Sessions: a random token in an HttpOnly cookie; only its hash is stored.
+function cookieToken(req) {
+  const m = /(?:^|;\s*)sid=([A-Za-z0-9_-]{20,})/.exec(req.headers.cookie || '');
+  return m ? m[1] : null;
+}
+function sessionOf(req) {
+  const t = cookieToken(req); if (!t) return null;
+  const s = store.getSession(sha256(t).toString('hex'));
+  return s && s.expires_at > new Date().toISOString() ? s : null;
+}
+function startSession(req, res, passkeyId) {
+  const token = b64u(crypto.randomBytes(32)), now = new Date();
+  const exp = new Date(now.getTime() + SESSION_DAYS * 864e5);
+  try { store.pruneSessions(now.toISOString()); } catch { /* best effort */ }
+  store.addSession({ token_hash: sha256(token).toString('hex'), passkey_id: passkeyId,
+                     created_at: now.toISOString(), expires_at: exp.toISOString() });
+  res.setHeader('Set-Cookie', `sid=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}`
+                              + (rpFor(req).secure ? '; Secure' : ''));
+}
+const readBody = (req, max, cb) => {
+  let raw = '';
+  req.on('data', c => { raw += c; if (raw.length > max) req.destroy(); });
+  req.on('end', () => { let b; try { b = JSON.parse(raw || '{}'); } catch { b = null; } cb(b); });
+};
+const USER_ID = b64u(Buffer.from('cash-flow-owner'));      // one owner; every passkey is theirs
+
+/* Returns true when it handled the request. */
+function authRoutes(req, res, url, ip) {
+  const rp = rpFor(req);
+  if (url.pathname === '/api/auth/status' && req.method === 'GET')
+    return json(res, 200, { signedIn: !!sessionOf(req), hasPasskeys: store.passkeys().length > 0,
+                            setupEnabled: !!PASSCODE }), true;
+
+  // Adding a device: the PIN (or an existing session) unlocks one registration challenge.
+  if (url.pathname === '/api/auth/register/options' && req.method === 'POST') {
+    readBody(req, 4096, b => {
+      if (!b) return json(res, 400, { error: 'Malformed request.' });
+      if (!sessionOf(req)) {
+        if (throttled(ip)) return json(res, 429, { error: 'Too many failed attempts. Try again in 15 minutes.' });
+        if (!PASSCODE) return json(res, 503, { error: 'Setup is disabled: RECONCILE_PASSCODE is not set on the server.' });
+        if (!passOk(b.passcode)) { noteFail(ip); return json(res, 401, { error: 'Incorrect PIN.' }); }
+      }
+      json(res, 200, {
+        challenge: newChallenge('webauthn.create'),
+        rp: { id: rp.id, name: 'Cash Flow' },
+        user: { id: USER_ID, name: 'Cash Flow', displayName: 'Cash Flow' },
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+        authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'required' },
+        attestation: 'none', timeout: 120000,
+        excludeCredentials: store.passkeys().map(k => ({ type: 'public-key', id: k.id }))
+      });
+    });
+    return true;
+  }
+  if (url.pathname === '/api/auth/register/verify' && req.method === 'POST') {
+    readBody(req, 65536, b => {
+      try {
+        if (!b) throw new Error('Malformed request.');
+        const cdj = unb64u(b.clientDataJSON);
+        checkClient(cdj, 'webauthn.create', rp);
+        const att = cbor(unb64u(b.attestationObject))[0];
+        if (!(att instanceof Map) || !Buffer.isBuffer(att.get('authData'))) throw new Error('Bad attestation.');
+        const a = parseAuthData(att.get('authData'));
+        checkFlags(a, rp);
+        if (!a.credId || !a.cose) throw new Error('No credential in the response.');
+        const { alg, jwk } = coseToJwk(a.cose);
+        crypto.createPublicKey({ key: jwk, format: 'jwk' });   // throws on a malformed key
+        const id = b64u(a.credId);
+        store.addPasskey({ id, jwk: JSON.stringify(jwk), alg, sign_count: a.signCount,
+                           name: String(b.name || '').slice(0, 80), created_at: new Date().toISOString() });
+        startSession(req, res, id);
+        json(res, 200, { ok: true });
+      } catch (e) { json(res, 400, { error: e.message || 'Could not register the passkey.' }); }
+    });
+    return true;
+  }
+  if (url.pathname === '/api/auth/login/options' && req.method === 'POST') {
+    // Discoverable credentials: no list is sent, the device offers the passkey it holds.
+    json(res, 200, { challenge: newChallenge('webauthn.get'), rpId: rp.id, userVerification: 'required', timeout: 120000 });
+    return true;
+  }
+  if (url.pathname === '/api/auth/login/verify' && req.method === 'POST') {
+    readBody(req, 65536, b => {
+      try {
+        if (!b) throw new Error('Malformed request.');
+        if (throttled(ip)) return json(res, 429, { error: 'Too many failed attempts. Try again in 15 minutes.' });
+        const key = store.getPasskey(String(b.id || ''));
+        if (!key) { noteFail(ip); throw new Error('This passkey is not registered here. Set up this device with the PIN.'); }
+        const cdj = unb64u(b.clientDataJSON), ad = unb64u(b.authenticatorData);
+        checkClient(cdj, 'webauthn.get', rp);
+        const a = parseAuthData(ad);
+        checkFlags(a, rp);
+        const pub = crypto.createPublicKey({ key: JSON.parse(key.jwk), format: 'jwk' });
+        const ok = crypto.verify('sha256', Buffer.concat([ad, sha256(cdj)]),
+                                 key.alg === -7 ? { key: pub, dsaEncoding: 'der' } : pub, unb64u(b.signature));
+        if (!ok) { noteFail(ip); throw new Error('Passkey check failed.'); }
+        // A counter that goes backwards means a cloned authenticator. Synced passkeys report 0.
+        if (a.signCount && key.sign_count && a.signCount <= key.sign_count) throw new Error('Passkey counter went backwards.');
+        store.usePasskey(key.id, a.signCount, new Date().toISOString());
+        startSession(req, res, key.id);
+        json(res, 200, { ok: true });
+      } catch (e) { json(res, 401, { error: e.message || 'Sign-in failed.' }); }
+    });
+    return true;
+  }
+  if (url.pathname === '/api/auth/logout' && req.method === 'POST') {
+    const t = cookieToken(req);
+    if (t) store.dropSession(sha256(t).toString('hex'));
+    res.setHeader('Set-Cookie', 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' + (rp.secure ? '; Secure' : ''));
+    json(res, 200, { ok: true });
+    return true;
+  }
+  return false;
+}
+// Public without a session: the sign-in page, its icons and the PWA manifest.
+const PUBLIC_FILES = new Set(['/login.html', '/manifest.json', '/icon.svg', '/icon-192.png', '/icon-512.png',
+                              '/apple-touch-icon.png', '/favicon-32.png']);
+
 /* ------------------------- server ------------------------- */
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -147,27 +379,37 @@ const server = http.createServer((req, res) => {
      rotate a fake address per request and never be locked out. */
   const ip = (req.headers['x-forwarded-for'] || '').split(',').pop().trim() || req.socket.remoteAddress || 'unknown';
 
+  if (url.pathname === '/api/health' && req.method === 'GET')
+    return json(res, 200, { ok: true, storage: store.kind, setupEnabled: !!PASSCODE });
+  if (url.pathname.startsWith('/api/auth/')) {
+    if (req.method === 'POST' && req.headers.origin && req.headers.origin !== rpFor(req).origin)
+      return json(res, 403, { error: 'Wrong site.' });
+    if (authRoutes(req, res, url, ip)) return;
+    return json(res, 404, { error: 'Not found.' });
+  }
+  /* ⚠️ THE GATE. Everything else — the planner page and every API — needs a signed-in session.
+     Writes also refuse a cross-site Origin (the cookie is SameSite=Lax; this is belt and braces).
+     A page request without a session gets the sign-in page instead. */
+  const signedIn = !!sessionOf(req);
+  if (url.pathname.startsWith('/api/')) {
+    if (!signedIn) return json(res, 401, { error: 'Signed out. Reload to sign in.', signedOut: true });
+    if (req.method !== 'GET' && req.headers.origin && req.headers.origin !== rpFor(req).origin)
+      return json(res, 403, { error: 'Wrong site.' });
+  } else if (!signedIn && !PUBLIC_FILES.has(url.pathname)) {
+    return fs.readFile(path.join(PUBLIC_DIR, 'login.html'), (e, html) => {
+      if (e) { res.writeHead(500); return res.end('Sign-in page missing'); }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(html);
+    });
+  }
+
   if (url.pathname === '/api/state' && req.method === 'GET') {
     const now = localNow();
     return json(res, 200, {
       today: now.date, hour: now.hour, unlockHour: UNLOCK_HOUR, timezone: TZ,
       rangeStart: RANGE_START, rangeEnd: RANGE_END,
-      saveEnabled: !!PASSCODE, storage: store.kind,
+      saveEnabled: true, storage: store.kind,
       reconciles: store.all(), edits: store.edits(), adjustments: store.adjustments()
     });
-  }
-
-  if (url.pathname === '/api/verify' && req.method === 'POST') {
-    let raw = '';
-    req.on('data', c => { raw += c; if (raw.length > 4096) req.destroy(); });
-    req.on('end', () => {
-      let b; try { b = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'Malformed request.' }); }
-      if (throttled(ip)) return json(res, 429, { error: 'Too many failed attempts. Try again in 15 minutes.' });
-      if (!PASSCODE) return json(res, 503, { error: 'Saving is disabled: RECONCILE_PASSCODE is not set on the server.' });
-      if (!passOk(b.passcode)) { noteFail(ip); return json(res, 401, { error: 'Incorrect PIN.' }); }
-      return json(res, 200, { ok: true });
-    });
-    return;
   }
 
   if (url.pathname === '/api/reconciles' && req.method === 'POST') {
@@ -175,9 +417,6 @@ const server = http.createServer((req, res) => {
     req.on('data', c => { raw += c; if (raw.length > 32768) req.destroy(); });
     req.on('end', () => {
       let b; try { b = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'Malformed request.' }); }
-      if (throttled(ip)) return json(res, 429, { error: 'Too many failed attempts. Try again in 15 minutes.' });
-      if (!PASSCODE) return json(res, 503, { error: 'Saving is disabled: RECONCILE_PASSCODE is not set on the server.' });
-      if (!passOk(b.passcode)) { noteFail(ip); return json(res, 401, { error: 'Incorrect passcode.' }); }
 
       const date = b.date;
       if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(res, 400, { error: 'Invalid date.' });
@@ -202,15 +441,12 @@ const server = http.createServer((req, res) => {
 
   /* Correcting a reconcile. A reconcile stays immutable in SPIRIT: the row is updated, but the
      previous value is written to reconcile_edits first, so a typo can be fixed without the
-     history quietly changing underneath you. Requires the passcode, same as a new entry. */
+     history quietly changing underneath you. Requires a signed-in session, like every write. */
   if (url.pathname === '/api/reconciles' && req.method === 'PUT') {
     let raw = '';
     req.on('data', c => { raw += c; if (raw.length > 32768) req.destroy(); });
     req.on('end', () => {
       let b; try { b = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'Malformed request.' }); }
-      if (throttled(ip)) return json(res, 429, { error: 'Too many failed attempts. Try again in 15 minutes.' });
-      if (!PASSCODE) return json(res, 503, { error: 'Saving is disabled: RECONCILE_PASSCODE is not set on the server.' });
-      if (!passOk(b.passcode)) { noteFail(ip); return json(res, 401, { error: 'Incorrect passcode.' }); }
 
       const date = b.date;
       if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(res, 400, { error: 'Invalid date.' });
@@ -304,16 +540,13 @@ const server = http.createServer((req, res) => {
   }
 
   /* Adjust one projected transaction (PUT sets its actual amount, DELETE returns it to the
-     projection). Same passcode and lockout as reconciling. Any date in the planning window —
+     projection). Requires a signed-in session. Any date in the planning window —
      past (what actually cleared) or future (a bill you already know). */
   if (url.pathname === '/api/adjustments' && (req.method === 'PUT' || req.method === 'DELETE')) {
     let raw = '';
     req.on('data', c => { raw += c; if (raw.length > 131072) req.destroy(); });
     req.on('end', () => {
       let b; try { b = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'Malformed request.' }); }
-      if (throttled(ip)) return json(res, 429, { error: 'Too many failed attempts. Try again in 15 minutes.' });
-      if (!PASSCODE) return json(res, 503, { error: 'Saving is disabled: RECONCILE_PASSCODE is not set on the server.' });
-      if (!passOk(b.passcode)) { noteFail(ip); return json(res, 401, { error: 'Incorrect passcode.' }); }
       /* Several at once (moving a day's worth of lines): { items: [...] }, each shaped like a single
          PUT. All validated first, then saved in ONE transaction — every line and every reconcile it
          shifts lands together or none do. A line moved back to its own day, at its projected amount

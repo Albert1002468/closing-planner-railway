@@ -17,7 +17,8 @@ Zero npm dependencies — pure Node (`node:http` + `node:sqlite`). Nothing to co
 
    | Variable | Value | Notes |
    |---|---|---|
-   | `RECONCILE_PASSCODE` | *(your choice)* | **Required to save.** Without it the app runs read-only. |
+   | `RECONCILE_PASSCODE` | *(your choice)* | **Required.** The PIN for setting up a device's passkey. Without it no one can sign in. |
+   | `RP_ID` | *(optional)* | Passkey domain. Defaults to the site's host; set it only if the domain is fronted by something unusual. ⚠️ Passkeys belong to a domain: changing domains means setting them up again. |
    | `DATA_DIR` | `/data` | Must match the volume mount path. |
    | `RECONCILE_UNLOCK_HOUR` | `19` | Optional. Hour (0–23, America/Chicago) that *today* unlocks. |
 
@@ -27,9 +28,28 @@ Railway sets `PORT` automatically — don't set it yourself.
 
 ### Verify after deploy
 
-- Visit `/api/state` — you should see `"saveEnabled": true` and `"storage": "sqlite"`.
-- If `saveEnabled` is `false`, `RECONCILE_PASSCODE` isn't set.
+- Visit `/api/health` (public) — you should see `"storage": "sqlite"` and `"setupEnabled": true`.
+- If `setupEnabled` is `false`, `RECONCILE_PASSCODE` isn't set and no device can be set up.
 - If `storage` is `"json"`, the Node version is < 22 — still works, just uses a JSON file.
+- ⚠️ If a Railway health check path is configured, use `/api/health`: everything else returns
+  the sign-in page or 401 without a session.
+
+## Signing in (passkeys / Face ID)
+
+The **whole site** is behind sign-in: without a session every page shows the sign-in screen
+and every API returns 401.
+
+- **First time / a new device**: tap **Set up this device**, enter the PIN, and approve the
+  passkey (Face ID on an iPhone). That signs you in. On Apple devices the passkey syncs through
+  iCloud Keychain, so your other devices can usually just **Sign in with Face ID**.
+- **After that**: **Sign in with Face ID**. A session lasts **30 days** per browser (the
+  home-screen app and Safari keep separate sessions). **Sign out of this device** is at the
+  bottom of the Adjust & reconcile sheet.
+- The PIN is never used to sign in directly — only to create a passkey. Eight wrong PINs
+  from one IP lock setup for 15 minutes.
+- Server side: passkeys (public keys only) and sessions (hashed tokens) live in the same
+  database as the reconciles. Removing every passkey and setting up again needs a Railway shell
+  (`DELETE FROM passkeys`).
 
 ---
 
@@ -37,9 +57,8 @@ Railway sets `PORT` automatically — don't set it yourself.
 
 - The trigger is the check-mark icon in the app bar. It appears once any date is eligible or
   any entry exists (so a past entry can always be corrected).
-- It opens a sheet (a bottom sheet on phones) that starts on a **PIN screen**. The PIN is
-  checked against the server (`POST /api/verify`) before the form is revealed. It is held in
-  memory only, never stored in the browser.
+- It opens the Adjust & reconcile sheet (a bottom sheet on phones). Being signed in is the
+  authorisation — there is no separate PIN.
 - **Today** can be reconciled only after **19:00 America/Chicago**.
 - **Past dates** with no entry stay open indefinitely — no time-of-day restriction.
 - **Future dates** can never be reconciled.
@@ -49,13 +68,13 @@ Railway sets `PORT` automatically — don't set it yourself.
   the change and every entry it moves are written to the audit log (`reconcile_edits`) in one
   transaction. Entries cannot be deleted.
 - A variance of **$0.00 is valid** — it records that actual matched projection.
-- Saving requires the passcode. Eight failed attempts from one IP triggers a 15-minute lockout.
+- Saving requires a signed-in session.
 - There is no confirmation dialog: the sheet shows the projected balance, the variance and the
   new balance live before you save.
 
 ### Adjust & reconcile (one view)
 
-After the PIN, the sheet shows one day at a time — step with **‹ ›** or tap the date for the
+The sheet shows one day at a time — step with **‹ ›** or tap the date for the
 system picker — or **search** by name ("paycheck", "mortgage", a note) to list the matches
 nearest today. Every row has a second line saying what it is (projected, adjusted, moved, the
 projection it replaced, its note).
@@ -95,7 +114,7 @@ later is re-derived against whatever sale scenario is active.
 
 ## Backing up / reading the data
 
-- `GET /api/state` returns all entries as JSON — easiest backup.
+- `GET /api/state` (signed in) returns all entries as JSON — easiest backup.
 - On the volume: `planner.db` (SQLite) or `reconciles.json` (fallback).
 - To wipe and start over, delete the file from the volume via a Railway shell.
 
@@ -112,6 +131,5 @@ Set `RECONCILE_UNLOCK_HOUR=0` locally if you want to test today's entry before 7
 
 ## Privacy note
 
-The page itself is **public to anyone with the URL** — only *saving* a reconcile requires
-the passcode. This page contains bank balances, mortgage figures, and pay detail. If you'd
-rather gate the whole site behind a password, say so and it's a small change to `server.js`.
+Nothing is public except the sign-in page, its icons and `/api/health`. The planner, its
+figures and every API need a passkey sign-in.

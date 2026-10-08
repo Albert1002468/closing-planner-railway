@@ -19,6 +19,7 @@ server.js            HTTP server, reconcile API, static files
 package.json         "start": "node server.js"; engines node >= 22
 README.md            deploy + reconcile rules (user-facing)
 public/index.html    THE APP — styles, markup, model, renderer, reconcile UI, all inline
+public/login.html    the sign-in page (passkeys), served for every page while signed out
 public/manifest.json PWA manifest (theme/background = page colour #f7f7f5)
 public/icon.svg      the icon (rising line on #2f6fec); icon-512/192, apple-touch-icon (180),
                      favicon-32 are rendered from it — and the three <link rel=icon> in the
@@ -29,25 +30,39 @@ public/icon.svg      the icon (rising line on #2f6fec); icon-512/192, apple-touc
 
 | Env var | Value | Notes |
 |---|---|---|
-| `RECONCILE_PASSCODE` | the PIN | Required to save; unset ⇒ read-only |
+| `RECONCILE_PASSCODE` | the PIN | Sets up a device's passkey; unset ⇒ nobody can sign in |
+| `RP_ID` | — | Optional passkey domain (defaults to the request host) |
 | `DATA_DIR` | `/data` | Must match the volume mount |
 | `RECONCILE_UNLOCK_HOUR` | `19` | Hour (America/Chicago) today unlocks |
 | `PORT` | — | Railway sets it |
 
-A volume at `/data` is mandatory or reconciliations vanish on redeploy. Health check:
-`GET /api/state` → `"saveEnabled": true`, `"storage": "sqlite"` (`"json"` means Node < 22).
+A volume at `/data` is mandatory or reconciliations (and passkeys) vanish on redeploy. Health
+check: `GET /api/health` (public) → `"storage": "sqlite"` (`"json"` means Node < 22),
+`"setupEnabled": true`.
 
 ## 3. Server API (`server.js`)
 
 | Route | Method | Purpose |
 |---|---|---|
+| `/api/health` | GET | public: storage, setupEnabled |
+| `/api/auth/status` | GET | public: signedIn, hasPasskeys, setupEnabled |
+| `/api/auth/register/options` · `/verify` | POST | create a passkey; options need the PIN (`{passcode}`) unless already signed in; verify starts a session |
+| `/api/auth/login/options` · `/verify` | POST | sign in with a passkey (discoverable, user verification required); starts a session |
+| `/api/auth/logout` | POST | ends this browser's session |
 | `/api/state` | GET | today, hour, unlockHour, range, saveEnabled, storage, all reconciles + edit log |
-| `/api/verify` | POST | `{passcode}` → 200 or 401; gates the PIN screen |
-| `/api/reconciles` | POST | new entry `{date, actual, note, passcode}`; once per date; not future; today only after the unlock hour |
+| `/api/reconciles` | POST | new entry `{date, actual, note}`; once per date; not future; today only after the unlock hour |
 | `/api/adjustments` | PUT / DELETE | set (or clear) the actual amount — and optionally the day (`moveTo`) — of one projected transaction, keyed `date\|label`; every reconciled balance moves by the net cash change up to its date so its variance is kept (`keepVariances`, audited), returned as `shifted`. `{items:[…]}` saves several in one transaction (select-to-move) |
 | `/api/reconciles` | PUT | correct an entry; every later entry moves by the same delta (their variances are kept), all in one transaction, each logged to `reconcile_edits` |
 
-Lockout: 8 failed passcodes per IP per 15 min. The IP is the **last** `X-Forwarded-For`
+**The gate** (top of the request handler): without a valid `sid` cookie every `/api/*` route
+except health and auth returns 401 (`signedOut: true`, the page reloads into sign-in), and every
+page request gets `public/login.html` (icons and the manifest stay public). Sessions are 30
+days, the cookie is HttpOnly + SameSite=Lax (+ Secure on https), only its SHA-256 is stored;
+POSTs with a foreign `Origin` are refused. WebAuthn is verified by hand (`cbor`, `coseToJwk`,
+`parseAuthData`, `checkClient`, `checkFlags`): challenge single-use (5 min, in memory), origin,
+RP ID hash, user-present AND user-verified flags, ES256/RS256 signature; attestation `none`.
+
+Lockout: 8 failed PINs (or failed passkey checks) per IP per 15 min. The IP is the **last** `X-Forwarded-For`
 entry (the one Railway's edge appends — earlier entries are client-supplied). A malformed
 `%`-escape in a path returns 400 instead of crashing the process.
 
@@ -64,7 +79,8 @@ Top to bottom:
   posts with that day's net; tapping "Next" opens Transactions at that month.
 - **Chart panel**: year/horizon picker, **Cash | Net worth** switch, the SVG, legend.
 - **Transactions** (month pages), **Keep it or sell it?**, **Assumptions & sources**.
-- **Sheets**: settings ("Home sale scenario") and "Adjust & reconcile" (PIN, then one view: a
+- **Sign-in** (`public/login.html`): passkey (Face ID), or set up a device with the PIN.
+- **Sheets**: settings ("Home sale scenario") and "Adjust & reconcile" (one view: a
   day stepper or search, the day's lines plus its balance row to reconcile, recent changes). Bottom sheets on phones (drag the
   grabber to dismiss), centred dialogs on desktop.
 
