@@ -4405,6 +4405,25 @@ $('adjclear').addEventListener('click',async ()=>{
 });
 
 
+/* ⚠️ Passkey every time the app is opened. A launch or reload is already covered by the server
+   (a session serves this page once). Coming back to a page that stayed alive in the background
+   is not a page load, so after LOCK_AFTER_MS hidden the page signs itself out — content hidden
+   first, so nothing shows while it goes. A short switch (checking the bank app mid-reconcile)
+   stays open. */
+const LOCK_AFTER_MS = 60*1000;
+let HIDDEN_AT = null;
+function lockApp(){
+  document.body.style.visibility='hidden';
+  fetch('/api/auth/logout',{method:'POST',keepalive:true}).catch(()=>{}).finally(()=>location.replace('/'));
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ HIDDEN_AT=Date.now(); return; }
+  if(HIDDEN_AT && Date.now()-HIDDEN_AT>=LOCK_AFTER_MS) lockApp();
+  HIDDEN_AT=null;
+});
+// Restored from the back/forward cache: the page did not load again, so the server never saw it.
+window.addEventListener('pageshow',e=>{ if(e.persisted) lockApp(); });
+
 (async function loadState(){
   try{
     // Bounded: a server that never answers must not hold the loading screen up.

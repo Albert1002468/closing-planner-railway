@@ -5,7 +5,8 @@
  *
  * Storage: node:sqlite (Node 22+) → planner.db, else JSON file. Both live in DATA_DIR.
  *
- * Sign-in: passkeys (Face ID / Touch ID) in front of the WHOLE site, 30-day session cookie.
+ * Sign-in: passkeys (Face ID / Touch ID) in front of the WHOLE site, required every time the app
+ * is opened (each session serves the planner page once; see THE GATE).
  * The PIN is only used to register a passkey on a new device (and as recovery).
  *
  * Env:
@@ -29,7 +30,7 @@ const RANGE_END = '2056-12-31';
 const UNLOCK_HOUR = Number(process.env.RECONCILE_UNLOCK_HOUR ?? 19); // today unlocks at 7pm local
 
 if (!PASSCODE) console.warn('[warn] RECONCILE_PASSCODE not set — no device can be set up to sign in.');
-const SESSION_DAYS = 30;
+const SESSION_HOURS = 12;   // hard ceiling; in practice a session ends when the page does
 const RP_ID_ENV = process.env.RP_ID || '';
 
 /* ------------------------- storage ------------------------- */
@@ -62,6 +63,7 @@ try {
     name TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, last_used TEXT)`);
   db.exec(`CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY, passkey_id TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)`);
+  try { db.exec('ALTER TABLE sessions ADD COLUMN page_served INTEGER NOT NULL DEFAULT 0'); } catch { /* already there */ }
   store = {
     kind: 'sqlite',
     passkeys: () => db.prepare('SELECT id, jwk, alg, sign_count, name, created_at, last_used FROM passkeys ORDER BY created_at').all(),
@@ -71,7 +73,8 @@ try {
     usePasskey: (id, count, at) => db.prepare('UPDATE passkeys SET sign_count = ?, last_used = ? WHERE id = ?').run(count, at, id),
     addSession: x => db.prepare('INSERT INTO sessions (token_hash,passkey_id,created_at,expires_at) VALUES (?,?,?,?)')
                       .run(x.token_hash, x.passkey_id, x.created_at, x.expires_at),
-    getSession: h => db.prepare('SELECT token_hash, passkey_id, expires_at FROM sessions WHERE token_hash = ?').get(h) || null,
+    getSession: h => db.prepare('SELECT token_hash, passkey_id, expires_at, page_served FROM sessions WHERE token_hash = ?').get(h) || null,
+    markServed: h => db.prepare('UPDATE sessions SET page_served = 1 WHERE token_hash = ?').run(h),
     dropSession: h => db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(h),
     pruneSessions: now => db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now),
     adjustments: () => db.prepare('SELECT key, date, label, amount, projected, note, move_to AS moveTo, updated_at FROM adjustments ORDER BY date').all(),
@@ -118,6 +121,7 @@ try {
     usePasskey: (id, count, at) => writeK(readK().map(k => k.id === id ? { ...k, sign_count: count, last_used: at } : k)),
     addSession: x => writeS([...readS(), x]),
     getSession: h => readS().find(x => x.token_hash === h) || null,
+    markServed: h => writeS(readS().map(x => x.token_hash === h ? { ...x, page_served: 1 } : x)),
     dropSession: h => writeS(readS().filter(x => x.token_hash !== h)),
     pruneSessions: now => writeS(readS().filter(x => x.expires_at >= now)),
     adjustments: () => readA().sort((a, b) => a.date < b.date ? -1 : 1),
@@ -265,11 +269,12 @@ function sessionOf(req) {
 }
 function startSession(req, res, passkeyId) {
   const token = b64u(crypto.randomBytes(32)), now = new Date();
-  const exp = new Date(now.getTime() + SESSION_DAYS * 864e5);
+  const exp = new Date(now.getTime() + SESSION_HOURS * 36e5);
   try { store.pruneSessions(now.toISOString()); } catch { /* best effort */ }
   store.addSession({ token_hash: sha256(token).toString('hex'), passkey_id: passkeyId,
                      created_at: now.toISOString(), expires_at: exp.toISOString() });
-  res.setHeader('Set-Cookie', `sid=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}`
+  // No Max-Age: a browser-session cookie, gone when the browser or home-screen app is closed.
+  res.setHeader('Set-Cookie', `sid=${token}; Path=/; HttpOnly; SameSite=Lax`
                               + (rpFor(req).secure ? '; Secure' : ''));
 }
 const readBody = (req, max, cb) => {
@@ -389,13 +394,29 @@ const server = http.createServer((req, res) => {
   }
   /* ⚠️ THE GATE. Everything else — the planner page and every API — needs a signed-in session.
      Writes also refuse a cross-site Origin (the cookie is SameSite=Lax; this is belt and braces).
-     A page request without a session gets the sign-in page instead. */
-  const signedIn = !!sessionOf(req);
+     A page request without a session gets the sign-in page instead.
+     Passkey EVERY time the app is opened: a session serves the planner page ONCE. Its APIs keep
+     working for that loaded page, but opening or reloading the app is a new page request, which
+     ends the session and shows sign-in. (iOS can keep a home-screen app's session cookie alive
+     across launches, so the cookie's lifetime alone would not guarantee this.) The page also
+     signs itself out after a minute in the background — see LOCK_AFTER_MS in index.html. */
+  const sess = sessionOf(req);
+  let signedIn = !!sess;
+  // A page is a document load (/, *.html, or an extensionless path that falls back to the app) —
+  // not /favicon.ico, which browsers fetch on their own and must not use up the session.
+  const isApi = url.pathname.startsWith('/api/'), isPublic = PUBLIC_FILES.has(url.pathname);
+  const isPage = !isApi && !isPublic && (/\.html$/i.test(url.pathname) || !/\.[a-z0-9]+$/i.test(url.pathname));
+  if (sess && isPage) {
+    if (sess.page_served) { store.dropSession(sess.token_hash); signedIn = false; }
+    else store.markServed(sess.token_hash);
+  }
   if (url.pathname.startsWith('/api/')) {
     if (!signedIn) return json(res, 401, { error: 'Signed out. Reload to sign in.', signedOut: true });
     if (req.method !== 'GET' && req.headers.origin && req.headers.origin !== rpFor(req).origin)
       return json(res, 403, { error: 'Wrong site.' });
-  } else if (!signedIn && !PUBLIC_FILES.has(url.pathname)) {
+  } else if (!signedIn && !isPublic && !isPage) {
+    res.writeHead(404); return res.end('Not found');
+  } else if (!signedIn && isPage) {
     return fs.readFile(path.join(PUBLIC_DIR, 'login.html'), (e, html) => {
       if (e) { res.writeHead(500); return res.end('Sign-in page missing'); }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(html);

@@ -92,7 +92,7 @@ function showSetup(on){
 $('setupbtn').onclick=()=>showSetup(true);
 $('back').onclick=()=>showSetup(false);
 
-$('go').onclick=async ()=>{
+async function signIn(){
   const btn=$('go'), label='Sign in with Face ID';
   busy(btn,true,'Waiting for Face ID…'); say('');
   try{
@@ -104,7 +104,8 @@ $('go').onclick=async ()=>{
       authenticatorData:b64u(r.authenticatorData), signature:b64u(r.signature)});
     say('Signed in.','ok'); location.replace('/');
   }catch(e){ say(cancelled(e)? '' : e.message, 'err'); busy(btn,false,label); }
-};
+}
+$('go').onclick=signIn;
 
 $('create').onclick=async ()=>{
   const btn=$('create'), label='Create passkey';
@@ -132,11 +133,14 @@ $('pin').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault()
   if(!supported){ $('signin').hidden=true; say('This browser does not support passkeys. Use Safari or Chrome.','err'); return; }
   try{
     const s=await (await fetch('/api/auth/status',{cache:'no-store'})).json();
-    if(s.signedIn){ location.replace('/'); return; }
     if(!s.hasPasskeys){                       // first run: nothing to sign in with yet
       $('sub').textContent='Set up sign-in for this planner.';
       $('setuphint').textContent='Enter your PIN to create the first passkey. After that, Face ID signs you in.';
       $('back').hidden=true; showSetup(true);
+    } else {
+      /* Opening the app goes straight to Face ID. Browsers that insist on a tap first reject this
+         silently (NotAllowedError), and the button is there for that. */
+      signIn();
     }
   }catch(e){ say('Cannot reach the server.','err'); }
 })();

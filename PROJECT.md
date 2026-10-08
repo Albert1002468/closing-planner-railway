@@ -56,8 +56,11 @@ check: `GET /api/health` (public) → `"storage": "sqlite"` (`"json"` means Node
 
 **The gate** (top of the request handler): without a valid `sid` cookie every `/api/*` route
 except health and auth returns 401 (`signedOut: true`, the page reloads into sign-in), and every
-page request gets `public/login.html` (icons and the manifest stay public). Sessions are 30
-days, the cookie is HttpOnly + SameSite=Lax (+ Secure on https), only its SHA-256 is stored;
+page request gets `public/login.html` (icons and the manifest stay public). **Passkey on every
+open**: a session serves the planner page once (`page_served`) — reopening or reloading ends it;
+the page signs itself out after `LOCK_AFTER_MS` (1 min) in the background or a bfcache restore.
+The cookie is a browser-session cookie (no Max-Age; 12 h server ceiling), HttpOnly +
+SameSite=Lax (+ Secure on https), only its SHA-256 is stored;
 POSTs with a foreign `Origin` are refused. WebAuthn is verified by hand (`cbor`, `coseToJwk`,
 `parseAuthData`, `checkClient`, `checkFlags`): challenge single-use (5 min, in memory), origin,
 RP ID hash, user-present AND user-verified flags, ES256/RS256 signature; attestation `none`.
