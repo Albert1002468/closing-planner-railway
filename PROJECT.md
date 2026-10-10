@@ -111,7 +111,8 @@ the sale figures. Categories:
 - *Midland home*: PennyMac mortgage (`mortgageSchedule`, `midEscrowPlan`: the escrow resets each
   June after the Jan tax bill; PMI off Nov 2026), HOA, utilities only while vacant, property tax
   prorated at a sale, escrow refund or deficiency at a sale.
-- *Letting*: `rentSchedule` (prorated move-in, then the 1st of each month), management and
+- *Letting*: `rentSchedule` (prorated move-in, then due the 1st of each month; from Nov 2026 the
+  rent and its fees land 3 business days later — `rentPaid`, `bizDaysAfter`, `bankHoliday`), management and
   maintenance (`maintPerYear` ramps toward 1% of value after the warranty), placement fee,
   early-termination fee if the tenancy ends before `LEASE.end`, the $3,300 security deposit
   (in on `DEPOSIT_IN` 2026-10-02, refunded at move-out or the sale — `depositBackOn` — and a

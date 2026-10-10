@@ -982,7 +982,8 @@
         <li><b>OKC home:</b> closed Sep 18, 2026 — 22% down at 5.99%. Its escrow was set against the lot,
             so the first full-house tax ($6,000/yr assumed) lands Dec 2027 and resets the payment.</li>
         <li><b>Midland home:</b> let from Sep 25, 2026 at $3,300 (lease to Sep 30, 2027); 10% management,
-            half a month to place a tenant. The Jan 2027 house-tax bill resets the PennyMac escrow from
+            half a month to place a tenant. From Nov 2026 the manager pays the rent out, less its fee,
+            3 business days after the 1st (weekends and bank holidays skipped). The Jan 2027 house-tax bill resets the PennyMac escrow from
             June 2027; PMI is assumed off from Nov 2026; losing the homestead is a 1.30× estimate.</li>
         <li><b>Selling:</b> the relocation company covers seller costs and half of any loss under $425k
             (max $25k) if it closes by Jul 20, 2027; after that seller costs are 7.5%. Leaving before the
@@ -1469,6 +1470,7 @@ const LEASE={
    has no move-out inside the model, so there is no refund line (rather than a fake one on the
    last day) — the liability stays on the books instead. */
 const DEPOSIT_IN='2026-10-02';
+const RENT_PAYOUT_FROM='2026-11-01', RENT_PAYOUT_BIZ_DAYS=3;   // see rentPaid in buildEvents
 function depositBackOn(sale, rent){
   if(!rent) return null;
   const end=rentSchedule(rent).end, out=(sale && lt(sale,end))? sale : end;
@@ -1497,6 +1499,20 @@ const addM = (s,n)=>{const d=dd(s), day=d.getDate(); d.setMonth(d.getMonth()+n);
                      if(d.getDate()!==day) d.setDate(0); return iso(d);};
 // ACH drafts land on the next business day when the due date is a weekend
 const bumpWk = d=>{const w=dd(d).getDay(); return w===6? addD(d,2) : w===0? addD(d,1) : d;};
+/* Bank holidays that can land in the first week of a month — the only ones a "N business days
+   after the 1st" count can hit: New Year's Day, Independence Day, Labor Day. A Sunday holiday is
+   observed Monday; a Saturday one is not moved (the Federal Reserve stays open that Friday). */
+function bankHoliday(d){
+  const m=d.slice(5,7), day=+d.slice(8), w=dd(d).getDay();
+  const fixed = (md)=> d.slice(5)===md || (w===1 && addD(d,-1).slice(5)===md);   // or Sunday's, observed
+  return fixed('01-01') || fixed('07-04') || (m==='09' && w===1 && day<=7);
+}
+// The date N business days after d (weekends and bank holidays skipped).
+function bizDaysAfter(d,n){
+  let x=d;
+  while(n>0){ x=addD(x,1); const w=dd(x).getDay(); if(w!==0 && w!==6 && !bankHoliday(x)) n--; }
+  return x;
+}
 function monthDays(day,fromYM,toYM){        // raw due dates, day clamped to month length
   const out=[]; let [y,m]=fromYM.split('-').map(Number); const [ty,tm]=toYM.split('-').map(Number);
   while(y<ty||(y===ty&&m<=tm)){
@@ -2008,6 +2024,11 @@ function buildEvents(sale, price, rent, home){
   const turnoverTotal = +turnovers.reduce((a,t)=>a+t.lost,0).toFixed(2);
   const rentGross = +rentRows.reduce((a,r)=>a+r.amt,0).toFixed(2);
   const rentCostTotal = +(rentRows.reduce((a,r)=>a+r.cost,0) + leaseFee + turnoverTotal + breakFee).toFixed(2);
+  /* ⚠️ The manager pays the rent out, less its 10% fee, 3 BUSINESS days after the 1st (Nov 2026
+     on). The rent is still DUE on the 1st — that is what the lease, the sale cut-off and Schedule
+     E use — only the cash lands later. The move-in stub and October 2026 keep the dates they
+     were modelled and adjusted on. */
+  const rentPaid = r => r.pro || r.d < RENT_PAYOUT_FROM ? bumpWk(r.d) : bizDaysAfter(r.d, RENT_PAYOUT_BIZ_DAYS);
   rentRows.forEach(r=>{
     if(!rentOK(r.d)) return;                 // sold — there is no house to collect rent on
     // Emitted cost-first so the newest-first table shows the rent above its costs on the day.
@@ -2017,9 +2038,9 @@ function buildEvents(sale, price, rent, home){
       if(r.vac>0)   parts.push(`vacancy ${fmt(r.vac)}`);
       if(r.mgmt>0)  parts.push(`management ${fmt(r.mgmt)}`);
       if(r.maint>0) parts.push(`maintenance ${fmt(r.maint)}`);
-      E(bumpWk(r.d), -r.cost, `Landlord costs (${parts.join(' + ')})`);
+      E(rentPaid(r), -r.cost, `Landlord costs (${parts.join(' + ')})`);
     }
-    E(bumpWk(r.d), r.amt, r.pro
+    E(rentPaid(r), r.amt, r.pro
       ? `Rent — Midland home (move-in, ${Math.round(r.pro*monthLen(r.d))} of ${monthLen(r.d)} days)`
       : `Rent — Midland home (${r.i+1} of ${rentDates.length})`
         + (r.amt!==rent.amt? ` · escalated ${rent.escal}%/yr` : ''));
