@@ -1786,6 +1786,7 @@ function buildEvents(sale, price, rent, home){
   E(WIRE_DATE,-nhCashToClose(),
     `CLOSING WIRE — cash to close, ${nice(CLOSING_DATE)} closing `
     +`(${DOWN_PCT}% down, loan ${fmt0(nhLoan())})`);
+  E('2026-09-09',9798.49,'TMRS retirement withdrawal');
   E(FENCE_PAID,-FENCE_AMT,'Fence — your half of $7,230 (wired, outside closing)');
   E(FENCE_PAID,-FENCE_WIRE_FEE,'Wire fee');
   E('2026-09-19',234.00,'Airbnb refund — day refund');
