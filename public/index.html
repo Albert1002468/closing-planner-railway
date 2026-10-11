@@ -691,6 +691,13 @@
   select option,select optgroup{background-color:var(--surface-1);color:var(--ink)}
   .keyrow{font-size:11.5px;gap:12px}
   .keyrow.nw .cashonly,.keyrow:not(.nw) .nwonly{display:none}
+  /* The one tappable key: a chip, so it reads as a switch rather than a label. */
+  .keybtn{font:inherit;color:var(--ink-2);background:transparent;border:1px solid var(--axis);border-radius:999px;
+          padding:3px 10px 3px 8px;margin:-4px 0;cursor:pointer;display:inline-flex;align-items:center}
+  .keybtn.on{background:var(--fill-2);border-color:transparent;color:var(--ink);font-weight:600}
+  .keybtn[hidden]{display:none}
+  .projsw{width:14px;height:0;border-radius:0;border-top:2px dashed var(--s2);margin-right:6px;opacity:.45}
+  .keybtn.on .projsw{opacity:1}
   .actionbar{flex-wrap:nowrap}
   .chartmode{margin:0;flex:none}
   .chartmode .signbtn{flex:none;padding:5px 11px;font-size:13px}
@@ -915,6 +922,8 @@
       <span id="keysale"><span class="sw" style="background:var(--s3);border-radius:2px"></span>sale</span>
       <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
       <span class="cashonly"><span class="sw" style="background:var(--s7);height:3px;border-radius:0"></span>buying power</span>
+      <!-- Tap to draw the projection without reconciles beside the reconciled balance. -->
+      <button type="button" class="keybtn" id="projkey" aria-pressed="false" hidden><span class="sw projsw"></span>projected</button>
       <span id="keyoppwrap" hidden><span class="sw" style="background:var(--s8);height:3px;border-radius:0"></span><span id="keyopp">sell at lease end</span></span>
     </div>
     </section>
@@ -2198,11 +2207,14 @@ function buildSeries(sale, price, rent, home, rates){
   const {ev, ...built}=buildEvents(sale,price,rent,home);
   const map={};
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
-  const series=[]; let bal=START_BAL, cur=T0;
+  /* `pbal` is the same walk with no reconciles: the pure projection, drawn as the optional
+     "projected" line so the drift the reconciled variances add up to can be seen. */
+  const series=[]; let bal=START_BAL, pbal=START_BAL, cur=T0;
   while(cur<=T1){
     bal += accrue(bal, rates, cur);            // two-tier, on the opening balance
-    (map[cur]||[]).forEach(e=>bal+=e.a);
-    const day={d:cur,b:+bal.toFixed(2),ev:(map[cur]||[]).map(e=>({a:e.a,l:e.l,key:e.key,proj:e.proj,adj:e.adj,from:e.from}))};
+    pbal += accrue(pbal, rates, cur);
+    (map[cur]||[]).forEach(e=>{ bal+=e.a; pbal+=e.a; });
+    const day={d:cur,b:+bal.toFixed(2),p:+pbal.toFixed(2),ev:(map[cur]||[]).map(e=>({a:e.a,l:e.l,key:e.key,proj:e.proj,adj:e.adj,from:e.from}))};
     const r=RECON[cur];
     if(r){
       const projected=+bal.toFixed(2);
@@ -2423,6 +2435,8 @@ function netWorth(res, sale, rent, home, asOf){
 const NS='http://www.w3.org/2000/svg';
 let LAST_DATA=[];
 let VIEW='2026';         // 'span' = the whole horizon, otherwise a 'YYYY' string
+let SHOW_PROJ=false;      // draw the no-reconcile projection beside the balance (the "projected" key)
+try{ SHOW_PROJ = localStorage.getItem('showProj')==='1'; }catch(e){}
 let CHART_MODE='cash';   // 'cash' | 'nw' — what the chart plots (see setChartMode)
 let TPAGE=null;          // table page — a 'YYYY-MM' key
 let TPAGE_PINNED=false;  // true once the reader picks a month themselves
@@ -2901,6 +2915,9 @@ function render(){
      numbers side by side. The comparison now lives only in Net worth mode, where both lines are
      net worth from the very scenarios the table uses, so their end points ARE the table. */
   const NWM = CHART_MODE==='nw';
+  // The projected line only means something once a reconcile has moved the balance off it.
+  const hasDrift = DATA.some(d=>d.p!==d.b);
+  const PROJ_ON = SHOW_PROJ && !NWM && hasDrift;
   const oppVD = [];
   const oppEnd  = OPPC.sellEnd;
   const keepEnd = OPPC.keepEnd;
@@ -2960,7 +2977,8 @@ function render(){
   if(NWM){ bmin=0; bmax=-Infinity;
     for(let i=0;i<n;i++){ bmin=Math.min(bmin,nwK[i],nwS[i]); bmax=Math.max(bmax,nwK[i],nwS[i]); } }
   else { bmin=Math.min(0, isFinite(oLo)?oLo:Infinity, ...VD.map(d=>Math.min(d.b, realAt(d.b,d.d))));
-         bmax=Math.max(isFinite(oHi)?oHi:-Infinity, ...VD.map(d=>d.b)); }
+         bmax=Math.max(isFinite(oHi)?oHi:-Infinity, ...VD.map(d=>d.b));
+         if(PROJ_ON){ for(const d of VD){ if(d.p<bmin) bmin=d.p; if(d.p>bmax) bmax=d.p; } } }
   // Snap the scale to the STEP, not a fixed 10k, or the labels read $990k / $1,990k.
   const niceStep=v=>{const m=Math.pow(10,Math.floor(Math.log10(Math.max(1,v)))), r=v/m;
                      return (r<=1?1:r<=2?2:r<=2.5?2.5:r<=5?5:10)*m;};
@@ -3079,6 +3097,13 @@ function render(){
     add('path',{d:band,fill:'var(--s7)',stroke:'none',opacity:.08});
     add('path',{d:rpath,fill:'none',stroke:'var(--s7)','stroke-width':1.6,'stroke-linejoin':'round'});
   }
+  if(PROJ_ON){
+    let ppath=''; let qprev=-1;
+    VD.forEach((d,i)=>{ if(!keep(i)) return; const x=X(i),y=Y(d.p);
+      ppath+= qprev<0?`M${x} ${y}`:`L${x} ${Y(VD[qprev].p)} L${x} ${y}`; qprev=i;});
+    add('path',{d:ppath,fill:'none',stroke:'var(--s2)','stroke-width':1.8,'stroke-dasharray':'5 4',
+                'stroke-linejoin':'round'});
+  }
   let path=''; let pprev=-1;
   VD.forEach((d,i)=>{ if(!keep(i)) return; const x=X(i),y=Y(VAL(i));
     path+= pprev<0?`M${x} ${y}` : NWM? `L${x} ${y}` : `L${x} ${Y(VAL(pprev))} L${x} ${y}`; pprev=i;});
@@ -3136,6 +3161,11 @@ function render(){
     /* The comparison line's whole point is the GAP, and at ~$1,000 a pixel a $2,400 difference
        is under three pixels — the two lines read as identical when they are not. So the gap is
        spelled out here rather than left to the eye. Only while the line is on screen. */
+    if(PROJ_ON && d.p!==d.b){
+      const g3=d.b-d.p;
+      h+=`<div style="color:var(--s2);font-size:11px;margin:-1px 0 4px">`
+        +`${fmt(d.p)} projected · <b>${g3>=0?'+':'−'}${fmt(Math.abs(g3))}</b> from reconciles</div>`;
+    }
     if(oppVD.length===n){
       const g2=oppVD[i].b-d.b;
       h+=`<div style="color:var(--s8);font-size:11px;margin:-1px 0 4px">`
@@ -3345,6 +3375,7 @@ function render(){
     : OPPBE.rate===null ? `keeping wins below ${(OPP_MAX*100).toFixed(0)}%`
     : `break-even ${(OPPBE.rate*100).toFixed(1)}%`;
   document.getElementById('keyoppwrap').hidden = !NWM;
+  document.getElementById('projkey').hidden = NWM || !hasDrift;
   document.getElementById('keyrow').classList.toggle('nw', NWM);
   document.getElementById('keyopp').textContent = `sell ${nice(oppExitDate(rent))}`;
   /* The panel body depends on nothing that VIEW changes, and its exits table alone costs six
@@ -3801,6 +3832,14 @@ function setChartMode(m, extraHost){
   busy([$chartP, extraHost], render);
 }
 document.getElementById('cmcash').addEventListener('click',()=>setChartMode('cash'));
+function syncProjKey(){ const b=document.getElementById('projkey');
+  b.classList.toggle('on',SHOW_PROJ); b.setAttribute('aria-pressed',String(SHOW_PROJ)); }
+syncProjKey();
+document.getElementById('projkey').addEventListener('click',()=>{
+  SHOW_PROJ=!SHOW_PROJ; syncProjKey();
+  try{ localStorage.setItem('showProj', SHOW_PROJ?'1':'0'); }catch(e){}
+  busy([$chartP], render);
+});
 document.getElementById('cmnw').addEventListener('click',()=>setChartMode('nw'));
 // The panel compares net worth, so the chart follows it open and closed.
 document.getElementById('oppwrap').addEventListener('toggle',()=>{

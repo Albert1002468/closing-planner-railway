@@ -112,6 +112,12 @@ resulting actual balance and:
   **chart readout** — but only when the variance is non-zero. A $0.00 entry is saved and locks
   the date, yet appears only under "Recent changes" inside the sheet.
 
+**Projected vs reconciled on the chart**: once any reconcile has moved the balance, a
+**projected** chip appears in the chart key (Cash mode). Tap it to draw the projection with no
+reconciles as an orange dashed line beside the blue reconciled balance; the readout then shows
+the projected figure and how far the reconciles have moved it. Adjusted and moved transactions
+count in both lines, so only the variances separate them. The choice is remembered on the device.
+
 The stored value is the resulting balance, so it stays pinned to reality; the variance shown
 later is re-derived against whatever sale scenario is active.
 

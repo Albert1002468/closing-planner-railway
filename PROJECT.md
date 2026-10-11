@@ -138,6 +138,8 @@ only, not the amortisation.
 **`buildSeries`** walks each day: interest first (`accrue`: two tiers — cash rate up to the
 liquidity floor, investment rate above it; nothing accrues before today), then the day's
 events, then a reconcile (if any) **rebases** the balance to the actual.
+Alongside it, `day.p` is the same walk with no reconciles (its own interest too): the dashed
+"projected" line the chart key's **projected** chip toggles (`SHOW_PROJ`, saved in localStorage).
 
 **The tenancy is derived, not typed** (`leaseEndFor`): "never sell" lets to `T1`; "when the
 tenant leaves" ends at `LEASE.end`; a picked date ends it at the sale.
