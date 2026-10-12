@@ -318,7 +318,6 @@
     width:100%;box-sizing:border-box;background:var(--page);color:var(--ink);
     border:1px solid var(--axis);border-radius:8px;padding:9px 10px;font-size:16px;font-family:inherit}
   .fld textarea{resize:vertical;min-height:54px;font-size:14px}
-  .subhint{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.35}
   .signrow{display:flex;gap:8px;margin-bottom:8px}
   .signbtn{flex:1;background:var(--page);color:var(--ink-2);border:1px solid var(--axis);border-radius:8px;
            padding:9px 10px;font-size:14px;font-family:inherit;cursor:pointer;font-weight:600}
@@ -400,18 +399,15 @@
   .bankact{display:flex;gap:8px;margin-top:6px}
   .bankact select{flex:1;min-width:0;font:inherit;font-size:16px;padding:6px 8px;border-radius:8px;border:1px solid var(--axis);
                   background:var(--surface-1);color:var(--ink)}
-  .bankact button,.bankconnect{border:0;border-radius:8px;padding:7px 14px;font:inherit;font-weight:600;background:var(--s1);color:#fff;cursor:pointer}
-  .bankconnect{width:100%;margin-top:6px}
+  .bankact button,.bankon{border:0;border-radius:8px;padding:7px 14px;font:inherit;font-weight:600;background:var(--s1);color:#fff;cursor:pointer}
+  .bankon{width:100%;margin-top:6px}
   .banklist{font-size:12px}
   .banklist div{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-variant-numeric:tabular-nums}
   .banklist .trunc{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .banklist i{font-style:normal;color:var(--muted)}
   .bankmore{margin-top:8px}
   .bankmore summary{cursor:pointer;color:var(--s1);font-size:12.5px;font-weight:600}
-  .bankconn{border-top:1px solid var(--grid);padding:8px 0 4px;margin-top:6px}
-  .bankconn .err{color:var(--crit)}
-  .bankbtns{display:flex;gap:4px;flex:none}
-  .ghostbtn.danger{color:var(--crit)}
+  .bankbox .err{color:var(--crit)}
   .bankacct{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12.5px;color:var(--ink-2)}
   .bankacct span:nth-child(2){flex:1;min-width:0}
   .bankacct input{width:18px;height:18px;margin:0}
@@ -500,7 +496,7 @@
   /* The three headline figures lead the strip, tinted and topped with the icon's gradient. */
   /* The rest carry the same treatment, lighter, so the strip reads as one family on desktop
      where every tile is on screen at once. */
-  .abtn.accent,.actbtn:not(.ghost),.recrow button:not(.ghost){
+  .actbtn:not(.ghost),.recrow button:not(.ghost){
     background:linear-gradient(135deg,var(--s1),color-mix(in srgb,var(--s1) 70%,#17a6c0));
     box-shadow:0 3px 10px color-mix(in srgb,var(--s1) 32%,transparent)}
   .signbtn.on{box-shadow:0 2px 8px color-mix(in srgb,var(--s1) 28%,transparent)}
@@ -679,7 +675,7 @@
   .appbar-title{position:absolute;left:50%;font-size:16px;font-weight:600;letter-spacing:-.01em;
                 pointer-events:none;opacity:0;visibility:hidden;transform:translate(-50%,7px)}
   .appbar .acts{display:flex;gap:2px}
-  .appbar .abtn,.appbar .abtn.accent{width:40px;height:40px;border-radius:50%;padding:0;border:0;
+  .appbar .abtn{width:40px;height:40px;border-radius:50%;padding:0;border:0;
     background:transparent;color:var(--ink);box-shadow:none}
   .appbar .abtn:hover{background:var(--fill)}
   .appbar .abtn svg{width:21px;height:21px}
@@ -827,7 +823,7 @@
   .switch input:checked+.track{background:var(--good)}
 
   /* buttons: ink primary, quiet secondary */
-  .actbtn:not(.ghost),.recrow button:not(.ghost),.abtn.accent{background:var(--ink);color:var(--page);box-shadow:none}
+  .actbtn:not(.ghost),.recrow button:not(.ghost){background:var(--ink);color:var(--page);box-shadow:none}
   .actbtn,.recrow button{width:auto;height:44px;padding:0 20px;border-radius:12px;font-size:15px;
     font-weight:600;border:0;box-shadow:none;background:var(--ink);color:var(--page)}
   .actbtn.ghost,.recrow button.ghost{background:var(--fill);color:var(--ink);border:0;font-weight:500}
@@ -1193,7 +1189,7 @@
             <button type="button" id="recdone" class="ghostbtn">Done</button>
           </div>
           <p class="hint" id="rechint"></p>
-          <!-- Bank sync (Plaid): status, transactions to review, connections. Filled by fillBank. -->
+          <!-- Bank sync (alert emails): status, transactions to review, accounts. Filled by fillBank. -->
           <div class="bankbox" id="bankbox" hidden></div>
           <!-- One view: find a day (stepper or search), tap a line to set what actually happened,
                or tap the day's balance to reconcile it. -->
@@ -1323,7 +1319,7 @@ const nhCashToClose = () =>
 /* ---------- Scenario engine ---------- */
 const RECON = {};                           // date -> {actual, note}; loaded from /api/state
 // Bank sync state (see "Bank" below). BANKX is read by buildEvents, so it is declared up here.
-let BANK=null, BANKX=[], BANK_PREVIEW=[], BANK_LINKING=false;
+let BANK=null, BANKX=[], BANK_PREVIEW=[];
 /* Adjustments: key -> {amount, projected, note, label}. The actual amount of ONE projected
    transaction, entered in the Adjust & reconcile sheet (a paycheck that came in higher, a bill that
    was lower). Keyed by `date|label`, label without its trailing "(…)" detail — that part moves
@@ -1401,7 +1397,7 @@ const CAR_ANCHOR='2026-08-16', CAR_BAL_AFTER_ANCHOR=40862.63;
 /* --- one-off rules --- */
 const WARRANTY_REFUND = 2300.00;            // extended warranty + gap, refunded 1 mo after payoff
 const FIANCEE_REPAY   = 27000.00;           // her contribution to the Midland home, 1 wk after sale
-const BONUS_DATE='2027-03-01', BONUS_GROSS=30000.00;
+const BONUS_GROSS=30000.00;
 // Last year: 22,512 net on 32,000 gross = 70.35% = 100 - 22 fed suppl. - 6.2 OASDI - 1.45 Medicare
 // (no Roth deferral was taken). Oklahoma now withholds 4.75% supplemental on top.
 const BONUS_NET = +(BONUS_GROSS*(0.7035-0.0475)).toFixed(2);   // 19,680.00
@@ -2951,7 +2947,6 @@ function render(){
      investment rate while blue was on the cash rate, and at 0% vs 7% the sell line ended 2.90x
      higher — nearly all of that gap being the rate rather than the house. With one shared spec
      that class of bug is now impossible to reintroduce. */
-  const oppShown= document.getElementById('oppwrap').open;
   /* ⚠️ ONE metric on the chart at a time. The comparison line used to be the sell scenario's
      CASH laid over our cash, while the panel beside it compared NET WORTH — two different
      numbers side by side. The comparison now lives only in Net worth mode, where both lines are
@@ -2960,7 +2955,6 @@ function render(){
   // The projected line only means something once a reconcile has moved the balance off it.
   const hasDrift = DATA.some(d=>d.p!==d.b);
   const PROJ_ON = SHOW_PROJ && !NWM && hasDrift;
-  const oppVD = [];
   const oppEnd  = OPPC.sellEnd;
   const keepEnd = OPPC.keepEnd;
 
@@ -3012,15 +3006,14 @@ function render(){
     nwK=OPPC.nw.keep.slice(off,off+n); nwS=OPPC.nw.sell.slice(off,off+n);
   }
   const VAL = NWM? (i=>nwK[i]) : (i=>VD[i].b);
-  // The comparison line has to be inside the scale or it draws off the top of the chart.
-  let oLo=Infinity, oHi=-Infinity;
-  for(const d of oppVD){ if(d.b<oLo) oLo=d.b; if(d.b>oHi) oHi=d.b; }
-  let bmin, bmax;
-  if(NWM){ bmin=0; bmax=-Infinity;
-    for(let i=0;i<n;i++){ bmin=Math.min(bmin,nwK[i],nwS[i]); bmax=Math.max(bmax,nwK[i],nwS[i]); } }
-  else { bmin=Math.min(0, isFinite(oLo)?oLo:Infinity, ...VD.map(d=>Math.min(d.b, realAt(d.b,d.d))));
-         bmax=Math.max(isFinite(oHi)?oHi:-Infinity, ...VD.map(d=>d.b));
-         if(PROJ_ON){ for(const d of VD){ if(d.p<bmin) bmin=d.p; if(d.p>bmax) bmax=d.p; } } }
+  // The scale covers every line drawn: both net-worth lines, or the balance, its buying power and
+  // (when shown) the projection without reconciles.
+  let bmin=0, bmax=-Infinity;
+  if(NWM) for(let i=0;i<n;i++){ bmin=Math.min(bmin,nwK[i],nwS[i]); bmax=Math.max(bmax,nwK[i],nwS[i]); }
+  else for(const d of VD){
+    bmin=Math.min(bmin, d.b, realAt(d.b,d.d)); bmax=Math.max(bmax, d.b);
+    if(PROJ_ON){ bmin=Math.min(bmin,d.p); bmax=Math.max(bmax,d.p); }
+  }
   // Snap the scale to the STEP, not a fixed 10k, or the labels read $990k / $1,990k.
   const niceStep=v=>{const m=Math.pow(10,Math.floor(Math.log10(Math.max(1,v)))), r=v/m;
                      return (r<=1?1:r<=2?2:r<=2.5?2.5:r<=5?5:10)*m;};
@@ -3207,12 +3200,6 @@ function render(){
       const g3=d.b-d.p;
       h+=`<div style="color:var(--s2);font-size:11px;margin:-1px 0 4px">`
         +`${fmt(d.p)} projected · <b>${g3>=0?'+':'−'}${fmt(Math.abs(g3))}</b> from reconciles</div>`;
-    }
-    if(oppVD.length===n){
-      const g2=oppVD[i].b-d.b;
-      h+=`<div style="color:var(--s8);font-size:11px;margin:-1px 0 4px">`
-        +`${fmt(oppVD[i].b)} if sold ${nice(oppExitDate(rent))} · `
-        +`<b>${g2>=0?'+':'−'}${fmt(Math.abs(g2)).replace('$','$')}</b> ${g2>=0?'ahead':'behind'}</div>`;
     }
     if(d.ev.length) h+='<ul>'+d.ev.map(e=>`<li><span>${e.adj?'✎ ':''}${esc(e.l)}</span><span>${fmt(e.a)}</span></li>`).join('')+'</ul>';
     if(d.rec && d.rec.delta!==0){
@@ -4508,8 +4495,8 @@ $('adjclear').addEventListener('click',async ()=>{
   $('adjmsg').className='recmsg ok'; $('adjmsg').textContent='Back to the projection.'+moved;
 });
 
-/* ================= Bank (Teller or Plaid, read-only — see bank.js) =================
-   The server syncs every night and, from the bank's own figures, reconciles YESTERDAY by itself.
+/* ================= Bank (alert emails, read-only — see bank.js) =================
+   The server reads the banks' alert emails and reconciles each day a balance alert closes.
    Matching transactions to the plan needs the projection, which only this page has, so after
    each sync the page matches the new posted transactions and posts what it decided:
      - a planned line, same amount and day          → matched; nothing changes
@@ -4518,7 +4505,7 @@ $('adjclear').addEventListener('click',async ()=>{
      - unsure (a near amount, a vague name)         → "to review": one tap in this sheet
      - nothing like it in the plan                  → an extra line ("Bank: …"), as the bank shows it
      - the two legs of a transfer between your own tracked accounts → ignored
-   Test mode (a provider's sandbox) runs the same matching but only shows what it WOULD do. */
+   In preview (until "Turn it on") the same matching runs but only shows what it WOULD do. */
 const BANK_WIN=6;                       // days either side of the bank date to look for the line
 const BANK_STOP=new Set(['the','and','for','new','home','est','your','with','from','fee','bill','payment','hrs']);
 const BANK_SYN={paycheck:['payroll','salary','dirdep','directdep'], mortgage:['mtg','loan','mortgage'],
@@ -4602,7 +4589,7 @@ function bankApply(out){
   OPPC={key:null}; render(); bankBadge();
   if(!$('recmodal').hidden){ fillAdj(); fillBank(); }
 }
-// After a sync: decide every new transaction. Live: saved. Test mode: kept as a preview only.
+// After a sync: decide every new transaction. Live: saved. Preview: only shown.
 async function bankRun(){
   if(!BANK || !BANK.ready || !LAST_DATA.length) return;
   const items=bankAutoItems();
@@ -4617,18 +4604,17 @@ async function bankRun(){
   }
 }
 async function bankSync(force){
-  if(!BANK || !BANK.ready || (!BANK.items.length && BANK.provider!=='email')) return;
+  if(!BANK || !BANK.ready) return;
   const out=await bankPost('/api/bank/sync',{force:!!force});
   if(!out) return;
   bankTake(out);
   await bankRun(); fillBank(); bankBadge();
 }
-// A sync answer: the new bank state, and yesterday's balance if the server just reconciled it.
+// A server answer: the new bank state, plus any days it just reconciled from balance alerts.
 function bankTake(out){
   BANK=out;
-  const rs=out.reconciles || (out.reconciled? [out.reconciled] : []);
-  rs.forEach(r=>{ RECON[r.date]={actual:r.actual, note:r.note, source:'bank'}; });
-  if(rs.length){ OPPC={key:null}; render(); }
+  (out.reconciles||[]).forEach(r=>{ RECON[r.date]={actual:r.actual, note:r.note, source:'bank'}; });
+  if((out.reconciles||[]).length){ OPPC={key:null}; render(); }
 }
 const bankReviews = () => BANK? BANK.open.filter(t=>t.status==='review') : [];
 function bankBadge(){ const n=BANK && BANK.live? bankReviews().length : 0, b=$('recbadge');
@@ -4637,40 +4623,35 @@ function bankBadge(){ const n=BANK && BANK.live? bankReviews().length : 0, b=$('
 const bankAgo = iso => { if(!iso) return 'never'; const m=Math.round((Date.now()-Date.parse(iso))/60000);
   return m<1?'just now': m<60? m+' min ago' : m<1440? Math.round(m/60)+' h ago' : shortDate(iso.slice(0,10)); };
 function bankRowOptions(t){
-  const claimed=new Set(BANK.claimed);
-  const c=bankCands(t, claimed, 12).slice(0,8), sel=t.suggest&&t.suggest.key;
+  const c=bankCands(t, new Set(BANK.claimed), 12).slice(0,8), sel=t.suggest&&t.suggest.key;
   if(sel && !c.some(x=>x.e.key===sel)){ const e=bankFind(sel); if(e) c.unshift({e, day:e.d, planned:e.adj?e.proj:e.a}); }
   return c.map(x=>`<option value="k:${esc(x.e.key)}"${x.e.key===sel?' selected':''}>${esc(adjBase(x.e.l))} · ${shortDate(x.day)} · ${fmt(x.planned)}</option>`).join('')
     +`<option value="extra"${!sel?' selected':''}>Not in the plan — add it as its own line</option>`
     +`<option value="ignore">Ignore (a transfer between my accounts)</option>`;
 }
 function bankFind(key){ for(const day of LAST_DATA) for(const e of day.ev) if(e.key===key) return {...e, d:day.d}; return null; }
+const bankList = (title, rows, open) => `<details class="bankmore"${open?' open':''}><summary>${title}</summary><div class="banklist">${rows}</div></details>`;
 function fillBank(){
   const box=$('bankbox'); if(!box) return;
   if(!BANK){ box.hidden=true; return; }
   box.hidden=false;
-  const test=!BANK.live, items=BANK.items, revs=bankReviews();
-  let h=`<div class="bankhead"><b>Bank</b><span class="banksub">`;
-  const email=BANK.provider==='email';
-  if(!BANK.ready) h+='Not set up';
-  else if(email) h+='Alerts to '+esc(BANK.address||'')+' · checked '+bankAgo(BANK.lastRun)+(test?' · preview':'');
-  else if(!items.length) h+= test? 'Test mode (sandbox)' : 'Not connected';
-  else h+=esc(items.map(i=>i.institution).join(' + '))+' · synced '+bankAgo(BANK.lastRun)+(test?' · test mode':'');
-  h+=`</span>`;
-  if(BANK.ready && items.length) h+=`<button type="button" class="ghostbtn" id="banksync">Sync</button>`;
-  h+=`</div>`;
-  if(!BANK.ready) h+=`<p class="bankhint">Automatic bank sync needs these Railway variables: <b>${esc(BANK.missing.join(', '))}</b>. See “Bank sync” in the README.</p>`;
-  if(email && test && BANK.ready){
+  const preview=!BANK.live, revs=bankReviews();
+  let h=`<div class="bankhead"><b>Bank</b><span class="banksub">`
+    +(BANK.ready? 'Alerts to '+esc(BANK.address)+' · checked '+bankAgo(BANK.lastRun)+(preview?' · preview':'') : 'Not set up')+`</span>`
+    +(BANK.ready? `<button type="button" class="ghostbtn" id="banksync">Check now</button>` : '')+`</div>`;
+  if(!BANK.ready){
+    box.innerHTML=h+`<p class="bankhint">Automatic bank sync needs these Railway variables: <b>${esc(BANK.missing.join(', '))}</b>. See “Bank sync” in the README.</p>`;
+    return;
+  }
+  if(BANK.error) h+=`<p class="bankhint"><span class="err">${esc(BANK.error)}</span></p>`;
+  if(preview){
     h+=`<p class="bankhint"><b>Preview.</b> It is reading your bank's alert emails but not changing the planner yet.`
       +` Check what it read below; when it looks right, turn it on.</p>`;
-    (BANK.would||[]).forEach(w=>{ h+=`<p class="bankhint">Balance ${shortDate(w.date)}: ${fmt(w.actual)} — `
+    BANK.would.forEach(w=>{ h+=`<p class="bankhint">Balance ${shortDate(w.date)}: ${fmt(w.actual)} — `
       +(w.already? 'already reconciled, would be left alone' : 'would reconcile that day')+`.</p>`; });
-    h+=`<button type="button" class="bankconnect" id="banklive">Looks right — turn it on</button>`;
-  }
-  else if(test && BANK.ready) h+=`<p class="bankhint">Test mode: a sandbox bank with made-up data. Nothing is written to your planner — below is what it would do.`
-    +` It goes live with ${BANK.provider==='teller'? '<code>TELLER_ENV=development</code>' : '<code>PLAID_SECRET</code>'}.</p>`;
-  if(BANK.live && BANK.lastReconciled) h+=`<p class="bankhint">Reconciled ${shortDate(BANK.lastReconciled.date)} from the bank: ${fmt(BANK.lastReconciled.actual)}.</p>`;
-  if(BANK.live && revs.length){
+    h+=`<button type="button" class="bankon" id="banklive">Looks right — turn it on</button>`;
+  } else if(BANK.lastReconciled) h+=`<p class="bankhint">Reconciled ${shortDate(BANK.lastReconciled.date)} from the bank: ${fmt(BANK.lastReconciled.actual)}.</p>`;
+  if(!preview && revs.length){
     h+=`<div class="bankgrp">To review · ${revs.length}</div>`;
     h+=revs.map(t=>`<div class="bankrev" data-id="${esc(t.id)}">
       <div class="bankline"><span class="lab"><b>${esc(t.name)}</b><small>${longDate(t.date)}${t.suggest?` · looks like ${esc(t.suggest.label)}`:' · not found in the plan'}</small></span>
@@ -4678,110 +4659,38 @@ function fillBank(){
       <div class="bankact"><select aria-label="What is this?">${bankRowOptions(t)}</select>
         <button type="button" class="bankok">Save</button></div></div>`).join('');
   }
-  if(test && BANK_PREVIEW.length){
+  const row=(d,name,what,amt)=>`<div><span class="trunc">${shortDate(d)} · ${esc(name)} <i>${esc(what)}</i></span><span>${amt==null?'':fmt(amt)}</span></div>`;
+  if(preview && BANK_PREVIEW.length){
     const say=x=> x.action==='match'? (x.adjust? (x.adjust.moveTo&&x.adjust.amount!==x.adjust.projected? 'move + adjust ' : x.adjust.moveTo? 'move ' : 'adjust ')+'→ '+x.label : '✓ '+x.label)
       : x.action==='review'? 'ask you (maybe '+x.suggest.label+')' : x.action==='extra'? 'add as its own line' : 'ignore (transfer)';
-    h+=`<div class="bankgrp">Would do · ${BANK_PREVIEW.length}</div><div class="banklist">`
-      +BANK_PREVIEW.slice(0,40).map(x=>`<div><span class="trunc">${shortDate(x.t.date)} · ${esc(x.t.name)} <i>${esc(say(x))}</i></span><span>${fmt(x.t.amount)}</span></div>`).join('')+`</div>`;
+    h+=bankList(`Would do · ${BANK_PREVIEW.length}`, BANK_PREVIEW.slice(0,40).map(x=>row(x.t.date,x.t.name,say(x),x.t.amount)).join(''), true);
   }
-  if(BANK.unread && BANK.unread.length){
-    h+=`<details class="bankmore"><summary>Alerts it could not read · ${BANK.unread.length}</summary>`
-      +`<p class="bankhint">Send me one of these (account numbers hidden) so it can learn the wording.</p><div class="banklist">`
-      +BANK.unread.map(u=>`<div><span class="trunc">${u.date?shortDate(u.date)+' · ':''}${esc(u.bank)}: ${esc(u.subject)}</span></div>`).join('')+`</div></details>`;
-  }
-  if(BANK.live && BANK.recent.length){
+  if(BANK.unread.length)
+    h+=bankList(`Alerts it could not read · ${BANK.unread.length}`, `<p class="bankhint">Send me one of these (account numbers hidden) so it can learn the wording.</p>`
+      +BANK.unread.map(u=>`<div><span class="trunc">${u.date?shortDate(u.date)+' · ':''}${esc(u.bank)}: ${esc(u.subject)}</span></div>`).join(''));
+  if(!preview && BANK.recent.length){
     const say=t=> t.status==='matched'? '→ '+(t.label||'planned line') : t.status==='extra'? 'own line' : 'ignored';
-    h+=`<details class="bankmore"><summary>Recent bank matches</summary><div class="banklist">`
-      +BANK.recent.map(t=>`<div><span class="trunc">${shortDate(t.date)} · ${esc(t.name)} <i>${esc(say(t))}</i></span><span>${fmt(t.amount)}</span></div>`).join('')+`</div></details>`;
+    h+=bankList('Recent bank matches', BANK.recent.map(t=>row(t.date,t.name,say(t),t.amount)).join(''));
   }
-  if(BANK.ready && email){
-    const accts=items.flatMap(i=>i.accounts), err=items.find(i=>i.error);
-    h+=`<details class="bankmore"><summary>Accounts</summary>`
-      +(err? `<p class="bankhint"><span class="err">${esc(err.error)}</span></p>` : '')
-      +(accts.length? accts.map(a=>`<label class="bankacct"><input type="checkbox" data-acct="${esc(a.id)}"${a.tracked?' checked':''}>
-        <span>${esc(a.name)}${a.mask?' ··'+esc(a.mask):''}</span><span class="amt">${a.current==null?'':fmt(a.current)}</span></label>`).join('')
-        : `<p class="bankhint">No alerts read yet. Point Wells Fargo's alerts at ${esc(BANK.address||'the alerts inbox')}.</p>`)
-      +`<p class="bankhint">Ticked accounts are added together as the planner's balance. It only reads emails from the banks that Gmail verified as really theirs, and it never deletes or changes them.</p>`
-      +(BANK.live? `<button type="button" class="ghostbtn" id="bankpreview">Back to preview</button>` : '')
-      +`</details>`;
-  }
-  else if(BANK.ready){
-    h+=`<details class="bankmore"${items.length?'':' open'}><summary>Connections</summary>`;
-    h+=items.map(i=>`<div class="bankconn"><div class="bankline"><span class="lab"><b>${esc(i.institution)}</b>
-        <small>${i.error? '<span class="err">'+esc(i.error)+'</span>' : 'synced '+bankAgo(i.lastSync)}</small></span>
-        <span class="bankbtns">${i.relink?`<button type="button" class="ghostbtn" data-relink="${esc(i.id)}">Reconnect</button>`:''}
-        <button type="button" class="ghostbtn danger" data-unlink="${esc(i.id)}">Disconnect</button></span></div>`
-      +i.accounts.map(a=>`<label class="bankacct"><input type="checkbox" data-acct="${esc(a.id)}"${a.tracked?' checked':''}>
-        <span>${esc(a.name)}${a.mask?' ··'+esc(a.mask):''}</span><span class="amt">${a.current==null?'':fmt(a.current)}</span></label>`).join('')
-      +`</div>`).join('');
-    h+=`<p class="bankhint">Ticked accounts are added together as the planner's balance. Read-only: the planner can see transactions and balances, never move money.</p>`
-      +`<button type="button" class="bankconnect" id="bankconnect">${items.length?'Connect another bank':'Connect a bank'}</button></details>`;
-  }
+  h+=`<details class="bankmore"><summary>Accounts</summary>`
+    +(BANK.accounts.length? BANK.accounts.map(a=>`<label class="bankacct"><input type="checkbox" data-acct="${esc(a.id)}"${a.tracked?' checked':''}>
+      <span>${esc(a.name)}${a.mask?' ··'+esc(a.mask):''}</span><span class="amt">${a.current==null?'':fmt(a.current)}</span></label>`).join('')
+      : `<p class="bankhint">No alerts read yet. Point the bank's alerts at ${esc(BANK.address)}.</p>`)
+    +`<p class="bankhint">Ticked accounts are added together as the planner's balance. It only reads emails from the banks that Gmail verified as really theirs, and it never deletes or changes them.</p>`
+    +(preview? '' : `<button type="button" class="ghostbtn" id="bankpreview">Back to preview</button>`)
+    +`</details>`;
   h+=`<div class="recmsg" id="bankmsg" role="status"></div>`;
   const keep=$('bankmsg')? [$('bankmsg').className,$('bankmsg').textContent] : null;
   box.innerHTML=h;
   if(keep){ $('bankmsg').className=keep[0]; $('bankmsg').textContent=keep[1]; }
 }
-function plaidScript(){
-  return window.Plaid? Promise.resolve() : new Promise((ok,no)=>{ const s=document.createElement('script');
-    s.src='https://cdn.plaid.com/link/v2/stable/link-initialize.js'; s.onload=ok;
-    s.onerror=()=>no(new Error('Could not load Plaid.')); document.head.appendChild(s); });
-}
-// Plaid Link: the bank's own sign-in. `item` = reconnecting one; `resume` = back from a bank's OAuth page.
-async function bankLink(item, resume){
-  try{ await plaidScript(); }catch(e){ bankMsg(e.message,true); return; }
-  const o=await bankPost('/api/bank/link-token',{item:item||undefined, resume:!!resume});
-  if(!o) return;
-  const done=()=>{ BANK_LINKING=false; if(location.pathname==='/plaid-oauth') history.replaceState(null,'','/'); };
-  BANK_LINKING=true;
-  Plaid.create({token:o.link_token, ...(resume? {receivedRedirectUri:location.href} : {}),
-    onSuccess: async (public_token, meta)=>{
-      done();
-      if(item){ await bankSync(true); bankMsg('Reconnected.'); return; }
-      bankMsg('Connecting…');
-      const out=await bankPost('/api/bank/exchange',{public_token, institution: meta && meta.institution && meta.institution.name});
-      if(out){ bankTake(out); await bankRun(); fillBank(); bankBadge(); bankMsg('Connected. It syncs every night and when you open the app.'); }
-    },
-    onExit: (err)=>{ done(); if(err) bankMsg(err.display_message||err.error_message||'Bank sign-in did not finish.', true); }
-  }).open();
-}
-// Teller Connect: the bank's own sign-in in Teller's window. It hands this page the connection's
-// token once; the page passes it straight to the server, which encrypts it and keeps it.
-function tellerScript(){
-  return window.TellerConnect? Promise.resolve() : new Promise((ok,no)=>{ const s=document.createElement('script');
-    s.src='https://cdn.teller.io/connect/connect.js'; s.onload=ok;
-    s.onerror=()=>no(new Error('Could not load Teller.')); document.head.appendChild(s); });
-}
-async function tellerLink(item){
-  try{ await tellerScript(); }catch(e){ bankMsg(e.message,true); return; }
-  BANK_LINKING=true;
-  TellerConnect.setup({applicationId:BANK.appId, environment:BANK.mode, products:['transactions','balance'],
-    ...(item? {enrollmentId:item} : {}),
-    onSuccess: async enr=>{
-      BANK_LINKING=false; bankMsg('Connecting…');
-      const out=await bankPost('/api/bank/exchange',{access_token:enr.accessToken, enrollment_id:enr.enrollment && enr.enrollment.id,
-        institution: enr.enrollment && enr.enrollment.institution && enr.enrollment.institution.name});
-      if(out){ bankTake(out); await bankRun(); fillBank(); bankBadge();
-        bankMsg(item? 'Reconnected.' : 'Connected. It syncs every night and when you open the app.'); }
-    },
-    onExit: ()=>{ BANK_LINKING=false; },
-    onFailure: f=>{ BANK_LINKING=false; bankMsg((f && f.message) || 'Bank sign-in did not finish.', true); }
-  }).open();
-}
 $('bankbox').addEventListener('click',async e=>{
   const b=e.target.closest('button'); if(!b) return;
-  if(b.id==='banksync'){ bankMsg('Syncing…'); await bankSync(true); if($('bankmsg').textContent==='Syncing…') bankMsg('Up to date.'); return; }
+  if(b.id==='banksync'){ bankMsg('Checking…'); await bankSync(true); if($('bankmsg').textContent==='Checking…') bankMsg('Up to date.'); return; }
   if(b.id==='banklive' || b.id==='bankpreview'){
     const out=await bankPost('/api/bank/live',{on:b.id==='banklive'});
     if(out){ bankTake(out); if(out.live) await bankRun(); fillBank(); bankBadge();
       bankMsg(out.live? 'On. Alerts now update the planner.' : 'Back to preview: nothing is written.'); }
-    return;
-  }
-  if(b.id==='bankconnect') return BANK.provider==='teller'? tellerLink() : bankLink();
-  if(b.dataset.relink) return BANK.provider==='teller'? tellerLink(b.dataset.relink) : bankLink(b.dataset.relink);
-  if(b.dataset.unlink){
-    if(b.dataset.armed!=='1'){ b.dataset.armed='1'; b.textContent='Tap again to disconnect'; return; }
-    const out=await bankPost('/api/bank/disconnect',{item:b.dataset.unlink}); if(out){ BANK=out; fillBank(); bankBadge(); bankMsg('Disconnected.'); }
     return;
   }
   if(b.classList.contains('bankok')){
@@ -4803,32 +4712,8 @@ $('bankbox').addEventListener('change',async e=>{
 async function bankInit(){
   try{ const r=await fetch('/api/bank',{cache:'no-store'}); if(!r.ok) return; BANK=await r.json(); }catch(e){ return; }
   bankBadge();
-  if(!BANK.ready) return;
-  if(BANK.provider==='plaid' && location.pathname==='/plaid-oauth' && /oauth_state_id=/.test(location.search)) return bankLink(null,true);
-  if(BANK.items.length || BANK.provider==='email') await bankSync(false);
+  await bankSync(false);
 }
-
-
-/* ⚠️ Passkey every time the app is opened. A launch or reload is already covered by the server
-   (a session serves this page once). Coming back to a page that stayed alive in the background
-   is not a page load, so after LOCK_AFTER_MS hidden the page signs itself out — content hidden
-   first, so nothing shows while it goes. A short switch (checking the bank app mid-reconcile)
-   stays open. */
-const LOCK_AFTER_MS = 60*1000;
-let HIDDEN_AT = null;
-function lockApp(){
-  document.body.style.visibility='hidden';
-  fetch('/api/auth/logout',{method:'POST',keepalive:true}).catch(()=>{}).finally(()=>location.replace('/'));
-}
-let TRUSTED=false;   // signed in from the installed app: stays open (set from /api/state)
-document.addEventListener('visibilitychange',()=>{
-  if(TRUSTED || BANK_LINKING) return;      // the bank's sign-in can take the screen for a while
-  if(document.hidden){ HIDDEN_AT=Date.now(); return; }
-  if(HIDDEN_AT && Date.now()-HIDDEN_AT>=LOCK_AFTER_MS) lockApp();
-  HIDDEN_AT=null;
-});
-// Restored from the back/forward cache: the page did not load again, so the server never saw it.
-window.addEventListener('pageshow',e=>{ if(e.persisted && !TRUSTED) lockApp(); });
 
 (async function loadState(){
   try{
@@ -4840,7 +4725,6 @@ window.addEventListener('pageshow',e=>{ if(e.persisted && !TRUSTED) lockApp(); }
     if(!r.ok) throw new Error('bad status');
     const s=await r.json();
     SRV={today:s.today,hour:s.hour,saveEnabled:s.saveEnabled,online:true};
-    TRUSTED=!!s.trusted;
     if(Number.isFinite(s.unlockHour)) UNLOCK_HOUR=s.unlockHour;
     if(s.today){ TODAY_ISO=s.today; SALE_FLOOR = TODAY_ISO > T0 ? TODAY_ISO : T0; }
     (s.reconciles||[]).forEach(x=>{ RECON[x.date]={actual:x.actual,note:x.note,source:x.source||''}; });

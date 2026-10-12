@@ -5,15 +5,14 @@
  *
  * Storage: node:sqlite (Node 22+) → planner.db, else JSON file. Both live in DATA_DIR.
  *
- * Sign-in: passkeys (Face ID / Touch ID) in front of the WHOLE site, required every time the app
- * is opened (each session serves the planner page once; see THE GATE).
- * The PIN is only used to register a passkey on a new device (and as recovery).
+ * Sign-in: passkeys (Face ID / Touch ID) in front of the WHOLE site. A sign-in keeps that device
+ * signed in for SESSION_DAYS; the PIN is only used to register a passkey on a new device.
  *
  * Env:
  *   RECONCILE_PASSCODE  (required) PIN for adding a device's passkey; unset ⇒ nobody can sign in
  *   RP_ID               (optional) passkey domain; defaults to the request's host
  *   DATA_DIR            (default /data) persistent volume mount path
- *   PLAID_CLIENT_ID, PLAID_SECRET / PLAID_SANDBOX_SECRET, BANK_TOKEN_KEY   bank sync (see bank.js)
+ *   ALERT_EMAIL, ALERT_EMAIL_PASSWORD   bank sync from alert emails (see bank.js)
  *   PORT                (Railway provides)
  */
 const http = require('node:http');
@@ -31,8 +30,7 @@ const RANGE_END = '2056-12-31';
 const UNLOCK_HOUR = Number(process.env.RECONCILE_UNLOCK_HOUR ?? 19); // today unlocks at 7pm local
 
 if (!PASSCODE) console.warn('[warn] RECONCILE_PASSCODE not set — no device can be set up to sign in.');
-const SESSION_HOURS = 12;   // hard ceiling; in practice a session ends when the page does
-const TRUSTED_DAYS = 30;    // the installed home-screen app: signed in this long, then the passkey again
+const SESSION_DAYS = 30;    // a device stays signed in this long, then asks for the passkey again
 const RP_ID_ENV = process.env.RP_ID || '';
 
 /* ------------------------- storage ------------------------- */
@@ -69,8 +67,6 @@ try {
     name TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, last_used TEXT)`);
   db.exec(`CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY, passkey_id TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)`);
-  try { db.exec('ALTER TABLE sessions ADD COLUMN page_served INTEGER NOT NULL DEFAULT 0'); } catch { /* already there */ }
-  try { db.exec('ALTER TABLE sessions ADD COLUMN trusted INTEGER NOT NULL DEFAULT 0'); } catch { /* already there */ }
   store = {
     kind: 'sqlite',
     passkeys: () => db.prepare('SELECT id, jwk, alg, sign_count, name, created_at, last_used FROM passkeys ORDER BY created_at').all(),
@@ -78,10 +74,9 @@ try {
     addPasskey: k => db.prepare('INSERT OR REPLACE INTO passkeys (id,jwk,alg,sign_count,name,created_at) VALUES (?,?,?,?,?,?)')
                       .run(k.id, k.jwk, k.alg, k.sign_count, k.name, k.created_at),
     usePasskey: (id, count, at) => db.prepare('UPDATE passkeys SET sign_count = ?, last_used = ? WHERE id = ?').run(count, at, id),
-    addSession: x => db.prepare('INSERT INTO sessions (token_hash,passkey_id,created_at,expires_at,trusted) VALUES (?,?,?,?,?)')
-                      .run(x.token_hash, x.passkey_id, x.created_at, x.expires_at, x.trusted ? 1 : 0),
-    getSession: h => db.prepare('SELECT token_hash, passkey_id, expires_at, page_served, trusted FROM sessions WHERE token_hash = ?').get(h) || null,
-    markServed: h => db.prepare('UPDATE sessions SET page_served = 1 WHERE token_hash = ?').run(h),
+    addSession: x => db.prepare('INSERT INTO sessions (token_hash,passkey_id,created_at,expires_at) VALUES (?,?,?,?)')
+                      .run(x.token_hash, x.passkey_id, x.created_at, x.expires_at),
+    getSession: h => db.prepare('SELECT token_hash, passkey_id, expires_at FROM sessions WHERE token_hash = ?').get(h) || null,
     dropSession: h => db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(h),
     pruneSessions: now => db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now),
     adjustments: () => db.prepare('SELECT key, date, label, amount, projected, note, move_to AS moveTo, updated_at FROM adjustments ORDER BY date').all(),
@@ -131,7 +126,6 @@ try {
     usePasskey: (id, count, at) => writeK(readK().map(k => k.id === id ? { ...k, sign_count: count, last_used: at } : k)),
     addSession: x => writeS([...readS(), x]),
     getSession: h => readS().find(x => x.token_hash === h) || null,
-    markServed: h => writeS(readS().map(x => x.token_hash === h ? { ...x, page_served: 1 } : x)),
     dropSession: h => writeS(readS().filter(x => x.token_hash !== h)),
     pruneSessions: now => writeS(readS().filter(x => x.expires_at >= now)),
     adjustments: () => readA().sort((a, b) => a.date < b.date ? -1 : 1),
@@ -279,26 +273,22 @@ function sessionOf(req) {
   const s = store.getSession(sha256(t).toString('hex'));
   return s && s.expires_at > new Date().toISOString() ? s : null;
 }
-/* Two kinds. Ordinary: ends when the page does (see THE GATE). Trusted — signed in from the
-   installed home-screen app — stays signed in for TRUSTED_DAYS and opens straight in, the
-   iPhone's own Face ID unlock being the gate. (iOS will not run a passkey without a tap on its
-   sheet, so "Face ID on every open with no tap" is not something a web app can do.) Only the
-   owner's passkey can start either kind; the flag just chooses how long it lasts. */
-function startSession(req, res, passkeyId, trusted) {
+/* Every sign-in keeps the device signed in for SESSION_DAYS (the device's own lock — Face ID,
+   Touch ID, the computer's login — guards it in between). "Sign out of this device" ends it. */
+function startSession(req, res, passkeyId) {
   const token = b64u(crypto.randomBytes(32)), now = new Date();
-  const exp = new Date(now.getTime() + (trusted ? TRUSTED_DAYS * 864e5 : SESSION_HOURS * 36e5));
+  const exp = new Date(now.getTime() + SESSION_DAYS * 864e5);
   try { store.pruneSessions(now.toISOString()); } catch { /* best effort */ }
   store.addSession({ token_hash: sha256(token).toString('hex'), passkey_id: passkeyId,
-                     created_at: now.toISOString(), expires_at: exp.toISOString(), trusted: !!trusted });
-  // Ordinary: no Max-Age, a browser-session cookie. Trusted: kept for TRUSTED_DAYS.
-  res.setHeader('Set-Cookie', `sid=${token}; Path=/; HttpOnly; SameSite=Lax`
-                              + (trusted ? `; Max-Age=${TRUSTED_DAYS * 86400}` : '')
+                     created_at: now.toISOString(), expires_at: exp.toISOString() });
+  res.setHeader('Set-Cookie', `sid=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}`
                               + (rpFor(req).secure ? '; Secure' : ''));
 }
 const readBody = (req, max, cb) => {
   let raw = '';
   req.on('data', c => { raw += c; if (raw.length > max) req.destroy(); });
-  req.on('end', () => { let b; try { b = JSON.parse(raw || '{}'); } catch { b = null; } cb(b); });
+  req.on('end', () => { let b; try { b = JSON.parse(raw || '{}'); } catch { b = null; }
+                        cb(b && typeof b === 'object' && !Array.isArray(b) ? b : null); });
 };
 const USER_ID = b64u(Buffer.from('cash-flow-owner'));      // one owner; every passkey is theirs
 
@@ -346,7 +336,7 @@ function authRoutes(req, res, url, ip) {
         const id = b64u(a.credId);
         store.addPasskey({ id, jwk: JSON.stringify(jwk), alg, sign_count: a.signCount,
                            name: String(b.name || '').slice(0, 80), created_at: new Date().toISOString() });
-        startSession(req, res, id, b.trusted === true);
+        startSession(req, res, id);
         json(res, 200, { ok: true });
       } catch (e) { json(res, 400, { error: e.message || 'Could not register the passkey.' }); }
     });
@@ -375,7 +365,7 @@ function authRoutes(req, res, url, ip) {
         // A counter that goes backwards means a cloned authenticator. Synced passkeys report 0.
         if (a.signCount && key.sign_count && a.signCount <= key.sign_count) throw new Error('Passkey counter went backwards.');
         store.usePasskey(key.id, a.signCount, new Date().toISOString());
-        startSession(req, res, key.id, b.trusted === true);
+        startSession(req, res, key.id);
         json(res, 200, { ok: true });
       } catch (e) { json(res, 401, { error: e.message || 'Sign-in failed.' }); }
     });
@@ -442,7 +432,7 @@ function saveAdjustment(row, prev) {
 
 /* ------------------------- bank (Plaid) ------------------------- */
 const bank = require('./bank')({ store, localNow, json, readBody, KEY_RE, parseAdjustment, saveAdjustment,
-                                 rpFor, RANGE_START, RANGE_END });
+                                 RANGE_START, RANGE_END });
 
 // Public without a session: the sign-in page, its icons and the PWA manifest.
 const PUBLIC_FILES = new Set(['/login.html', '/manifest.json', '/icon.svg', '/icon-192.png', '/icon-512.png',
@@ -466,22 +456,11 @@ const server = http.createServer((req, res) => {
   }
   /* ⚠️ THE GATE. Everything else — the planner page and every API — needs a signed-in session.
      Writes also refuse a cross-site Origin (the cookie is SameSite=Lax; this is belt and braces).
-     A page request without a session gets the sign-in page instead.
-     Passkey EVERY time the app is opened: a session serves the planner page ONCE. Its APIs keep
-     working for that loaded page, but opening or reloading the app is a new page request, which
-     ends the session and shows sign-in. (iOS can keep a home-screen app's session cookie alive
-     across launches, so the cookie's lifetime alone would not guarantee this.) The page also
-     signs itself out after a minute in the background — see LOCK_AFTER_MS in index.html. */
-  const sess = sessionOf(req);
-  let signedIn = !!sess;
-  // A page is a document load (/, *.html, or an extensionless path that falls back to the app) —
-  // not /favicon.ico, which browsers fetch on their own and must not use up the session.
+     A page request without a session gets the sign-in page instead. */
+  const signedIn = !!sessionOf(req);
+  // A page is a document load (/, *.html, or an extensionless path that falls back to the app).
   const isApi = url.pathname.startsWith('/api/'), isPublic = PUBLIC_FILES.has(url.pathname);
   const isPage = !isApi && !isPublic && (/\.html$/i.test(url.pathname) || !/\.[a-z0-9]+$/i.test(url.pathname));
-  if (sess && isPage && !sess.trusted) {
-    if (sess.page_served) { store.dropSession(sess.token_hash); signedIn = false; }
-    else store.markServed(sess.token_hash);
-  }
   if (url.pathname.startsWith('/api/')) {
     if (!signedIn) return json(res, 401, { error: 'Signed out. Reload to sign in.', signedOut: true });
     if (req.method !== 'GET' && req.headers.origin && req.headers.origin !== rpFor(req).origin)
@@ -500,7 +479,7 @@ const server = http.createServer((req, res) => {
     return json(res, 200, {
       today: now.date, hour: now.hour, unlockHour: UNLOCK_HOUR, timezone: TZ,
       rangeStart: RANGE_START, rangeEnd: RANGE_END,
-      saveEnabled: true, storage: store.kind, trusted: !!(sess && sess.trusted),
+      saveEnabled: true, storage: store.kind,
       reconciles: store.all(), edits: store.edits(), adjustments: store.adjustments(),
       bankExtras: bank.extras()
     });
@@ -508,10 +487,8 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/bank' || url.pathname.startsWith('/api/bank/')) return bank.routes(req, res, url);
 
   if (url.pathname === '/api/reconciles' && req.method === 'POST') {
-    let raw = '';
-    req.on('data', c => { raw += c; if (raw.length > 32768) req.destroy(); });
-    req.on('end', () => {
-      let b; try { b = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'Malformed request.' }); }
+    readBody(req, 32768, b => {
+      if (!b) return json(res, 400, { error: 'Malformed request.' });
 
       const date = b.date;
       if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(res, 400, { error: 'Invalid date.' });
@@ -538,10 +515,8 @@ const server = http.createServer((req, res) => {
      previous value is written to reconcile_edits first, so a typo can be fixed without the
      history quietly changing underneath you. Requires a signed-in session, like every write. */
   if (url.pathname === '/api/reconciles' && req.method === 'PUT') {
-    let raw = '';
-    req.on('data', c => { raw += c; if (raw.length > 32768) req.destroy(); });
-    req.on('end', () => {
-      let b; try { b = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'Malformed request.' }); }
+    readBody(req, 32768, b => {
+      if (!b) return json(res, 400, { error: 'Malformed request.' });
 
       const date = b.date;
       if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return json(res, 400, { error: 'Invalid date.' });
@@ -591,10 +566,8 @@ const server = http.createServer((req, res) => {
      projection). Requires a signed-in session. Any date in the planning window —
      past (what actually cleared) or future (a bill you already know). */
   if (url.pathname === '/api/adjustments' && (req.method === 'PUT' || req.method === 'DELETE')) {
-    let raw = '';
-    req.on('data', c => { raw += c; if (raw.length > 131072) req.destroy(); });
-    req.on('end', () => {
-      let b; try { b = JSON.parse(raw || '{}'); } catch { return json(res, 400, { error: 'Malformed request.' }); }
+    readBody(req, 131072, b => {
+      if (!b) return json(res, 400, { error: 'Malformed request.' });
       /* Several at once (moving a day's worth of lines): { items: [...] }, each shaped like a single
          PUT. All validated first, then saved in ONE transaction — every line and every reconcile it
          shifts lands together or none do. A line moved back to its own day, at its projected amount

@@ -43,14 +43,10 @@ and every API returns 401.
 - **First time / a new device**: tap **Set up this device**, enter the PIN, and approve the
   passkey (Face ID on an iPhone). That signs you in. On Apple devices the passkey syncs through
   iCloud Keychain, so your other devices can usually just **Sign in with Face ID**.
-- **The installed home-screen app** is trusted: sign in once from it and it opens straight in
-  for **30 days** (your iPhone's own Face ID unlock is the gate), then asks for the passkey
-  again. iOS will not run a passkey from a web app without a tap on its own sheet, so "Face ID on
-  every open, no tap" is not possible for a web app.
-- **In a browser** (Safari, Chrome, a computer) it asks for Face ID every time you open the
-  site (the prompt starts by itself; the button is there if the browser wants a tap first), and
-  again after **1 minute or more** in the background (`LOCK_AFTER_MS` in `index.html`). **Sign out of this device** is at the
-  bottom of the Adjust & reconcile sheet.
+- **Every device stays signed in for 30 days** after a sign-in (phone app, Safari, a computer),
+  then asks for the passkey again. The device's own lock (Face ID, Touch ID, your computer's
+  login) guards it in between. **Sign out of this device** is at the bottom of the Adjust &
+  reconcile sheet.
 - The PIN is never used to sign in directly — only to create a passkey. Eight wrong PINs
   from one IP lock setup for 15 minutes.
 - Server side: passkeys (public keys only) and sessions (hashed tokens) live in the same
@@ -79,37 +75,14 @@ read, so a forged "balance" email is ignored. It never deletes, moves or marks e
 Alerts it cannot understand are listed under **Alerts it could not read** — send one (account
 numbers hidden) so the reader can learn its wording.
 
-### Other sources
+What it does, every 15 minutes and whenever the app is opened:
 
-**Teller** (`TELLER_APP_ID`): announced it is shutting down; kept only in case that changes.
-
-1. Sign up at teller.io. In the dashboard copy the **Application ID** and download the
-   **certificate** (`certificate.pem` + `private_key.pem`).
-2. Railway variables:
-   - `TELLER_APP_ID` — the application ID (`app_…`)
-   - `TELLER_CERT` — the whole contents of `certificate.pem` (or it base64-encoded)
-   - `TELLER_KEY` — the whole contents of `private_key.pem` (or it base64-encoded)
-   - `BANK_TOKEN_KEY` — any random string of 16+ characters (e.g. `openssl rand -base64 32`)
-   - `TELLER_ENV` — leave unset for `development` (real data, free); `sandbox` for made-up data
-3. `/api/health` shows `"bank": "teller-development"` once it is all there.
-4. In the app: Adjust & reconcile → **Bank** → **Connect a bank**. Tick the account(s) that are
-   the planner's balance (checking is ticked by default; while moving banks, tick both).
-
-**Plaid** works too (`PLAID_CLIENT_ID`, `PLAID_SANDBOX_SECRET` / `PLAID_SECRET`, plus
-`https://<your-domain>/plaid-oauth` as an allowed redirect URI), but Plaid bills per call once
-live. When `TELLER_APP_ID` is set, Teller is used.
-
-What it does (email: every 15 minutes; Teller/Plaid: nightly at 20:00 Chicago time; all: when the app is opened):
-
-- **Reconciles** from the bank's own balance — the day a balance alert closes (email), or
-  yesterday (Teller/Plaid). Marked "From the bank"; adjusting a transaction never moves it.
+- **Reconciles** the day a balance alert closes, from the bank's own balance. Marked "From the
+  bank"; adjusting a transaction never moves it.
 - **Matches each new transaction to the plan**: same line → nothing; on another day or a few %
   off → the line is moved/adjusted; not in the plan → added as its own line (`Bank: …`); unsure →
   **To review** (a badge on the check-mark button): pick the line once and that payee is
   automatic from then on. A transfer between two ticked accounts is ignored.
-- **Test mode** (`TELLER_ENV=sandbox`, or Plaid with only the sandbox secret): connect a test
-  bank (Teller: `username` / `password`; Plaid: `user_good` / `pass_good`) to see what it *would*
-  do. Nothing is written to the planner.
 
 ---
 

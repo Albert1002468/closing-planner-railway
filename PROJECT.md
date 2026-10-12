@@ -16,7 +16,7 @@ No build step.
 
 ```
 server.js            HTTP server, reconcile API, static files
-bank.js              bank sync (email alerts, Teller or Plaid; read-only): sync, reconcile, decisions
+bank.js              bank sync from alert emails (read-only): inbox reads, reconcile, decisions
 email.js             zero-dependency IMAP client + MIME decoder + bank alert reader
 package.json         "start": "node server.js"; engines node >= 22
 README.md            deploy + reconcile rules (user-facing)
@@ -38,14 +38,6 @@ public/icon.svg      the icon (rising line on #2f6fec); icon-512/192, apple-touc
 | `RECONCILE_UNLOCK_HOUR` | `19` | Hour (America/Chicago) today unlocks |
 | `PORT` | — | Railway sets it |
 | `ALERT_EMAIL` · `ALERT_EMAIL_PASSWORD` | Gmail address · app password | Bank sync from alert emails (preferred when set). `ALERT_IMAP_HOST/PORT/FOLDER` optional |
-| `TELLER_APP_ID` | `app_…` | Bank sync via Teller (preferred when set). Free in `development` (real data, ≤100 connections) |
-| `TELLER_CERT` · `TELLER_KEY` | PEM (or base64 PEM) | Teller's client certificate: every Teller request is mTLS |
-| `TELLER_ENV` | `development` | `sandbox` = made-up data (dry run); `production` = billed |
-| `PLAID_CLIENT_ID` | — | Bank sync via Plaid (alternative; billed per call once live) |
-| `PLAID_SANDBOX_SECRET` | — | Test mode: Plaid's sandbox, dry run (nothing written) |
-| `PLAID_SECRET` | — | Live: real bank data, writes adjustments and reconciles. Takes precedence over the sandbox secret |
-| `BANK_TOKEN_KEY` | ≥16 random chars | Encrypts Plaid's access token at rest (AES-256-GCM). Changing it orphans connections: reconnect |
-| `PLAID_REDIRECT_URI` | — | Optional; live default is `<origin>/plaid-oauth` (must be listed in the Plaid dashboard) |
 | `BANK_SYNC_HOUR` | `20` | Nightly sync hour (America/Chicago) |
 
 A volume at `/data` is mandatory or reconciliations (and passkeys) vanish on redeploy. Health
@@ -64,22 +56,19 @@ check: `GET /api/health` (public) → `"storage": "sqlite"` (`"json"` means Node
 | `/api/state` | GET | today, hour, unlockHour, range, saveEnabled, storage, all reconciles + edit log |
 | `/api/reconciles` | POST | new entry `{date, actual, note}`; once per date; not future; today only after the unlock hour |
 | `/api/adjustments` | PUT / DELETE | set (or clear) the actual amount — and optionally the day (`moveTo`) — of one projected transaction, keyed `date\|label`; every reconciled balance moves by the net cash change up to its date so its variance is kept (`keepVariances`, audited), returned as `shifted`. `{items:[…]}` saves several in one transaction (select-to-move) |
-| `/api/bank` | GET | bank status: connections, accounts, open (new/review) transactions, recent decisions, claimed keys, rules |
-| `/api/bank/link-token` · `/exchange` | POST | exchange: store a connection (Teller: `{access_token, enrollment_id}` from Teller Connect; Plaid: `{public_token}`) and sync. link-token (Plaid only): start (or `{resume}` after a bank's OAuth redirect, `{item}` to reconnect), then store the connection and sync |
-| `/api/bank/sync` | POST | sync now (throttled 20 min, `{force}` 1 min); live: reconciles yesterday from the bank |
+| `/api/bank` | GET | bank status: live, accounts, open (new/review) transactions, recent decisions, claimed keys, rules, unread alerts, `would` (preview) |
+| `/api/bank/sync` | POST | read the inbox now (throttled 2 min, `{force}` 30 s); live: reconciles the days balance alerts close |
+| `/api/bank/live` | POST | `{on}`: leave the preview (and reconcile what it has) or go back to it |
 | `/api/bank/decide` | POST | live only: the page's matching decisions `{items:[{id, action: match\|extra\|ignore\|review, key, adjust, learn, auto}]}`; a `match` with `adjust` saves the adjustment like PUT /api/adjustments |
-| `/api/bank/accounts` · `/disconnect` | POST | tick an account in/out of the balance; remove a connection (Plaid `/item/remove`) |
+| `/api/bank/accounts` | POST | `{id, tracked}`: tick an account in/out of the balance |
 | `/api/reconciles` | PUT | correct an entry; every later entry moves by the same delta (their variances are kept), all in one transaction, each logged to `reconcile_edits` |
 
 **The gate** (top of the request handler): without a valid `sid` cookie every `/api/*` route
 except health and auth returns 401 (`signedOut: true`, the page reloads into sign-in), and every
-page request gets `public/login.html` (icons and the manifest stay public). **Passkey on every
-open**: a session serves the planner page once (`page_served`) — reopening or reloading ends it;
-the page signs itself out after `LOCK_AFTER_MS` (1 min) in the background or a bfcache restore.
-Sign-ins from the installed app (`navigator.standalone` / display-mode standalone, sent as
-`trusted`) are **trusted sessions**: 30-day cookie, no once-per-page rule, no background lock.
-An ordinary cookie is a browser-session cookie (no Max-Age; 12 h server ceiling), HttpOnly +
-SameSite=Lax (+ Secure on https), only its SHA-256 is stored;
+page request gets `public/login.html` (icons and the manifest stay public). Every sign-in is a
+**30-day session** (`SESSION_DAYS`) on every device; `sid` cookie with Max-Age, HttpOnly +
+SameSite=Lax (+ Secure on https), only its SHA-256 is stored. (The `sessions` table may still
+carry unused `page_served` / `trusted` columns from an earlier version.)
 POSTs with a foreign `Origin` are refused. WebAuthn is verified by hand (`cbor`, `coseToJwk`,
 `parseAuthData`, `checkClient`, `checkFlags`): challenge single-use (5 min, in memory), origin,
 RP ID hash, user-present AND user-verified flags, ES256/RS256 signature; attestation `none`.
@@ -88,30 +77,21 @@ Lockout: 8 failed PINs (or failed passkey checks) per IP per 15 min. The IP is t
 entry (the one Railway's edge appends — earlier entries are client-supplied). A malformed
 `%`-escape in a path returns 400 instead of crashing the process.
 
-**Bank sync** (`bank.js`, read-only; email alerts when `ALERT_EMAIL` is set, else Teller, else
-Plaid). Email (`email.js`): IMAP over TLS every 15 min from the last UID (UIDVALIDITY change ⇒
+**Bank sync** (`bank.js` + `email.js`, read-only). `email.js`: IMAP over TLS (LOGIN, SELECT,
+UID SEARCH, UID FETCH BODY.PEEK[] — never changes mail) from the last UID (UIDVALIDITY change ⇒
 re-read 10 days); only messages from wellsfargo.com / chase.com with Gmail's `dkim=pass` for that
 domain; `readAlert` turns each into a balance (per account, dated by "as of …" or, for a morning
-email, the previous day), a transaction, or `unknown` (kept in `st.unread` to be taught).
-Balances are kept per account per day (`st.balances`); `emailReconcile` reconciles a day once
-every ticked account that reports balances has one for it. Email starts as a preview
-(`st.live` false: `/decide` 409, nothing reconciled) until **Turn it on** (`POST /api/bank/live`). Each
-provider's fetch is normalised to `{id, account, date, amount (in = +), name, raw, pending}` —
-Teller amounts are already signed, Plaid's are flipped. Teller Connect hands the page the
-connection token once; the page posts it to `/api/bank/exchange` and the server seals it.
-Teller fetches balances and transactions only for ticked accounts. State is one document per
-provider and environment in the `kv` table (`bank-teller-development`, `bank-plaid-sandbox`, …;
-never shared): connections with the access token
-sealed by `BANK_TOKEN_KEY`, posted transactions (150 days; pending ones are skipped), learned
-payee rules (`sig` = the bank description minus noise words → a label, `*extra` or `*ignore`).
-Each sync reconciles **yesterday** (live only) when every connection synced cleanly: today's
-ledger balance of the ticked accounts minus every posted transaction dated after yesterday.
-Those rows have `source = 'bank'`: `keepVariances` and the PUT cascade skip them, because they
-are the bank's figure, not a typed variance. Matching needs the projection, so the PAGE does it
-(`bankAutoItems` in index.html) after each sync and posts the decisions; `auto` decisions only
+email, the previous day), a transaction, or `unknown` (kept in `st.unread` to be taught). State
+is one `kv` document (`bank-email-alerts`): accounts (ticked = part of the balance), balances per
+account per day (40 days), transactions (150 days), learned payee rules (`sig` = the description
+minus noise words → a label, `*extra` or `*ignore`). `reconcileDays` reconciles a day once every
+ticked account that reports balances has one for it, never over an existing entry. Those rows
+have `source = 'bank'`: `keepVariances` and the PUT cascade skip them, because they are the
+bank's figure, not a typed variance. Matching needs the projection, so the PAGE does it
+(`bankAutoItems` in index.html) after each read and posts the decisions; `auto` decisions only
 apply to untouched transactions, so two open devices cannot both act. Transactions dated before
-the connection (minus 3 days) are `history` — used for the balance arithmetic, never matched.
-Test mode (sandbox secret only) runs the same matching as a preview and `/decide` returns 409.
+the start (setup minus 3 days) are `history`, never matched. It starts as a preview (`st.live`
+false: `/decide` 409, nothing reconciled) until **Turn it on** (`POST /api/bank/live`).
 
 ## 4. The page
 
