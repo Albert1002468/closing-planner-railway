@@ -385,6 +385,40 @@
   .adjtools{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:22px;
             font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px}
   .adjtools:empty{display:none}
+  /* ---- Bank ---- */
+  .bankbox{border:1px solid var(--ring);border-radius:12px;padding:10px 12px;margin:0 0 12px;background:var(--page);font-size:13px}
+  .bankhead{display:flex;align-items:center;gap:8px}
+  .bankhead .banksub{flex:1;min-width:0;color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bankhint{font-size:11.5px;color:var(--muted);margin:6px 0 2px;line-height:1.45}
+  .bankgrp{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 4px}
+  .bankrev{border-top:1px solid var(--grid);padding:8px 0}
+  .bankline{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .bankline .lab{display:flex;flex-direction:column;min-width:0}
+  .bankline .lab b{font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bankline .lab small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bankline .amt{flex:none;font-variant-numeric:tabular-nums}
+  .bankact{display:flex;gap:8px;margin-top:6px}
+  .bankact select{flex:1;min-width:0;font:inherit;font-size:16px;padding:6px 8px;border-radius:8px;border:1px solid var(--axis);
+                  background:var(--surface-1);color:var(--ink)}
+  .bankact button,.bankconnect{border:0;border-radius:8px;padding:7px 14px;font:inherit;font-weight:600;background:var(--s1);color:#fff;cursor:pointer}
+  .bankconnect{width:100%;margin-top:6px}
+  .banklist{font-size:12px}
+  .banklist div{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-variant-numeric:tabular-nums}
+  .banklist .trunc{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .banklist i{font-style:normal;color:var(--muted)}
+  .bankmore{margin-top:8px}
+  .bankmore summary{cursor:pointer;color:var(--s1);font-size:12.5px;font-weight:600}
+  .bankconn{border-top:1px solid var(--grid);padding:8px 0 4px;margin-top:6px}
+  .bankconn .err{color:var(--crit)}
+  .bankbtns{display:flex;gap:4px;flex:none}
+  .ghostbtn.danger{color:var(--crit)}
+  .bankacct{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12.5px;color:var(--ink-2)}
+  .bankacct span:nth-child(2){flex:1;min-width:0}
+  .bankacct input{width:18px;height:18px;margin:0}
+  #recbtn{position:relative}
+  .recbadge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:var(--crit);color:#fff;
+            font-size:10px;font-weight:700;line-height:16px;text-align:center;padding:0 4px;box-sizing:border-box}
+  .recbadge[hidden]{display:none}
   .adjtools button{background:none;border:0;color:var(--s1);font:inherit;font-size:13px;font-weight:600;
                    text-transform:none;letter-spacing:0;padding:2px 0 2px 12px;cursor:pointer}
   .adjitem .tick{flex:none;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--axis);
@@ -855,7 +889,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="8.6"/><path d="M8.2 12.3l2.6 2.6 5-5.4"/>
-          </svg></button>
+          </svg><span class="recbadge" id="recbadge" hidden></span></button>
       </div>
   </div>
 </header>
@@ -1159,6 +1193,8 @@
             <button type="button" id="recdone" class="ghostbtn">Done</button>
           </div>
           <p class="hint" id="rechint"></p>
+          <!-- Bank sync (Plaid): status, transactions to review, connections. Filled by fillBank. -->
+          <div class="bankbox" id="bankbox" hidden></div>
           <!-- One view: find a day (stepper or search), tap a line to set what actually happened,
                or tap the day's balance to reconcile it. -->
           <input type="search" id="adjq" class="adjq" placeholder="Search — e.g. paycheck, mortgage"
@@ -1286,6 +1322,8 @@ const nhCashToClose = () =>
 
 /* ---------- Scenario engine ---------- */
 const RECON = {};                           // date -> {actual, note}; loaded from /api/state
+// Bank sync state (see "Bank" below). BANKX is read by buildEvents, so it is declared up here.
+let BANK=null, BANKX=[], BANK_PREVIEW=[], BANK_LINKING=false;
 /* Adjustments: key -> {amount, projected, note, label}. The actual amount of ONE projected
    transaction, entered in the Adjust & reconcile sheet (a paycheck that came in higher, a bill that
    was lower). Keyed by `date|label`, label without its trailing "(…)" detail — that part moves
@@ -2160,6 +2198,9 @@ function buildEvents(sale, price, rent, home){
   const carFull = carWalk(null);
   const carNatural = carFull.paid[carFull.paid.length-1];
   const carOwedAtEnd = carPayoffOn(T1);
+
+  // Bank transactions that are not in the plan (see "Bank"): drawn as the bank shows them.
+  BANKX.forEach(x=>E(x.date, x.amount, 'Bank: '+x.name));
 
   // ---- ONE bundled settlement per tax year, due the following April 15. This must be the
   //      last thing emitted: contributions arrive from the fixed events, the rental block and
@@ -4042,7 +4083,8 @@ function itemDetail(e){
   // The label's trailing "(…)" detail (P&I split, OT hours) reads here, not cut off in the title.
   const extra=e.l.slice(adjBase(e.l).length).trim().replace(/^\(|\)$/g,'');
   if(extra) bits.push(extra);
-  if(!e.adj) bits.push('Projected');
+  if(e.l.startsWith('Bank: ')) bits.push('From the bank — not in the plan');
+  else if(!e.adj) bits.push('Projected');
   else {
     bits.push(e.from? 'Moved from '+shortDate(e.from) : 'Adjusted');
     if(e.a!==e.proj) bits.push('projected '+fmt(e.proj));
@@ -4241,7 +4283,8 @@ function adjPreview(){
 /* Mirrors the server's keepVariances: the line comes off oldDay and lands on newDay, and each
    reconciled balance moves by the net change up to its date, so its variance is unchanged. */
 function recShifts(oldDay, oldAmt, newDay, newAmt){
-  return Object.keys(RECON).sort().map(d=>({d, by:+(((d>=newDay?newAmt:0)-(d>=oldDay?oldAmt:0))).toFixed(2)}))
+  // A balance from the bank is what the bank said: it never moves (server: keepVariances).
+  return Object.keys(RECON).filter(d=>RECON[d].source!=='bank').sort().map(d=>({d, by:+(((d>=newDay?newAmt:0)-(d>=oldDay?oldAmt:0))).toFixed(2)}))
     .filter(x=>x.by);
 }
 const recNote = sh => !sh||!sh.length? '' : sh.length===1
@@ -4369,7 +4412,7 @@ $('adjamt').addEventListener('input',e=>{
 // straight onto today — no PIN.
 function openModal(){
   $('recmodal').hidden=false;
-  RECPAGE=0; fillAdj();
+  RECPAGE=0; fillAdj(); fillBank();
   document.body.style.overflow='hidden';
 }
 function closeModal(){
@@ -4465,6 +4508,249 @@ $('adjclear').addEventListener('click',async ()=>{
   $('adjmsg').className='recmsg ok'; $('adjmsg').textContent='Back to the projection.'+moved;
 });
 
+/* ================= Bank (Plaid, read-only — see bank.js) =================
+   The server syncs every night and, from the bank's own figures, reconciles YESTERDAY by itself.
+   Matching transactions to the plan needs the projection, which only this page has, so after
+   each sync the page matches the new posted transactions and posts what it decided:
+     - a planned line, same amount and day          → matched; nothing changes
+     - a planned line, another day / amount ≤10% off → matched, and the line is moved / adjusted
+     - a payee you answered before                  → your answer again (its amount may vary ±50%)
+     - unsure (a near amount, a vague name)         → "to review": one tap in this sheet
+     - nothing like it in the plan                  → an extra line ("Bank: …"), as the bank shows it
+     - the two legs of a transfer between your own tracked accounts → ignored
+   Test mode (Plaid sandbox) runs the same matching but only shows what it WOULD do. */
+const BANK_WIN=6;                       // days either side of the bank date to look for the line
+const BANK_STOP=new Set(['the','and','for','new','home','est','your','with','from','fee','bill','payment','hrs']);
+const BANK_SYN={paycheck:['payroll','salary','dirdep','directdep'], mortgage:['mtg','loan','mortgage'],
+                taxes:['irs','usataxpymt','tax']};
+function bankNameHit(t, label){
+  const hay=(t.name+' '+t.raw).toLowerCase().replace(/[^a-z0-9]/g,'');
+  return label.toLowerCase().replace(/&/g,'').split(/[^a-z0-9]+/)
+    .filter(w=>w.length>=3 && !/^\d+$/.test(w) && !BANK_STOP.has(w))
+    .some(w=>hay.includes(w) || (BANK_SYN[w]||[]).some(s=>hay.includes(s)));
+}
+// Planned lines near the bank date with the same direction of money, best first.
+function bankCands(t, claimed, win){
+  const out=[], lo=addD(t.date,-(win||BANK_WIN)), hi=addD(t.date,win||BANK_WIN);
+  for(const day of LAST_DATA){
+    if(day.d<lo) continue; if(day.d>hi) break;
+    for(const e of day.ev){
+      if(!e.key || claimed.has(e.key) || e.l.startsWith('Bank: ')) continue;
+      const planned = e.adj? e.proj : e.a;
+      if(Math.sign(planned)!==Math.sign(t.amount)) continue;
+      const diff=Math.min(Math.abs(e.a-t.amount), Math.abs(planned-t.amount));
+      out.push({e, day:day.d, planned, diff, ratio:diff/Math.max(1,Math.abs(planned)),
+                rule:BANK.rules[t.sig]===adjBase(e.l), name:bankNameHit(t,e.l), dd:Math.abs(nDays(day.d,t.date))});
+    }
+  }
+  const score=x=>(x.rule?0:x.name?1:2)*1000 + Math.min(x.ratio,9)*100 + x.dd;
+  return out.sort((a,b)=>score(a)-score(b));
+}
+function bankDecide(t, claimed){
+  const r=BANK.rules[t.sig];
+  if(r==='*extra') return {action:'extra'};
+  if(r==='*ignore') return {action:'ignore'};
+  const c=bankCands(t, claimed), best=c[0];
+  if(best && best.rule && best.ratio<=0.5) return {action:'match', cand:best};
+  if(best && best.name && best.ratio<=0.10) return {action:'match', cand:best};
+  const exact=c.filter(x=>x.diff<0.01);
+  if(exact.length===1 && exact[0].dd<=3) return {action:'match', cand:exact[0]};
+  const near=c.find(x=>x.rule||x.name||x.ratio<=0.25);
+  return near? {action:'review', cand:near} : {action:'extra'};
+}
+// The decision for "this transaction is that line": moves / re-amounts the line to match the bank.
+function bankMatch(t, e, auto, learn){
+  const orig=e.key.slice(0,10), planned=e.adj? e.proj : e.a, x=ADJ[e.key];
+  const where = (x&&x.moveTo) || orig;
+  const same = e.a===t.amount && where===t.date;
+  return {id:t.id, action:'match', key:e.key, label:adjBase(e.l), auto, learn,
+    adjust: same? null : {label:adjBase(e.l), amount:t.amount, projected:planned,
+      moveTo: t.date!==orig? t.date : null, note:(x&&x.note) || ('Bank: '+t.name).slice(0,500)}};
+}
+function bankAutoItems(){
+  const claimed=new Set(BANK.claimed), fresh=BANK.open.filter(t=>t.status==='new'), items=[], done=new Set();
+  for(const t of fresh){                         // a transfer between your own accounts nets to zero
+    if(done.has(t.id)) continue;
+    const u=fresh.find(v=>v!==t && !done.has(v.id) && v.account!==t.account && v.amount===-t.amount
+                          && Math.abs(nDays(v.date,t.date))<=3);
+    if(u){ done.add(t.id); done.add(u.id); items.push({id:t.id,action:'ignore',auto:true,t},{id:u.id,action:'ignore',auto:true,t:u}); }
+  }
+  for(const t of fresh){
+    if(done.has(t.id)) continue;
+    const d=bankDecide(t, claimed);
+    if(d.action==='match'){ claimed.add(d.cand.e.key); items.push({...bankMatch(t,d.cand.e,true,false), t}); }
+    else if(d.action==='review') items.push({id:t.id, action:'review', auto:true, t, suggest:{key:d.cand.e.key, label:adjBase(d.cand.e.l)}});
+    else items.push({id:t.id, action:d.action, auto:true, t});
+  }
+  return items;
+}
+async function bankPost(url, body){
+  try{
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+    const out=await r.json().catch(()=>({}));
+    if(out.signedOut){ location.reload(); return null; }
+    if(!r.ok){ bankMsg(out.error||'The bank request failed.', true); return null; }
+    return out;
+  }catch(e){ bankMsg('Network error — try again.', true); return null; }
+}
+function bankMsg(t, err){ const m=$('bankmsg'); if(!m) return; m.className='recmsg'+(err?' err':' ok'); m.textContent=t||''; }
+function bankApply(out){
+  (out.adjustments||[]).forEach(x=>{ ADJ[x.key]=x; });
+  applyShifted(out);
+  if(out.extras) BANKX=out.extras;
+  if(out.bank) BANK=out.bank;
+  OPPC={key:null}; render(); bankBadge();
+  if(!$('recmodal').hidden){ fillAdj(); fillBank(); }
+}
+// After a sync: decide every new transaction. Live: saved. Test mode: kept as a preview only.
+async function bankRun(){
+  if(!BANK || !BANK.ready || !LAST_DATA.length) return;
+  const items=bankAutoItems();
+  if(!BANK.live){ BANK_PREVIEW=items; fillBank(); return; }
+  if(!items.length){ bankBadge(); return; }
+  const out=await bankPost('/api/bank/decide',{items:items.map(({t,...x})=>x)});
+  if(out){
+    const n=k=>items.filter(x=>x.action===k && out.done.includes(x.id)).length;
+    bankApply(out);
+    const bits=[n('match')&&`${n('match')} matched`, n('extra')&&`${n('extra')} added`, n('review')&&`${n('review')} to review`].filter(Boolean);
+    if(bits.length) bankMsg('Bank: '+bits.join(', ')+'.');
+  }
+}
+async function bankSync(force){
+  if(!BANK || !BANK.ready || !BANK.items.length) return;
+  const out=await bankPost('/api/bank/sync',{force:!!force});
+  if(!out) return;
+  bankTake(out);
+  await bankRun(); fillBank(); bankBadge();
+}
+// A sync answer: the new bank state, and yesterday's balance if the server just reconciled it.
+function bankTake(out){
+  BANK=out;
+  const r=out.reconciled;
+  if(r){ RECON[r.date]={actual:r.actual, note:r.note, source:'bank'}; OPPC={key:null}; render(); }
+}
+const bankReviews = () => BANK? BANK.open.filter(t=>t.status==='review') : [];
+function bankBadge(){ const n=BANK && BANK.live? bankReviews().length : 0, b=$('recbadge');
+  b.hidden=!n; b.textContent=n>9?'9+':String(n||'');
+  $('recbtn').setAttribute('aria-label', n? `Adjust & reconcile — ${n} bank transaction${n===1?'':'s'} to review` : "Reconcile a day's balance"); }
+const bankAgo = iso => { if(!iso) return 'never'; const m=Math.round((Date.now()-Date.parse(iso))/60000);
+  return m<1?'just now': m<60? m+' min ago' : m<1440? Math.round(m/60)+' h ago' : shortDate(iso.slice(0,10)); };
+function bankRowOptions(t){
+  const claimed=new Set(BANK.claimed);
+  const c=bankCands(t, claimed, 12).slice(0,8), sel=t.suggest&&t.suggest.key;
+  if(sel && !c.some(x=>x.e.key===sel)){ const e=bankFind(sel); if(e) c.unshift({e, day:e.d, planned:e.adj?e.proj:e.a}); }
+  return c.map(x=>`<option value="k:${esc(x.e.key)}"${x.e.key===sel?' selected':''}>${esc(adjBase(x.e.l))} · ${shortDate(x.day)} · ${fmt(x.planned)}</option>`).join('')
+    +`<option value="extra"${!sel?' selected':''}>Not in the plan — add it as its own line</option>`
+    +`<option value="ignore">Ignore (a transfer between my accounts)</option>`;
+}
+function bankFind(key){ for(const day of LAST_DATA) for(const e of day.ev) if(e.key===key) return {...e, d:day.d}; return null; }
+function fillBank(){
+  const box=$('bankbox'); if(!box) return;
+  if(!BANK || !BANK.mode){ box.hidden=true; return; }
+  box.hidden=false;
+  const test=!BANK.live, items=BANK.items, revs=bankReviews();
+  let h=`<div class="bankhead"><b>Bank</b><span class="banksub">`;
+  if(!BANK.ready) h+=`Not set up — missing ${esc(BANK.missing.join(', '))}`;
+  else if(!items.length) h+= test? 'Test mode (Plaid sandbox)' : 'Not connected';
+  else h+=esc(items.map(i=>i.institution).join(' + '))+' · synced '+bankAgo(BANK.lastRun)+(test?' · test mode':'');
+  h+=`</span>`;
+  if(BANK.ready && items.length) h+=`<button type="button" class="ghostbtn" id="banksync">Sync</button>`;
+  h+=`</div>`;
+  if(test && BANK.ready) h+=`<p class="bankhint">Test mode: Plaid's sandbox bank. Nothing is written to your planner — below is what it would do. It goes live when <code>PLAID_SECRET</code> is set.</p>`;
+  if(BANK.live && BANK.lastReconciled) h+=`<p class="bankhint">Reconciled ${shortDate(BANK.lastReconciled.date)} from the bank: ${fmt(BANK.lastReconciled.actual)}.</p>`;
+  if(BANK.live && revs.length){
+    h+=`<div class="bankgrp">To review · ${revs.length}</div>`;
+    h+=revs.map(t=>`<div class="bankrev" data-id="${esc(t.id)}">
+      <div class="bankline"><span class="lab"><b>${esc(t.name)}</b><small>${longDate(t.date)}${t.suggest?` · looks like ${esc(t.suggest.label)}`:' · not found in the plan'}</small></span>
+        <span class="amt">${fmt(t.amount)}</span></div>
+      <div class="bankact"><select aria-label="What is this?">${bankRowOptions(t)}</select>
+        <button type="button" class="bankok">Save</button></div></div>`).join('');
+  }
+  if(test && BANK_PREVIEW.length){
+    const say=x=> x.action==='match'? (x.adjust? (x.adjust.moveTo&&x.adjust.amount!==x.adjust.projected? 'move + adjust ' : x.adjust.moveTo? 'move ' : 'adjust ')+'→ '+x.label : '✓ '+x.label)
+      : x.action==='review'? 'ask you (maybe '+x.suggest.label+')' : x.action==='extra'? 'add as its own line' : 'ignore (transfer)';
+    h+=`<div class="bankgrp">Would do · ${BANK_PREVIEW.length}</div><div class="banklist">`
+      +BANK_PREVIEW.slice(0,40).map(x=>`<div><span class="trunc">${shortDate(x.t.date)} · ${esc(x.t.name)} <i>${esc(say(x))}</i></span><span>${fmt(x.t.amount)}</span></div>`).join('')+`</div>`;
+  }
+  if(BANK.live && BANK.recent.length){
+    const say=t=> t.status==='matched'? '→ '+(t.label||'planned line') : t.status==='extra'? 'own line' : 'ignored';
+    h+=`<details class="bankmore"><summary>Recent bank matches</summary><div class="banklist">`
+      +BANK.recent.map(t=>`<div><span class="trunc">${shortDate(t.date)} · ${esc(t.name)} <i>${esc(say(t))}</i></span><span>${fmt(t.amount)}</span></div>`).join('')+`</div></details>`;
+  }
+  if(BANK.ready){
+    h+=`<details class="bankmore"${items.length?'':' open'}><summary>Connections</summary>`;
+    h+=items.map(i=>`<div class="bankconn"><div class="bankline"><span class="lab"><b>${esc(i.institution)}</b>
+        <small>${i.error? '<span class="err">'+esc(i.error)+'</span>' : 'synced '+bankAgo(i.lastSync)}</small></span>
+        <span class="bankbtns">${i.relink?`<button type="button" class="ghostbtn" data-relink="${esc(i.id)}">Reconnect</button>`:''}
+        <button type="button" class="ghostbtn danger" data-unlink="${esc(i.id)}">Disconnect</button></span></div>`
+      +i.accounts.map(a=>`<label class="bankacct"><input type="checkbox" data-acct="${esc(a.id)}"${a.tracked?' checked':''}>
+        <span>${esc(a.name)}${a.mask?' ··'+esc(a.mask):''}</span><span class="amt">${a.current==null?'':fmt(a.current)}</span></label>`).join('')
+      +`</div>`).join('');
+    h+=`<p class="bankhint">Ticked accounts are added together as the planner's balance. Read-only: the planner can see transactions and balances, never move money.</p>`
+      +`<button type="button" class="bankconnect" id="bankconnect">${items.length?'Connect another bank':'Connect a bank'}</button></details>`;
+  }
+  h+=`<div class="recmsg" id="bankmsg" role="status"></div>`;
+  const keep=$('bankmsg')? [$('bankmsg').className,$('bankmsg').textContent] : null;
+  box.innerHTML=h;
+  if(keep){ $('bankmsg').className=keep[0]; $('bankmsg').textContent=keep[1]; }
+}
+function plaidScript(){
+  return window.Plaid? Promise.resolve() : new Promise((ok,no)=>{ const s=document.createElement('script');
+    s.src='https://cdn.plaid.com/link/v2/stable/link-initialize.js'; s.onload=ok;
+    s.onerror=()=>no(new Error('Could not load Plaid.')); document.head.appendChild(s); });
+}
+// Plaid Link: the bank's own sign-in. `item` = reconnecting one; `resume` = back from a bank's OAuth page.
+async function bankLink(item, resume){
+  try{ await plaidScript(); }catch(e){ bankMsg(e.message,true); return; }
+  const o=await bankPost('/api/bank/link-token',{item:item||undefined, resume:!!resume});
+  if(!o) return;
+  const done=()=>{ BANK_LINKING=false; if(location.pathname==='/plaid-oauth') history.replaceState(null,'','/'); };
+  BANK_LINKING=true;
+  Plaid.create({token:o.link_token, ...(resume? {receivedRedirectUri:location.href} : {}),
+    onSuccess: async (public_token, meta)=>{
+      done();
+      if(item){ await bankSync(true); bankMsg('Reconnected.'); return; }
+      bankMsg('Connecting…');
+      const out=await bankPost('/api/bank/exchange',{public_token, institution: meta && meta.institution && meta.institution.name});
+      if(out){ bankTake(out); await bankRun(); fillBank(); bankBadge(); bankMsg('Connected. It syncs every night and when you open the app.'); }
+    },
+    onExit: (err)=>{ done(); if(err) bankMsg(err.display_message||err.error_message||'Bank sign-in did not finish.', true); }
+  }).open();
+}
+$('bankbox').addEventListener('click',async e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  if(b.id==='banksync'){ bankMsg('Syncing…'); await bankSync(true); if($('bankmsg').textContent==='Syncing…') bankMsg('Up to date.'); return; }
+  if(b.id==='bankconnect') return bankLink();
+  if(b.dataset.relink) return bankLink(b.dataset.relink);
+  if(b.dataset.unlink){
+    if(b.dataset.armed!=='1'){ b.dataset.armed='1'; b.textContent='Tap again to disconnect'; return; }
+    const out=await bankPost('/api/bank/disconnect',{item:b.dataset.unlink}); if(out){ BANK=out; fillBank(); bankBadge(); bankMsg('Disconnected.'); }
+    return;
+  }
+  if(b.classList.contains('bankok')){
+    const row=b.closest('[data-id]'), t=BANK.open.find(x=>x.id===row.dataset.id), v=row.querySelector('select').value;
+    if(!t) return;
+    let item;
+    if(v.startsWith('k:')){ const e2=bankFind(v.slice(2)); if(!e2){ bankMsg('That line is no longer in the plan.',true); return; } item=bankMatch(t,e2,false,true); }
+    else item={id:t.id, action:v, learn:true};
+    b.disabled=true;
+    const out=await bankPost('/api/bank/decide',{items:[item]});
+    b.disabled=false;
+    if(out){ bankApply(out); bankMsg(v.startsWith('k:')? `Matched to ${item.label} — next time it will be automatic.` : v==='extra'? 'Added as its own line; this payee will be next time too.' : 'Ignored; this payee will be next time too.'); }
+  }
+});
+$('bankbox').addEventListener('change',async e=>{
+  const c=e.target.closest('input[data-acct]'); if(!c) return;
+  const out=await bankPost('/api/bank/accounts',{id:c.dataset.acct, tracked:c.checked}); if(out){ BANK=out; fillBank(); }
+});
+async function bankInit(){
+  try{ const r=await fetch('/api/bank',{cache:'no-store'}); if(!r.ok) return; BANK=await r.json(); }catch(e){ return; }
+  bankBadge();
+  if(!BANK.ready) return;
+  if(location.pathname==='/plaid-oauth' && /oauth_state_id=/.test(location.search)) return bankLink(null,true);
+  if(BANK.items.length) await bankSync(false);
+}
+
 
 /* ⚠️ Passkey every time the app is opened. A launch or reload is already covered by the server
    (a session serves this page once). Coming back to a page that stayed alive in the background
@@ -4479,7 +4765,7 @@ function lockApp(){
 }
 let TRUSTED=false;   // signed in from the installed app: stays open (set from /api/state)
 document.addEventListener('visibilitychange',()=>{
-  if(TRUSTED) return;
+  if(TRUSTED || BANK_LINKING) return;      // the bank's sign-in can take the screen for a while
   if(document.hidden){ HIDDEN_AT=Date.now(); return; }
   if(HIDDEN_AT && Date.now()-HIDDEN_AT>=LOCK_AFTER_MS) lockApp();
   HIDDEN_AT=null;
@@ -4500,7 +4786,8 @@ window.addEventListener('pageshow',e=>{ if(e.persisted && !TRUSTED) lockApp(); }
     TRUSTED=!!s.trusted;
     if(Number.isFinite(s.unlockHour)) UNLOCK_HOUR=s.unlockHour;
     if(s.today){ TODAY_ISO=s.today; SALE_FLOOR = TODAY_ISO > T0 ? TODAY_ISO : T0; }
-    (s.reconciles||[]).forEach(x=>{ RECON[x.date]={actual:x.actual,note:x.note}; });
+    (s.reconciles||[]).forEach(x=>{ RECON[x.date]={actual:x.actual,note:x.note,source:x.source||''}; });
+    BANKX=s.bankExtras||[];
     (s.adjustments||[]).forEach(x=>{ ADJ[x.key]=x; });
     render();
   }catch(e){
@@ -4508,6 +4795,7 @@ window.addEventListener('pageshow',e=>{ if(e.persisted && !TRUSTED) lockApp(); }
   }
   refreshTrigger();
   document.getElementById('boot').classList.add('gone');
+  if(SRV.online) bankInit();
 })();
 </script>
 </body>

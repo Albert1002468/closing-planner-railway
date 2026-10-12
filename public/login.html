@@ -86,6 +86,9 @@ const cancelled = e => e && (e.name==='NotAllowedError' || e.name==='AbortError'
 const supported = !!(window.PublicKeyCredential && navigator.credentials);
 // Running as the installed home-screen app: that device is trusted for 30 days (see server.js).
 const installed = navigator.standalone===true || matchMedia('(display-mode: standalone)').matches;
+// The gate serves this page at whatever address was asked for (e.g. /plaid-oauth?… coming back
+// from a bank's sign-in), so after signing in, load that same address again.
+const back = () => location.replace(location.pathname==='/login.html'? '/' : location.pathname+location.search);
 
 function showSetup(on){
   $('setup').hidden=!on; $('signin').hidden=on; say('');
@@ -104,7 +107,7 @@ async function signIn(){
     const r=cred.response;
     await post('/api/auth/login/verify',{id:cred.id, clientDataJSON:b64u(r.clientDataJSON),
       authenticatorData:b64u(r.authenticatorData), signature:b64u(r.signature), trusted:installed});
-    say('Signed in.','ok'); location.replace('/');
+    say('Signed in.','ok'); back();
   }catch(e){ say(cancelled(e)? '' : e.message, 'err'); busy(btn,false,label); }
 }
 $('go').onclick=signIn;
@@ -121,7 +124,7 @@ $('create').onclick=async ()=>{
     const r=cred.response;
     await post('/api/auth/register/verify',{clientDataJSON:b64u(r.clientDataJSON),
       attestationObject:b64u(r.attestationObject), name:navigator.platform||'', trusted:installed});
-    say('Passkey created. Signing you in…','ok'); location.replace('/');
+    say('Passkey created. Signing you in…','ok'); back();
   }catch(e){
     // InvalidStateError: this device already holds one of our passkeys — just sign in with it.
     if(e && e.name==='InvalidStateError'){ showSetup(false); say('This device already has a passkey. Sign in with Face ID.','ok'); }

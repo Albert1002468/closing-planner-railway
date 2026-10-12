@@ -16,6 +16,7 @@ No build step.
 
 ```
 server.js            HTTP server, reconcile API, static files
+bank.js              bank sync through Plaid (read-only): sync, nightly reconcile, decisions
 package.json         "start": "node server.js"; engines node >= 22
 README.md            deploy + reconcile rules (user-facing)
 public/index.html    THE APP — styles, markup, model, renderer, reconcile UI, all inline
@@ -35,6 +36,12 @@ public/icon.svg      the icon (rising line on #2f6fec); icon-512/192, apple-touc
 | `DATA_DIR` | `/data` | Must match the volume mount |
 | `RECONCILE_UNLOCK_HOUR` | `19` | Hour (America/Chicago) today unlocks |
 | `PORT` | — | Railway sets it |
+| `PLAID_CLIENT_ID` | — | Bank sync (optional feature) |
+| `PLAID_SANDBOX_SECRET` | — | Test mode: Plaid's sandbox, dry run (nothing written) |
+| `PLAID_SECRET` | — | Live: real bank data, writes adjustments and reconciles. Takes precedence over the sandbox secret |
+| `BANK_TOKEN_KEY` | ≥16 random chars | Encrypts Plaid's access token at rest (AES-256-GCM). Changing it orphans connections: reconnect |
+| `PLAID_REDIRECT_URI` | — | Optional; live default is `<origin>/plaid-oauth` (must be listed in the Plaid dashboard) |
+| `BANK_SYNC_HOUR` | `20` | Nightly sync hour (America/Chicago) |
 
 A volume at `/data` is mandatory or reconciliations (and passkeys) vanish on redeploy. Health
 check: `GET /api/health` (public) → `"storage": "sqlite"` (`"json"` means Node < 22),
@@ -52,6 +59,11 @@ check: `GET /api/health` (public) → `"storage": "sqlite"` (`"json"` means Node
 | `/api/state` | GET | today, hour, unlockHour, range, saveEnabled, storage, all reconciles + edit log |
 | `/api/reconciles` | POST | new entry `{date, actual, note}`; once per date; not future; today only after the unlock hour |
 | `/api/adjustments` | PUT / DELETE | set (or clear) the actual amount — and optionally the day (`moveTo`) — of one projected transaction, keyed `date\|label`; every reconciled balance moves by the net cash change up to its date so its variance is kept (`keepVariances`, audited), returned as `shifted`. `{items:[…]}` saves several in one transaction (select-to-move) |
+| `/api/bank` | GET | bank status: connections, accounts, open (new/review) transactions, recent decisions, claimed keys, rules |
+| `/api/bank/link-token` · `/exchange` | POST | Plaid Link: start (or `{resume}` after a bank's OAuth redirect, `{item}` to reconnect), then store the connection and sync |
+| `/api/bank/sync` | POST | sync now (throttled 20 min, `{force}` 1 min); live: reconciles yesterday from the bank |
+| `/api/bank/decide` | POST | live only: the page's matching decisions `{items:[{id, action: match\|extra\|ignore\|review, key, adjust, learn, auto}]}`; a `match` with `adjust` saves the adjustment like PUT /api/adjustments |
+| `/api/bank/accounts` · `/disconnect` | POST | tick an account in/out of the balance; remove a connection (Plaid `/item/remove`) |
 | `/api/reconciles` | PUT | correct an entry; every later entry moves by the same delta (their variances are kept), all in one transaction, each logged to `reconcile_edits` |
 
 **The gate** (top of the request handler): without a valid `sid` cookie every `/api/*` route
@@ -70,6 +82,19 @@ RP ID hash, user-present AND user-verified flags, ES256/RS256 signature; attesta
 Lockout: 8 failed PINs (or failed passkey checks) per IP per 15 min. The IP is the **last** `X-Forwarded-For`
 entry (the one Railway's edge appends — earlier entries are client-supplied). A malformed
 `%`-escape in a path returns 400 instead of crashing the process.
+
+**Bank sync** (`bank.js`, Plaid Transactions — read-only). State is one document per mode in the
+`kv` table (`bank-production` / `bank-sandbox`; never shared): connections with the access token
+sealed by `BANK_TOKEN_KEY`, posted transactions (150 days; pending ones are skipped), learned
+payee rules (`sig` = the bank description minus noise words → a label, `*extra` or `*ignore`).
+Each sync reconciles **yesterday** (live only) when every connection synced cleanly: today's
+ledger balance of the ticked accounts minus every posted transaction dated after yesterday.
+Those rows have `source = 'bank'`: `keepVariances` and the PUT cascade skip them, because they
+are the bank's figure, not a typed variance. Matching needs the projection, so the PAGE does it
+(`bankAutoItems` in index.html) after each sync and posts the decisions; `auto` decisions only
+apply to untouched transactions, so two open devices cannot both act. Transactions dated before
+the connection (minus 3 days) are `history` — used for the balance arithmetic, never matched.
+Test mode (sandbox secret only) runs the same matching as a preview and `/decide` returns 409.
 
 ## 4. The page
 

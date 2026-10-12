@@ -13,6 +13,7 @@
  *   RECONCILE_PASSCODE  (required) PIN for adding a device's passkey; unset ⇒ nobody can sign in
  *   RP_ID               (optional) passkey domain; defaults to the request's host
  *   DATA_DIR            (default /data) persistent volume mount path
+ *   PLAID_CLIENT_ID, PLAID_SECRET / PLAID_SANDBOX_SECRET, BANK_TOKEN_KEY   bank sync (see bank.js)
  *   PORT                (Railway provides)
  */
 const http = require('node:http');
@@ -58,6 +59,10 @@ try {
   // Added later: the day it actually happened, when that differs from the projection's day.
   // A table created before this has no such column, so add it once (it throws if present).
   try { db.exec('ALTER TABLE adjustments ADD COLUMN move_to TEXT'); } catch { /* already there */ }
+  // 'bank' when the nightly bank sync recorded the balance; '' when you entered it.
+  try { db.exec("ALTER TABLE reconciles ADD COLUMN source TEXT NOT NULL DEFAULT ''"); } catch { /* already there */ }
+  // Small key/value documents: the bank connection (token encrypted), its transactions and rules.
+  db.exec('CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL, updated_at TEXT NOT NULL)');
   // Sign-in: one row per registered passkey, and one per signed-in device (token stored hashed).
   db.exec(`CREATE TABLE IF NOT EXISTS passkeys (
     id TEXT PRIMARY KEY, jwk TEXT NOT NULL, alg INTEGER NOT NULL, sign_count INTEGER NOT NULL DEFAULT 0,
@@ -87,11 +92,14 @@ try {
       .run(a.key, a.date, a.label, a.amount, a.projected, a.note, a.moveTo, a.updated_at),
     clearAdjustment: k => db.prepare('DELETE FROM adjustments WHERE key = ?').run(k),
     getAdjustment: k => db.prepare('SELECT key, date, label, amount, projected, note, move_to AS moveTo FROM adjustments WHERE key = ?').get(k) || null,
-    all: () => db.prepare('SELECT date, actual, note, created_at FROM reconciles ORDER BY date').all(),
+    all: () => db.prepare('SELECT date, actual, note, created_at, source FROM reconciles ORDER BY date').all(),
     has: d => !!db.prepare('SELECT 1 AS x FROM reconciles WHERE date = ?').get(d),
-    get: d => db.prepare('SELECT date, actual, note, created_at FROM reconciles WHERE date = ?').get(d),
-    insert: r => db.prepare('INSERT INTO reconciles (date,actual,note,created_at) VALUES (?,?,?,?)')
-                   .run(r.date, r.actual, r.note, r.created_at),
+    get: d => db.prepare('SELECT date, actual, note, created_at, source FROM reconciles WHERE date = ?').get(d),
+    insert: r => db.prepare('INSERT INTO reconciles (date,actual,note,created_at,source) VALUES (?,?,?,?,?)')
+                   .run(r.date, r.actual, r.note, r.created_at, r.source || ''),
+    kvGet: k => { const r = db.prepare('SELECT v FROM kv WHERE k = ?').get(k); return r ? JSON.parse(r.v) : null; },
+    kvSet: (k, v) => db.prepare('INSERT INTO kv (k,v,updated_at) VALUES (?,?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v, updated_at=excluded.updated_at')
+                       .run(k, JSON.stringify(v), new Date().toISOString()),
     update: r => db.prepare('UPDATE reconciles SET actual = ?, note = ? WHERE date = ?')
                    .run(r.actual, r.note, r.date),
     logEdit: e => db.prepare(`INSERT INTO reconcile_edits
@@ -138,6 +146,8 @@ try {
                    if (i >= 0) { rows[i].actual = r.actual; rows[i].note = r.note; write(rows); } },
     logEdit: e => { const rows = readE(); rows.push(e); fs.writeFileSync(efile, JSON.stringify(rows, null, 2)); },
     edits: () => readE(),
+    kvGet: k => { try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'kv-' + k.replace(/[^a-z0-9_-]/gi, '_') + '.json'), 'utf8')); } catch { return null; } },
+    kvSet: (k, v) => fs.writeFileSync(path.join(DATA_DIR, 'kv-' + k.replace(/[^a-z0-9_-]/gi, '_') + '.json'), JSON.stringify(v)),
     tx: fn => fn()
   };
   console.log('[store] node:sqlite unavailable (' + err.code + ') — using JSON file');
@@ -380,6 +390,60 @@ function authRoutes(req, res, url, ip) {
   }
   return false;
 }
+/* ⚠️ An adjustment KEEPS EVERY RECONCILED VARIANCE. What the reader enters when reconciling is
+   the day's variance (unplanned spending), so changing a transaction's amount or day must not
+   quietly rewrite it: moving a +$3,300 rent off a reconciled day used to leave that day's
+   balance pinned and turn its $0.00 variance into +$3,300. Instead the line comes off its old
+   day and lands on its new one, and every reconciled balance moves by the net change up to its
+   date — so its projected balance and its actual move together. Runs inside store.tx. */
+function keepVariances(oldDay, oldAmt, newDay, newAmt, why) {
+  const at = new Date().toISOString(), shifted = [];
+  for (const r of store.all()) {
+    // A balance read from the bank is a fact, not a variance: nothing moves it.
+    if (r.source === 'bank') continue;
+    const d = (r.date >= newDay ? newAmt : 0) - (r.date >= oldDay ? oldAmt : 0);
+    const delta = Math.round(d * 100) / 100;
+    if (!delta) continue;
+    const moved = Math.round((r.actual + delta) * 100) / 100;
+    store.logEdit({ date: r.date, prev_actual: r.actual, prev_note: r.note || '', new_actual: moved,
+                    new_note: r.note || '', reason: `moved ${delta > 0 ? '+' : ''}${delta.toFixed(2)}: ${why}`.slice(0, 200),
+                    edited_at: at });
+    store.update({ date: r.date, actual: moved, note: r.note || '' });
+    shifted.push({ date: r.date, actual: moved });
+  }
+  return shifted;
+}
+
+const KEY_RE = /^\d{4}-\d{2}-\d{2}\|.{1,200}$/;
+// One adjustment's fields, validated. Shared by the single PUT and the batch.
+function parseAdjustment(b, key) {
+  const date = key.slice(0, 10);
+  if (date < RANGE_START || date > RANGE_END) return { error: 'Date is outside the planning window.' };
+  const amount = Number(b.amount), projected = Number(b.projected);
+  if (!Number.isFinite(amount) || !Number.isFinite(projected)) return { error: 'Amount must be a number.' };
+  const label = String(b.label ?? '').trim().slice(0, 200);
+  // Optional: the day it actually happened. null = the projection's own day.
+  const moveTo = b.moveTo == null || b.moveTo === '' || b.moveTo === date ? null : String(b.moveTo);
+  if (moveTo !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(moveTo) || moveTo < RANGE_START || moveTo > RANGE_END))
+    return { error: 'The new date is outside the planning window.' };
+  const note = String(b.note ?? '').trim();
+  if (note.length > 500) return { error: 'Note too long (500 characters max).' };
+  return { row: { key, date, label, amount: Math.round(amount * 100) / 100,
+                  projected: Math.round(projected * 100) / 100, note, moveTo, updated_at: new Date().toISOString() } };
+}
+// Runs inside store.tx. What was there before: the previous adjustment, or else the projection.
+function saveAdjustment(row, prev) {
+  const shifted = keepVariances(prev ? (prev.moveTo || prev.date) : row.date, prev ? prev.amount : row.projected,
+                                row.moveTo || row.date, row.amount, `adjusted ${row.label || row.key}`);
+  store.setAdjustment(row);
+  return { ...row, shifted };
+}
+
+
+/* ------------------------- bank (Plaid) ------------------------- */
+const bank = require('./bank')({ store, localNow, json, readBody, KEY_RE, parseAdjustment, saveAdjustment,
+                                 rpFor, RANGE_START, RANGE_END });
+
 // Public without a session: the sign-in page, its icons and the PWA manifest.
 const PUBLIC_FILES = new Set(['/login.html', '/manifest.json', '/icon.svg', '/icon-192.png', '/icon-512.png',
                               '/apple-touch-icon.png', '/favicon-32.png']);
@@ -393,7 +457,7 @@ const server = http.createServer((req, res) => {
   const ip = (req.headers['x-forwarded-for'] || '').split(',').pop().trim() || req.socket.remoteAddress || 'unknown';
 
   if (url.pathname === '/api/health' && req.method === 'GET')
-    return json(res, 200, { ok: true, storage: store.kind, setupEnabled: !!PASSCODE });
+    return json(res, 200, { ok: true, storage: store.kind, setupEnabled: !!PASSCODE, bank: bank.mode });
   if (url.pathname.startsWith('/api/auth/')) {
     if (req.method === 'POST' && req.headers.origin && req.headers.origin !== rpFor(req).origin)
       return json(res, 403, { error: 'Wrong site.' });
@@ -437,9 +501,11 @@ const server = http.createServer((req, res) => {
       today: now.date, hour: now.hour, unlockHour: UNLOCK_HOUR, timezone: TZ,
       rangeStart: RANGE_START, rangeEnd: RANGE_END,
       saveEnabled: true, storage: store.kind, trusted: !!(sess && sess.trusted),
-      reconciles: store.all(), edits: store.edits(), adjustments: store.adjustments()
+      reconciles: store.all(), edits: store.edits(), adjustments: store.adjustments(),
+      bankExtras: bank.extras()
     });
   }
+  if (url.pathname.startsWith('/api/bank/')) return bank.routes(req, res, url);
 
   if (url.pathname === '/api/reconciles' && req.method === 'POST') {
     let raw = '';
@@ -497,7 +563,7 @@ const server = http.createServer((req, res) => {
          as entered. Left alone, the next entry silently absorbed the difference (its variance
          changed by -delta) and today's balance never moved. Every shifted entry is audited. */
       const delta = Math.round((actual - prev.actual) * 100) / 100;
-      const later = delta ? store.all().filter(r => r.date > date) : [];
+      const later = delta ? store.all().filter(r => r.date > date && r.source !== 'bank') : [];
       const at = new Date().toISOString();
       const shifted = [];
       try {
@@ -519,53 +585,6 @@ const server = http.createServer((req, res) => {
       return json(res, 200, { date, actual, note, corrected: true, prev_actual: prev.actual, delta, shifted });
     });
     return;
-  }
-
-  /* ⚠️ An adjustment KEEPS EVERY RECONCILED VARIANCE. What the reader enters when reconciling is
-     the day's variance (unplanned spending), so changing a transaction's amount or day must not
-     quietly rewrite it: moving a +$3,300 rent off a reconciled day used to leave that day's
-     balance pinned and turn its $0.00 variance into +$3,300. Instead the line comes off its old
-     day and lands on its new one, and every reconciled balance moves by the net change up to its
-     date — so its projected balance and its actual move together. Runs inside store.tx. */
-  function keepVariances(oldDay, oldAmt, newDay, newAmt, why) {
-    const at = new Date().toISOString(), shifted = [];
-    for (const r of store.all()) {
-      const d = (r.date >= newDay ? newAmt : 0) - (r.date >= oldDay ? oldAmt : 0);
-      const delta = Math.round(d * 100) / 100;
-      if (!delta) continue;
-      const moved = Math.round((r.actual + delta) * 100) / 100;
-      store.logEdit({ date: r.date, prev_actual: r.actual, prev_note: r.note || '', new_actual: moved,
-                      new_note: r.note || '', reason: `moved ${delta > 0 ? '+' : ''}${delta.toFixed(2)}: ${why}`.slice(0, 200),
-                      edited_at: at });
-      store.update({ date: r.date, actual: moved, note: r.note || '' });
-      shifted.push({ date: r.date, actual: moved });
-    }
-    return shifted;
-  }
-
-  const KEY_RE = /^\d{4}-\d{2}-\d{2}\|.{1,200}$/;
-  // One adjustment's fields, validated. Shared by the single PUT and the batch.
-  function parseAdjustment(b, key) {
-    const date = key.slice(0, 10);
-    if (date < RANGE_START || date > RANGE_END) return { error: 'Date is outside the planning window.' };
-    const amount = Number(b.amount), projected = Number(b.projected);
-    if (!Number.isFinite(amount) || !Number.isFinite(projected)) return { error: 'Amount must be a number.' };
-    const label = String(b.label ?? '').trim().slice(0, 200);
-    // Optional: the day it actually happened. null = the projection's own day.
-    const moveTo = b.moveTo == null || b.moveTo === '' || b.moveTo === date ? null : String(b.moveTo);
-    if (moveTo !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(moveTo) || moveTo < RANGE_START || moveTo > RANGE_END))
-      return { error: 'The new date is outside the planning window.' };
-    const note = String(b.note ?? '').trim();
-    if (note.length > 500) return { error: 'Note too long (500 characters max).' };
-    return { row: { key, date, label, amount: Math.round(amount * 100) / 100,
-                    projected: Math.round(projected * 100) / 100, note, moveTo, updated_at: new Date().toISOString() } };
-  }
-  // Runs inside store.tx. What was there before: the previous adjustment, or else the projection.
-  function saveAdjustment(row, prev) {
-    const shifted = keepVariances(prev ? (prev.moveTo || prev.date) : row.date, prev ? prev.amount : row.projected,
-                                  row.moveTo || row.date, row.amount, `adjusted ${row.label || row.key}`);
-    store.setAdjustment(row);
-    return { ...row, shifted };
   }
 
   /* Adjust one projected transaction (PUT sets its actual amount, DELETE returns it to the
@@ -665,4 +684,5 @@ const server = http.createServer((req, res) => {
   });
 });
 
+bank.schedule();
 server.listen(PORT, () => console.log(`[ready] http://localhost:${PORT} — ${store.kind} store, tz ${TZ}`));

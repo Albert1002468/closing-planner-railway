@@ -21,6 +21,7 @@ Zero npm dependencies — pure Node (`node:http` + `node:sqlite`). Nothing to co
    | `RP_ID` | *(optional)* | Passkey domain. Defaults to the site's host; set it only if the domain is fronted by something unusual. ⚠️ Passkeys belong to a domain: changing domains means setting them up again. |
    | `DATA_DIR` | `/data` | Must match the volume mount path. |
    | `RECONCILE_UNLOCK_HOUR` | `19` | Optional. Hour (0–23, America/Chicago) that *today* unlocks. |
+   | `PLAID_CLIENT_ID`, `PLAID_SANDBOX_SECRET` / `PLAID_SECRET`, `BANK_TOKEN_KEY` | | Optional bank sync — see **Bank sync** below. |
 
 5. **Settings → Networking → Generate Domain** for a public URL.
 
@@ -55,6 +56,32 @@ and every API returns 401.
 - Server side: passkeys (public keys only) and sessions (hashed tokens) live in the same
   database as the reconciles. Removing every passkey and setting up again needs a Railway shell
   (`DELETE FROM passkeys`).
+
+## Bank sync (Plaid, free Trial plan)
+
+Optional, read-only, and automatic: the planner sees posted transactions and balances, and can
+never move money. The bank login happens on the bank's own page (Plaid Link / OAuth); the planner
+keeps only Plaid's access token, encrypted with `BANK_TOKEN_KEY`, on the server.
+
+1. Railway variables: `PLAID_CLIENT_ID`, `PLAID_SANDBOX_SECRET` (test mode) and/or `PLAID_SECRET`
+   (live, once Plaid approves the account), and `BANK_TOKEN_KEY` — any random string of 16+
+   characters (e.g. `openssl rand -base64 32`). `/api/health` shows `"bank": "sandbox"` or
+   `"production"` once it is all there.
+2. Live only: in the Plaid dashboard add `https://<your-domain>/plaid-oauth` to the allowed
+   redirect URIs (Chase and Wells Fargo sign in through it).
+3. In the app: Adjust & reconcile → **Bank** → **Connect a bank**. Tick the account(s) that are
+   the planner's balance (checking is ticked by default; while moving banks, tick both).
+
+What it does, every night at 20:00 Chicago time and whenever the app is opened:
+
+- **Reconciles yesterday** from the bank's own balance (marked "From the bank"; adjusting a
+  transaction never moves it).
+- **Matches each new transaction to the plan**: same line → nothing; on another day or a few %
+  off → the line is moved/adjusted; not in the plan → added as its own line (`Bank: …`); unsure →
+  **To review** (a badge on the check-mark button): pick the line once and that payee is
+  automatic from then on. A transfer between two ticked accounts is ignored.
+- **Test mode** (sandbox secret only): connect Plaid's test bank (user `user_good`, password
+  `pass_good`) to see what it *would* do. Nothing is written to the planner.
 
 ---
 
