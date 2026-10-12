@@ -16,7 +16,7 @@ No build step.
 
 ```
 server.js            HTTP server, reconcile API, static files
-bank.js              bank sync through Plaid (read-only): sync, nightly reconcile, decisions
+bank.js              bank sync, Teller or Plaid (read-only): sync, nightly reconcile, decisions
 package.json         "start": "node server.js"; engines node >= 22
 README.md            deploy + reconcile rules (user-facing)
 public/index.html    THE APP — styles, markup, model, renderer, reconcile UI, all inline
@@ -36,7 +36,10 @@ public/icon.svg      the icon (rising line on #2f6fec); icon-512/192, apple-touc
 | `DATA_DIR` | `/data` | Must match the volume mount |
 | `RECONCILE_UNLOCK_HOUR` | `19` | Hour (America/Chicago) today unlocks |
 | `PORT` | — | Railway sets it |
-| `PLAID_CLIENT_ID` | — | Bank sync (optional feature) |
+| `TELLER_APP_ID` | `app_…` | Bank sync via Teller (preferred when set). Free in `development` (real data, ≤100 connections) |
+| `TELLER_CERT` · `TELLER_KEY` | PEM (or base64 PEM) | Teller's client certificate: every Teller request is mTLS |
+| `TELLER_ENV` | `development` | `sandbox` = made-up data (dry run); `production` = billed |
+| `PLAID_CLIENT_ID` | — | Bank sync via Plaid (alternative; billed per call once live) |
 | `PLAID_SANDBOX_SECRET` | — | Test mode: Plaid's sandbox, dry run (nothing written) |
 | `PLAID_SECRET` | — | Live: real bank data, writes adjustments and reconciles. Takes precedence over the sandbox secret |
 | `BANK_TOKEN_KEY` | ≥16 random chars | Encrypts Plaid's access token at rest (AES-256-GCM). Changing it orphans connections: reconnect |
@@ -60,7 +63,7 @@ check: `GET /api/health` (public) → `"storage": "sqlite"` (`"json"` means Node
 | `/api/reconciles` | POST | new entry `{date, actual, note}`; once per date; not future; today only after the unlock hour |
 | `/api/adjustments` | PUT / DELETE | set (or clear) the actual amount — and optionally the day (`moveTo`) — of one projected transaction, keyed `date\|label`; every reconciled balance moves by the net cash change up to its date so its variance is kept (`keepVariances`, audited), returned as `shifted`. `{items:[…]}` saves several in one transaction (select-to-move) |
 | `/api/bank` | GET | bank status: connections, accounts, open (new/review) transactions, recent decisions, claimed keys, rules |
-| `/api/bank/link-token` · `/exchange` | POST | Plaid Link: start (or `{resume}` after a bank's OAuth redirect, `{item}` to reconnect), then store the connection and sync |
+| `/api/bank/link-token` · `/exchange` | POST | exchange: store a connection (Teller: `{access_token, enrollment_id}` from Teller Connect; Plaid: `{public_token}`) and sync. link-token (Plaid only): start (or `{resume}` after a bank's OAuth redirect, `{item}` to reconnect), then store the connection and sync |
 | `/api/bank/sync` | POST | sync now (throttled 20 min, `{force}` 1 min); live: reconciles yesterday from the bank |
 | `/api/bank/decide` | POST | live only: the page's matching decisions `{items:[{id, action: match\|extra\|ignore\|review, key, adjust, learn, auto}]}`; a `match` with `adjust` saves the adjustment like PUT /api/adjustments |
 | `/api/bank/accounts` · `/disconnect` | POST | tick an account in/out of the balance; remove a connection (Plaid `/item/remove`) |
@@ -83,8 +86,13 @@ Lockout: 8 failed PINs (or failed passkey checks) per IP per 15 min. The IP is t
 entry (the one Railway's edge appends — earlier entries are client-supplied). A malformed
 `%`-escape in a path returns 400 instead of crashing the process.
 
-**Bank sync** (`bank.js`, Plaid Transactions — read-only). State is one document per mode in the
-`kv` table (`bank-production` / `bank-sandbox`; never shared): connections with the access token
+**Bank sync** (`bank.js`, read-only; Teller when `TELLER_APP_ID` is set, else Plaid). Each
+provider's fetch is normalised to `{id, account, date, amount (in = +), name, raw, pending}` —
+Teller amounts are already signed, Plaid's are flipped. Teller Connect hands the page the
+connection token once; the page posts it to `/api/bank/exchange` and the server seals it.
+Teller fetches balances and transactions only for ticked accounts. State is one document per
+provider and environment in the `kv` table (`bank-teller-development`, `bank-plaid-sandbox`, …;
+never shared): connections with the access token
 sealed by `BANK_TOKEN_KEY`, posted transactions (150 days; pending ones are skipped), learned
 payee rules (`sig` = the bank description minus noise words → a label, `*extra` or `*ignore`).
 Each sync reconciles **yesterday** (live only) when every connection synced cleanly: today's

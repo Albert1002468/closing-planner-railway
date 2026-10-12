@@ -505,7 +505,7 @@ const server = http.createServer((req, res) => {
       bankExtras: bank.extras()
     });
   }
-  if (url.pathname.startsWith('/api/bank/')) return bank.routes(req, res, url);
+  if (url.pathname === '/api/bank' || url.pathname.startsWith('/api/bank/')) return bank.routes(req, res, url);
 
   if (url.pathname === '/api/reconciles' && req.method === 'POST') {
     let raw = '';

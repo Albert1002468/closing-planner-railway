@@ -1,11 +1,15 @@
 'use strict';
 /**
- * Bank sync through Plaid — READ-ONLY (the Transactions product: posted transactions and
- * balances). Nothing here can move money.
+ * Bank sync — READ-ONLY (posted transactions and balances). Nothing here can move money.
  *
- *   - The bank login happens on the bank's own page (OAuth) inside Plaid Link; the planner never
- *     sees a password. What it keeps is Plaid's access token, sealed with AES-256-GCM under
- *     BANK_TOKEN_KEY (a Railway variable, not on the volume), and it never leaves the server.
+ * Two providers, chosen by which variables are set:
+ *   Teller (TELLER_APP_ID) — its "development" environment is real bank data, free up to 100
+ *     connections. Requests carry Teller's client certificate (mTLS) plus the connection's token.
+ *   Plaid (PLAID_CLIENT_ID + a secret) — kept as an alternative; billed once in production.
+ *
+ *   - The bank login happens on the bank's own page inside Teller Connect / Plaid Link; the
+ *     planner never sees a password. What it keeps is the access token, sealed with AES-256-GCM
+ *     under BANK_TOKEN_KEY (a Railway variable, not on the volume), and it never leaves the server.
  *   - The server syncs nightly (BANK_SYNC_HOUR, default 20:00 America/Chicago) and when the app is
  *     opened (at most every 20 minutes). After each sync it RECONCILES YESTERDAY from the bank:
  *     closing balance = today's ledger balance − every posted transaction dated after yesterday.
@@ -14,35 +18,50 @@
  *   - Matching transactions to the projection needs the projection, which lives in the page, so
  *     the PAGE matches and posts its decisions to /api/bank/decide (see "Bank" in index.html).
  *
- * Sandbox (PLAID_SANDBOX_SECRET only) is a dry run: it syncs Plaid's test bank and the page shows
- * what it WOULD do, but nothing is written to the planner. Production (PLAID_SECRET) is live.
+ * A sandbox (TELLER_ENV=sandbox, or Plaid with only PLAID_SANDBOX_SECRET) is a dry run: it syncs
+ * a test bank and the page shows what it WOULD do, but nothing is written to the planner.
  *
- * Env: PLAID_CLIENT_ID, PLAID_SECRET (production) / PLAID_SANDBOX_SECRET, BANK_TOKEN_KEY,
- *      optional PLAID_ENV (force 'sandbox'|'production'), PLAID_REDIRECT_URI, BANK_SYNC_HOUR.
+ * Env (Teller): TELLER_APP_ID, TELLER_CERT + TELLER_KEY (the PEM files from Teller's dashboard,
+ *      pasted whole or base64), TELLER_ENV (development | sandbox | production; default development)
+ * Env (Plaid):  PLAID_CLIENT_ID, PLAID_SECRET / PLAID_SANDBOX_SECRET, optional PLAID_ENV, PLAID_REDIRECT_URI
+ * Both: BANK_TOKEN_KEY (16+ characters), optional BANK_SYNC_HOUR.
  */
 const crypto = require('node:crypto');
+const https = require('node:https');
+const http = require('node:http');
 
 module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, parseAdjustment, saveAdjustment,
                                      rpFor, RANGE_START, RANGE_END }) {
   const env = process.env;
-  const MODE = String(env.PLAID_ENV || (env.PLAID_SECRET ? 'production' : env.PLAID_SANDBOX_SECRET ? 'sandbox' : '')).toLowerCase();
-  const SECRET = MODE === 'production' ? env.PLAID_SECRET || '' : MODE === 'sandbox' ? env.PLAID_SANDBOX_SECRET || '' : '';
-  const CLIENT = env.PLAID_CLIENT_ID || '';
-  const BASE = env.PLAID_BASE || `https://${MODE || 'sandbox'}.plaid.com`;
   const KEY = env.BANK_TOKEN_KEY && env.BANK_TOKEN_KEY.length >= 16
     ? crypto.createHash('sha256').update(env.BANK_TOKEN_KEY).digest() : null;
-  const missing = [
-    !CLIENT && 'PLAID_CLIENT_ID',
-    !SECRET && (MODE === 'sandbox' ? 'PLAID_SANDBOX_SECRET' : 'PLAID_SECRET'),
-    !KEY && 'BANK_TOKEN_KEY (at least 16 characters)'
-  ].filter(Boolean);
-  const READY = ['sandbox', 'production'].includes(MODE) && !missing.length;
-  const LIVE = READY && MODE === 'production';          // only real bank data writes to the planner
-  const DOC = 'bank-' + (MODE || 'none');               // sandbox and production never share data
+  const PROVIDER = env.TELLER_APP_ID ? 'teller'
+    : (env.PLAID_CLIENT_ID || env.PLAID_SECRET || env.PLAID_SANDBOX_SECRET) ? 'plaid' : null;
+  // A PEM pasted into a Railway variable, whole (real or \n newlines) or base64-encoded.
+  const pem = v => !v ? '' : /BEGIN/.test(v) ? String(v).replace(/\\n/g, '\n') : Buffer.from(String(v), 'base64').toString('utf8');
+  let MODE = null, missing, SECRET = '', CLIENT = '', BASE = '', T_CERT = '', T_KEY = '';
+  if (PROVIDER === 'teller') {
+    MODE = String(env.TELLER_ENV || 'development').toLowerCase();
+    T_CERT = pem(env.TELLER_CERT); T_KEY = pem(env.TELLER_KEY);
+    BASE = env.TELLER_BASE || 'https://api.teller.io';
+    missing = [!['sandbox', 'development', 'production'].includes(MODE) && 'TELLER_ENV (development, sandbox or production)',
+               MODE !== 'sandbox' && !T_CERT && 'TELLER_CERT', MODE !== 'sandbox' && !T_KEY && 'TELLER_KEY',
+               !KEY && 'BANK_TOKEN_KEY (at least 16 characters)'].filter(Boolean);
+  } else if (PROVIDER === 'plaid') {
+    MODE = String(env.PLAID_ENV || (env.PLAID_SECRET ? 'production' : 'sandbox')).toLowerCase();
+    SECRET = MODE === 'production' ? env.PLAID_SECRET || '' : env.PLAID_SANDBOX_SECRET || '';
+    CLIENT = env.PLAID_CLIENT_ID || '';
+    BASE = env.PLAID_BASE || `https://${MODE}.plaid.com`;
+    missing = [!CLIENT && 'PLAID_CLIENT_ID', !SECRET && (MODE === 'sandbox' ? 'PLAID_SANDBOX_SECRET' : 'PLAID_SECRET'),
+               !KEY && 'BANK_TOKEN_KEY (at least 16 characters)'].filter(Boolean);
+  } else missing = ['TELLER_APP_ID', 'TELLER_CERT', 'TELLER_KEY', 'BANK_TOKEN_KEY'];
+  const READY = !!PROVIDER && !missing.length;
+  const LIVE = READY && MODE !== 'sandbox';             // only real bank data writes to the planner
+  const DOC = `bank-${PROVIDER}-${MODE}`;               // providers and environments never share data
   const SYNC_HOUR = Number(env.BANK_SYNC_HOUR ?? 20);
   const KEEP_DAYS = 150;                                // transactions older than this are dropped
-  if (MODE && !READY) console.warn('[bank] not configured — missing', missing.join(', '));
-  else if (READY) console.log('[bank]', MODE, LIVE ? '(live)' : '(dry run)');
+  if (PROVIDER && !READY) console.warn('[bank]', PROVIDER, 'not configured — missing', missing.join(', '));
+  else if (READY) console.log('[bank]', PROVIDER, MODE, LIVE ? '(live)' : '(dry run)');
 
   const addDay = (d, n) => { const t = new Date(d + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
   const r2 = n => Math.round(n * 100) / 100;
@@ -85,10 +104,54 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     return out;
   }
 
+  // Teller: client certificate (mTLS) on every request, the connection's token as Basic auth.
+  const tAgentOpts = T_CERT && T_KEY ? { cert: T_CERT, key: T_KEY } : {};
+  const tAgent = PROVIDER === 'teller' && /^https:/.test(BASE) ? new https.Agent({ ...tAgentOpts, keepAlive: true }) : undefined;
+  function teller(method, p, token) {
+    const u = new URL(p, BASE), mod = u.protocol === 'https:' ? https : http;
+    return new Promise((ok, no) => {
+      const r = mod.request(u, { method, agent: tAgent, auth: token + ':', headers: { Accept: 'application/json' }, timeout: 30000 }, res => {
+        let b = ''; res.on('data', c => { b += c; }); res.on('end', () => {
+          let j; try { j = b ? JSON.parse(b) : {}; } catch { j = {}; }
+          if (res.statusCode >= 400) {
+            const e = new Error((j.error && j.error.message) || `Teller error ${res.statusCode}`);
+            e.code = (j.error && j.error.code) || String(res.statusCode); return no(e);
+          }
+          ok(j);
+        });
+      });
+      r.on('timeout', () => r.destroy(new Error('The bank service timed out.')));
+      r.on('error', no); r.end();
+    });
+  }
+  const defaultTracked = a => a.type === 'depository' && a.subtype === 'checking';
+  async function fetchTeller(item) {
+    const token = unseal(item.token);
+    const list = await teller('GET', '/accounts', token);
+    const accounts = [], upserts = [];
+    for (const a of list) {
+      const prev = item.accounts[a.id];
+      const acc = { id: a.id, name: a.name || 'Account', mask: a.last_four || '', type: a.type || '', subtype: a.subtype || '' };
+      // Balances and transactions only for the accounts the planner tracks: fewer calls to the bank.
+      if (prev ? prev.tracked : defaultTracked(acc)) {
+        const b = await teller('GET', `/accounts/${encodeURIComponent(a.id)}/balances`, token);
+        acc.current = b.ledger != null ? Number(b.ledger) : null;
+        acc.available = b.available != null ? Number(b.available) : null;
+        const txs = await teller('GET', `/accounts/${encodeURIComponent(a.id)}/transactions?count=${item.cursor ? 100 : 250}`, token);
+        for (const t of txs) upserts.push({ id: t.id, account: a.id, date: t.date, amount: Number(t.amount),   // already signed: out < 0
+          name: (t.details && t.details.counterparty && t.details.counterparty.name) || t.description, raw: t.description,
+          pending: t.status === 'pending' });
+      }
+      accounts.push(acc);
+    }
+    return { cursor: 'teller', upserts, removed: [], accounts };
+  }
+
   /* ---- sync ----
      The network part collects; the apply part runs synchronously on a FRESH copy of the state,
      so a decision the page posts while Plaid is answering is never overwritten. */
-  async function fetchItem(item) {
+  const fetchItem = item => PROVIDER === 'teller' ? fetchTeller(item) : fetchPlaid(item);
+  async function fetchPlaid(item) {
     const token = unseal(item.token);
     let cursor = item.cursor || '', added = [], modified = [], removed = [];
     for (let i = 0; i < 40; i++) {
@@ -103,29 +166,34 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       if (!page.has_more) break;
     }
     const acc = await plaid('/accounts/get', { access_token: token });
-    return { cursor, upserts: [...added, ...modified], removed: removed.map(r => r.transaction_id), accounts: acc.accounts || [] };
+    return { cursor, removed: removed.map(r => r.transaction_id),
+      // Plaid's amounts are positive for money OUT; the planner's are positive for money in.
+      upserts: [...added, ...modified].map(t => ({ id: t.transaction_id, account: t.account_id, date: t.date, amount: -Number(t.amount),
+        name: t.merchant_name || t.name, raw: t.name, pending: t.pending })),
+      accounts: (acc.accounts || []).map(a => ({ id: a.account_id, name: a.name || a.official_name || 'Account', mask: a.mask || '',
+        type: a.type || '', subtype: a.subtype || '',
+        current: a.balances && Number.isFinite(a.balances.current) ? a.balances.current : null,
+        available: a.balances && Number.isFinite(a.balances.available) ? a.balances.available : null })) };
   }
   function applyFetch(st, id, f) {
     const item = st.items[id]; if (!item) return;            // disconnected meanwhile
     const at = new Date().toISOString();
     for (const a of f.accounts) {
-      const prev = item.accounts[a.account_id];
-      item.accounts[a.account_id] = {
-        id: a.account_id, name: a.name || a.official_name || 'Account', mask: a.mask || '', type: a.type || '', subtype: a.subtype || '',
+      const prev = item.accounts[a.id];
+      item.accounts[a.id] = { ...a,
         // Checking is what the planner tracks; anything else is opt-in.
-        tracked: prev ? prev.tracked : (a.type === 'depository' && a.subtype === 'checking'),
-        current: a.balances && Number.isFinite(a.balances.current) ? a.balances.current : null,
-        available: a.balances && Number.isFinite(a.balances.available) ? a.balances.available : null, asOf: at
-      };
+        tracked: prev ? prev.tracked : defaultTracked(a),
+        current: a.current !== undefined ? a.current : prev ? prev.current : null,
+        available: a.available !== undefined ? a.available : prev ? prev.available : null,
+        asOf: a.current !== undefined ? at : prev ? prev.asOf : null };
     }
     for (const t of f.upserts) {
-      if (t.pending) continue;                                  // posted only: it is what the ledger shows
-      const prev = st.tx[t.transaction_id];
-      const name = String(t.merchant_name || t.name || 'Bank transaction').slice(0, 120);
-      st.tx[t.transaction_id] = {
-        ...(prev || {}), id: t.transaction_id, item: id, account: t.account_id, date: t.date,
-        amount: r2(-Number(t.amount)), name, raw: String(t.name || '').slice(0, 200), sig: sigOf(t.name || t.merchant_name),
-        status: prev ? prev.status : (t.date < item.startOn ? 'history' : 'new')
+      if (t.pending || !t.id || !/^\d{4}-\d{2}-\d{2}$/.test(String(t.date)) || !Number.isFinite(t.amount)) continue;  // posted only
+      const prev = st.tx[t.id];
+      st.tx[t.id] = {
+        ...(prev || {}), id: t.id, item: id, account: t.account, date: t.date, amount: r2(t.amount),
+        name: String(t.name || t.raw || 'Bank transaction').slice(0, 120), raw: String(t.raw || '').slice(0, 200),
+        sig: sigOf(t.raw || t.name), status: prev ? prev.status : (t.date < item.startOn ? 'history' : 'new')
       };
     }
     for (const tid of f.removed) {
@@ -146,7 +214,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     const items = Object.values(st.items);
     if (!items.length || items.some(i => i.error || !i.lastSync || Date.now() - Date.parse(i.lastSync) > 3 * 36e5)) return null;
     const accts = trackedAccounts(st);
-    if (!accts.length || accts.some(a => a.current == null)) return null;
+    if (!accts.length || accts.some(a => a.current == null || !a.asOf || Date.now() - Date.parse(a.asOf) > 3 * 36e5)) return null;
     const D = addDay(localNow().date, -1);
     if (D < RANGE_START || D > RANGE_END || store.has(D)) return null;
     if (D < addDay(items.reduce((m, i) => i.startOn < m ? i.startOn : m, '9999-12-31'), -1)) return null;
@@ -168,8 +236,9 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
         const item = load().items[id]; if (!item) continue;
         try { fetched[id] = await fetchItem(item); }
         catch (e) {
-          fetched[id] = { error: e.code === 'ITEM_LOGIN_REQUIRED' ? 'The bank wants you to sign in again — tap Reconnect.' : (e.message || 'Sync failed.'),
-                          errorCode: e.code || '' };
+          const relink = /ITEM_LOGIN_REQUIRED|disconnected|mfa|credentials|login/i.test(e.code || '');
+          fetched[id] = { error: relink ? 'The bank wants you to sign in again — tap Reconnect.' : (e.message || 'Sync failed.'),
+                          errorCode: relink ? 'relink' : (e.code || '') };
         }
       }
       let rec = null;
@@ -194,7 +263,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     const st = load();
     const items = Object.values(st.items).map(i => ({
       id: i.id, institution: i.institution, startOn: i.startOn, lastSync: i.lastSync, error: i.error || null,
-      relink: i.errorCode === 'ITEM_LOGIN_REQUIRED',
+      relink: i.errorCode === 'relink',
       accounts: Object.values(i.accounts).map(a => ({ id: a.id, name: a.name, mask: a.mask, subtype: a.subtype, tracked: a.tracked, current: a.current }))
     }));
     const tracked = new Set(trackedAccounts(st).map(a => a.id));
@@ -203,7 +272,8 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     const recent = all.filter(t => ['matched', 'extra', 'ignored'].includes(t.status) && t.decidedAt)
       .sort((a, b) => a.decidedAt < b.decidedAt ? 1 : -1).slice(0, 25);
     const claimed = all.filter(t => t.status === 'matched' && t.key).map(t => t.key);
-    return { mode: MODE || null, ready: READY, live: LIVE, missing, syncHour: SYNC_HOUR, items,
+    return { provider: PROVIDER, mode: MODE, ready: READY, live: LIVE, missing, syncHour: SYNC_HOUR, items,
+             appId: PROVIDER === 'teller' ? env.TELLER_APP_ID : undefined,
              lastRun: st.lastRun, lastReconciled: st.lastReconciled, open, recent, claimed, rules: st.rules, ...(extra || {}) };
   }
   // Unplanned transactions you (or the matcher) accepted: the page draws them as their own lines.
@@ -269,7 +339,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     if (p === '/api/bank' && req.method === 'GET') return json(res, 200, status());
     if (!READY) return json(res, 503, { error: `Bank sync is not set up. Missing on the server: ${missing.join(', ')}.` });
 
-    if (p === '/api/bank/link-token' && post) {
+    if (p === '/api/bank/link-token' && post && PROVIDER === 'plaid') {
       return readBody(req, 4096, async b => {
         if (b && b.resume && lastLink && lastLink.exp > Date.now()) return json(res, 200, { link_token: lastLink.token });
         try {
@@ -289,12 +359,19 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     }
     if (p === '/api/bank/exchange' && post) {
       return readBody(req, 8192, async b => {
-        if (!b || typeof b.public_token !== 'string') return json(res, 400, { error: 'Malformed request.' });
+        const ok = PROVIDER === 'teller' ? b && /^[\w-]{8,200}$/.test(String(b.access_token || '')) && /^[\w-]{3,200}$/.test(String(b.enrollment_id || ''))
+                                         : b && typeof b.public_token === 'string';
+        if (!ok) return json(res, 400, { error: 'Malformed request.' });
         try {
-          const out = await plaid('/item/public_token/exchange', { public_token: b.public_token });
+          // Teller Connect hands the token to the page, which passes it straight here; Plaid's has to be exchanged.
+          const out = PROVIDER === 'teller' ? { item_id: String(b.enrollment_id), access_token: String(b.access_token) }
+                                            : await plaid('/item/public_token/exchange', { public_token: b.public_token });
+          const existing = load().items[out.item_id];
           store.tx(() => {
             const st = load();
-            st.items[out.item_id] = { id: out.item_id, token: seal(out.access_token),
+            // Reconnecting keeps the connection's accounts, start date and history.
+            st.items[out.item_id] = existing ? { ...st.items[out.item_id], token: seal(out.access_token), error: null, errorCode: '' }
+              : { id: out.item_id, token: seal(out.access_token),
               institution: String(b.institution || 'Bank').slice(0, 80), cursor: '', accounts: {},
               // Matching starts a few days back so the transactions behind today's balance are in.
               startOn: addDay(localNow().date, -3), connectedAt: new Date().toISOString(), lastSync: null, error: null };
@@ -330,7 +407,10 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       return readBody(req, 1024, async b => {
         const item = b && load().items[b.item];
         if (!item) return json(res, 404, { error: 'No such connection.' });
-        try { await plaid('/item/remove', { access_token: unseal(item.token) }); } catch { /* removed here regardless */ }
+        try {
+          if (PROVIDER === 'teller') for (const a of Object.keys(item.accounts)) await teller('DELETE', `/accounts/${encodeURIComponent(a)}`, unseal(item.token));
+          else await plaid('/item/remove', { access_token: unseal(item.token) });
+        } catch { /* removed here regardless */ }
         store.tx(() => {
           const st = load(); delete st.items[b.item];
           // Keep what was decided (the adjustments and extra lines stay true); drop the rest.
@@ -363,5 +443,5 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     }, 10 * 60 * 1000);
   }
 
-  return { mode: READY ? MODE : null, routes, extras, schedule, _sigOf: sigOf };
+  return { mode: READY ? `${PROVIDER}-${MODE}` : null, routes, extras, schedule, _sigOf: sigOf };
 };

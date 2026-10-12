@@ -4508,7 +4508,7 @@ $('adjclear').addEventListener('click',async ()=>{
   $('adjmsg').className='recmsg ok'; $('adjmsg').textContent='Back to the projection.'+moved;
 });
 
-/* ================= Bank (Plaid, read-only — see bank.js) =================
+/* ================= Bank (Teller or Plaid, read-only — see bank.js) =================
    The server syncs every night and, from the bank's own figures, reconciles YESTERDAY by itself.
    Matching transactions to the plan needs the projection, which only this page has, so after
    each sync the page matches the new posted transactions and posts what it decided:
@@ -4518,7 +4518,7 @@ $('adjclear').addEventListener('click',async ()=>{
      - unsure (a near amount, a vague name)         → "to review": one tap in this sheet
      - nothing like it in the plan                  → an extra line ("Bank: …"), as the bank shows it
      - the two legs of a transfer between your own tracked accounts → ignored
-   Test mode (Plaid sandbox) runs the same matching but only shows what it WOULD do. */
+   Test mode (a provider's sandbox) runs the same matching but only shows what it WOULD do. */
 const BANK_WIN=6;                       // days either side of the bank date to look for the line
 const BANK_STOP=new Set(['the','and','for','new','home','est','your','with','from','fee','bill','payment','hrs']);
 const BANK_SYN={paycheck:['payroll','salary','dirdep','directdep'], mortgage:['mtg','loan','mortgage'],
@@ -4646,17 +4646,19 @@ function bankRowOptions(t){
 function bankFind(key){ for(const day of LAST_DATA) for(const e of day.ev) if(e.key===key) return {...e, d:day.d}; return null; }
 function fillBank(){
   const box=$('bankbox'); if(!box) return;
-  if(!BANK || !BANK.mode){ box.hidden=true; return; }
+  if(!BANK){ box.hidden=true; return; }
   box.hidden=false;
   const test=!BANK.live, items=BANK.items, revs=bankReviews();
   let h=`<div class="bankhead"><b>Bank</b><span class="banksub">`;
-  if(!BANK.ready) h+=`Not set up — missing ${esc(BANK.missing.join(', '))}`;
-  else if(!items.length) h+= test? 'Test mode (Plaid sandbox)' : 'Not connected';
+  if(!BANK.ready) h+='Not set up';
+  else if(!items.length) h+= test? 'Test mode (sandbox)' : 'Not connected';
   else h+=esc(items.map(i=>i.institution).join(' + '))+' · synced '+bankAgo(BANK.lastRun)+(test?' · test mode':'');
   h+=`</span>`;
   if(BANK.ready && items.length) h+=`<button type="button" class="ghostbtn" id="banksync">Sync</button>`;
   h+=`</div>`;
-  if(test && BANK.ready) h+=`<p class="bankhint">Test mode: Plaid's sandbox bank. Nothing is written to your planner — below is what it would do. It goes live when <code>PLAID_SECRET</code> is set.</p>`;
+  if(!BANK.ready) h+=`<p class="bankhint">Automatic bank sync needs these Railway variables: <b>${esc(BANK.missing.join(', '))}</b>. See “Bank sync” in the README.</p>`;
+  if(test && BANK.ready) h+=`<p class="bankhint">Test mode: a sandbox bank with made-up data. Nothing is written to your planner — below is what it would do.`
+    +` It goes live with ${BANK.provider==='teller'? '<code>TELLER_ENV=development</code>' : '<code>PLAID_SECRET</code>'}.</p>`;
   if(BANK.live && BANK.lastReconciled) h+=`<p class="bankhint">Reconciled ${shortDate(BANK.lastReconciled.date)} from the bank: ${fmt(BANK.lastReconciled.actual)}.</p>`;
   if(BANK.live && revs.length){
     h+=`<div class="bankgrp">To review · ${revs.length}</div>`;
@@ -4717,11 +4719,34 @@ async function bankLink(item, resume){
     onExit: (err)=>{ done(); if(err) bankMsg(err.display_message||err.error_message||'Bank sign-in did not finish.', true); }
   }).open();
 }
+// Teller Connect: the bank's own sign-in in Teller's window. It hands this page the connection's
+// token once; the page passes it straight to the server, which encrypts it and keeps it.
+function tellerScript(){
+  return window.TellerConnect? Promise.resolve() : new Promise((ok,no)=>{ const s=document.createElement('script');
+    s.src='https://cdn.teller.io/connect/connect.js'; s.onload=ok;
+    s.onerror=()=>no(new Error('Could not load Teller.')); document.head.appendChild(s); });
+}
+async function tellerLink(item){
+  try{ await tellerScript(); }catch(e){ bankMsg(e.message,true); return; }
+  BANK_LINKING=true;
+  TellerConnect.setup({applicationId:BANK.appId, environment:BANK.mode, products:['transactions','balance'],
+    ...(item? {enrollmentId:item} : {}),
+    onSuccess: async enr=>{
+      BANK_LINKING=false; bankMsg('Connecting…');
+      const out=await bankPost('/api/bank/exchange',{access_token:enr.accessToken, enrollment_id:enr.enrollment && enr.enrollment.id,
+        institution: enr.enrollment && enr.enrollment.institution && enr.enrollment.institution.name});
+      if(out){ bankTake(out); await bankRun(); fillBank(); bankBadge();
+        bankMsg(item? 'Reconnected.' : 'Connected. It syncs every night and when you open the app.'); }
+    },
+    onExit: ()=>{ BANK_LINKING=false; },
+    onFailure: f=>{ BANK_LINKING=false; bankMsg((f && f.message) || 'Bank sign-in did not finish.', true); }
+  }).open();
+}
 $('bankbox').addEventListener('click',async e=>{
   const b=e.target.closest('button'); if(!b) return;
   if(b.id==='banksync'){ bankMsg('Syncing…'); await bankSync(true); if($('bankmsg').textContent==='Syncing…') bankMsg('Up to date.'); return; }
-  if(b.id==='bankconnect') return bankLink();
-  if(b.dataset.relink) return bankLink(b.dataset.relink);
+  if(b.id==='bankconnect') return BANK.provider==='teller'? tellerLink() : bankLink();
+  if(b.dataset.relink) return BANK.provider==='teller'? tellerLink(b.dataset.relink) : bankLink(b.dataset.relink);
   if(b.dataset.unlink){
     if(b.dataset.armed!=='1'){ b.dataset.armed='1'; b.textContent='Tap again to disconnect'; return; }
     const out=await bankPost('/api/bank/disconnect',{item:b.dataset.unlink}); if(out){ BANK=out; fillBank(); bankBadge(); bankMsg('Disconnected.'); }
@@ -4747,7 +4772,7 @@ async function bankInit(){
   try{ const r=await fetch('/api/bank',{cache:'no-store'}); if(!r.ok) return; BANK=await r.json(); }catch(e){ return; }
   bankBadge();
   if(!BANK.ready) return;
-  if(location.pathname==='/plaid-oauth' && /oauth_state_id=/.test(location.search)) return bankLink(null,true);
+  if(BANK.provider==='plaid' && location.pathname==='/plaid-oauth' && /oauth_state_id=/.test(location.search)) return bankLink(null,true);
   if(BANK.items.length) await bankSync(false);
 }
 
