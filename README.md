@@ -21,7 +21,7 @@ Zero npm dependencies — pure Node (`node:http` + `node:sqlite`). Nothing to co
    | `RP_ID` | *(optional)* | Passkey domain. Defaults to the site's host; set it only if the domain is fronted by something unusual. ⚠️ Passkeys belong to a domain: changing domains means setting them up again. |
    | `DATA_DIR` | `/data` | Must match the volume mount path. |
    | `RECONCILE_UNLOCK_HOUR` | `19` | Optional. Hour (0–23, America/Chicago) that *today* unlocks. |
-   | `TELLER_APP_ID`, `TELLER_CERT`, `TELLER_KEY`, `BANK_TOKEN_KEY` | | Optional bank sync — see **Bank sync** below. |
+   | `ALERT_EMAIL`, `ALERT_EMAIL_PASSWORD` | | Optional bank sync from alert emails — see **Bank sync** below. |
 
 5. **Settings → Networking → Generate Domain** for a public URL.
 
@@ -57,14 +57,31 @@ and every API returns 401.
   database as the reconciles. Removing every passkey and setting up again needs a Railway shell
   (`DELETE FROM passkeys`).
 
-## Bank sync (Teller — free; Plaid also supported)
+## Bank sync (free: your bank's alert emails)
 
-Optional, read-only, and automatic: the planner sees posted transactions and balances, and can
-never move money. The bank login happens on the bank's own page inside Teller Connect; the planner
-keeps only the connection's access token, encrypted with `BANK_TOKEN_KEY`, on the server.
+Optional and automatic. The banks email their own alerts (a daily balance, and one per
+transaction) to a Gmail inbox used **only** for them; the server reads that inbox every 15
+minutes. Nothing can move money, and nothing sits between you and the bank except Gmail.
 
-**Teller (recommended, free):** its *development* environment is real bank data at no cost, up
-to 100 connections (Chase and Wells Fargo included).
+1. Create a new Gmail account just for alerts (e.g. `yourname.bankalerts@gmail.com`). Turn on
+   2-Step Verification, then create an **app password** (Google Account → Security → App
+   passwords).
+2. Railway variables: `ALERT_EMAIL` = that address, `ALERT_EMAIL_PASSWORD` = the app password.
+3. In Wells Fargo (and later Chase) online banking → Alerts: send alerts to that address. Turn
+   on the **daily balance** alert for checking and **transaction alerts** (purchases, deposits,
+   withdrawals, payments) with the lowest amount it allows.
+4. In the app: Adjust & reconcile → **Bank**. It starts as a **preview** — it shows the
+   balances and transactions it read and what it would do, without changing anything. When it
+   looks right, tap **Looks right — turn it on**.
+
+Safety: only emails *from* wellsfargo.com / chase.com whose signature Gmail verified (DKIM) are
+read, so a forged "balance" email is ignored. It never deletes, moves or marks emails read.
+Alerts it cannot understand are listed under **Alerts it could not read** — send one (account
+numbers hidden) so the reader can learn its wording.
+
+### Other sources
+
+**Teller** (`TELLER_APP_ID`): announced it is shutting down; kept only in case that changes.
 
 1. Sign up at teller.io. In the dashboard copy the **Application ID** and download the
    **certificate** (`certificate.pem` + `private_key.pem`).
@@ -82,10 +99,10 @@ to 100 connections (Chase and Wells Fargo included).
 `https://<your-domain>/plaid-oauth` as an allowed redirect URI), but Plaid bills per call once
 live. When `TELLER_APP_ID` is set, Teller is used.
 
-What it does, every night at 20:00 Chicago time and whenever the app is opened:
+What it does (email: every 15 minutes; Teller/Plaid: nightly at 20:00 Chicago time; all: when the app is opened):
 
-- **Reconciles yesterday** from the bank's own balance (marked "From the bank"; adjusting a
-  transaction never moves it).
+- **Reconciles** from the bank's own balance — the day a balance alert closes (email), or
+  yesterday (Teller/Plaid). Marked "From the bank"; adjusting a transaction never moves it.
 - **Matches each new transaction to the plan**: same line → nothing; on another day or a few %
   off → the line is moved/adjusted; not in the plan → added as its own line (`Bank: …`); unsure →
   **To review** (a badge on the check-mark button): pick the line once and that payee is

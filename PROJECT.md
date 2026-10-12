@@ -16,7 +16,8 @@ No build step.
 
 ```
 server.js            HTTP server, reconcile API, static files
-bank.js              bank sync, Teller or Plaid (read-only): sync, nightly reconcile, decisions
+bank.js              bank sync (email alerts, Teller or Plaid; read-only): sync, reconcile, decisions
+email.js             zero-dependency IMAP client + MIME decoder + bank alert reader
 package.json         "start": "node server.js"; engines node >= 22
 README.md            deploy + reconcile rules (user-facing)
 public/index.html    THE APP — styles, markup, model, renderer, reconcile UI, all inline
@@ -36,6 +37,7 @@ public/icon.svg      the icon (rising line on #2f6fec); icon-512/192, apple-touc
 | `DATA_DIR` | `/data` | Must match the volume mount |
 | `RECONCILE_UNLOCK_HOUR` | `19` | Hour (America/Chicago) today unlocks |
 | `PORT` | — | Railway sets it |
+| `ALERT_EMAIL` · `ALERT_EMAIL_PASSWORD` | Gmail address · app password | Bank sync from alert emails (preferred when set). `ALERT_IMAP_HOST/PORT/FOLDER` optional |
 | `TELLER_APP_ID` | `app_…` | Bank sync via Teller (preferred when set). Free in `development` (real data, ≤100 connections) |
 | `TELLER_CERT` · `TELLER_KEY` | PEM (or base64 PEM) | Teller's client certificate: every Teller request is mTLS |
 | `TELLER_ENV` | `development` | `sandbox` = made-up data (dry run); `production` = billed |
@@ -86,7 +88,14 @@ Lockout: 8 failed PINs (or failed passkey checks) per IP per 15 min. The IP is t
 entry (the one Railway's edge appends — earlier entries are client-supplied). A malformed
 `%`-escape in a path returns 400 instead of crashing the process.
 
-**Bank sync** (`bank.js`, read-only; Teller when `TELLER_APP_ID` is set, else Plaid). Each
+**Bank sync** (`bank.js`, read-only; email alerts when `ALERT_EMAIL` is set, else Teller, else
+Plaid). Email (`email.js`): IMAP over TLS every 15 min from the last UID (UIDVALIDITY change ⇒
+re-read 10 days); only messages from wellsfargo.com / chase.com with Gmail's `dkim=pass` for that
+domain; `readAlert` turns each into a balance (per account, dated by "as of …" or, for a morning
+email, the previous day), a transaction, or `unknown` (kept in `st.unread` to be taught).
+Balances are kept per account per day (`st.balances`); `emailReconcile` reconciles a day once
+every ticked account that reports balances has one for it. Email starts as a preview
+(`st.live` false: `/decide` 409, nothing reconciled) until **Turn it on** (`POST /api/bank/live`). Each
 provider's fetch is normalised to `{id, account, date, amount (in = +), name, raw, pending}` —
 Teller amounts are already signed, Plaid's are flipped. Teller Connect hands the page the
 connection token once; the page posts it to `/api/bank/exchange` and the server seals it.

@@ -2,7 +2,10 @@
 /**
  * Bank sync — READ-ONLY (posted transactions and balances). Nothing here can move money.
  *
- * Two providers, chosen by which variables are set:
+ * Three sources, chosen by which variables are set (first match wins):
+ *   Email (ALERT_EMAIL) — the banks' own alert emails, read from a Gmail inbox used only for
+ *     them (see email.js). Free, no data company in between. Starts as a PREVIEW; "Turn on" in
+ *     the app makes it write.
  *   Teller (TELLER_APP_ID) — its "development" environment is real bank data, free up to 100
  *     connections. Requests carry Teller's client certificate (mTLS) plus the connection's token.
  *   Plaid (PLAID_CLIENT_ID + a secret) — kept as an alternative; billed once in production.
@@ -29,18 +32,22 @@
 const crypto = require('node:crypto');
 const https = require('node:https');
 const http = require('node:http');
+const mail = require('./email');
 
 module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, parseAdjustment, saveAdjustment,
                                      rpFor, RANGE_START, RANGE_END }) {
   const env = process.env;
   const KEY = env.BANK_TOKEN_KEY && env.BANK_TOKEN_KEY.length >= 16
     ? crypto.createHash('sha256').update(env.BANK_TOKEN_KEY).digest() : null;
-  const PROVIDER = env.TELLER_APP_ID ? 'teller'
+  const PROVIDER = env.ALERT_EMAIL ? 'email' : env.TELLER_APP_ID ? 'teller'
     : (env.PLAID_CLIENT_ID || env.PLAID_SECRET || env.PLAID_SANDBOX_SECRET) ? 'plaid' : null;
   // A PEM pasted into a Railway variable, whole (real or \n newlines) or base64-encoded.
   const pem = v => !v ? '' : /BEGIN/.test(v) ? String(v).replace(/\\n/g, '\n') : Buffer.from(String(v), 'base64').toString('utf8');
   let MODE = null, missing, SECRET = '', CLIENT = '', BASE = '', T_CERT = '', T_KEY = '';
-  if (PROVIDER === 'teller') {
+  if (PROVIDER === 'email') {
+    MODE = 'alerts';
+    missing = [!env.ALERT_EMAIL_PASSWORD && 'ALERT_EMAIL_PASSWORD (a Gmail app password)'].filter(Boolean);
+  } else if (PROVIDER === 'teller') {
     MODE = String(env.TELLER_ENV || 'development').toLowerCase();
     T_CERT = pem(env.TELLER_CERT); T_KEY = pem(env.TELLER_KEY);
     BASE = env.TELLER_BASE || 'https://api.teller.io';
@@ -54,14 +61,17 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     BASE = env.PLAID_BASE || `https://${MODE}.plaid.com`;
     missing = [!CLIENT && 'PLAID_CLIENT_ID', !SECRET && (MODE === 'sandbox' ? 'PLAID_SANDBOX_SECRET' : 'PLAID_SECRET'),
                !KEY && 'BANK_TOKEN_KEY (at least 16 characters)'].filter(Boolean);
-  } else missing = ['TELLER_APP_ID', 'TELLER_CERT', 'TELLER_KEY', 'BANK_TOKEN_KEY'];
+  } else missing = ['ALERT_EMAIL', 'ALERT_EMAIL_PASSWORD'];
   const READY = !!PROVIDER && !missing.length;
-  const LIVE = READY && MODE !== 'sandbox';             // only real bank data writes to the planner
+  const LIVE0 = READY && MODE !== 'sandbox';            // only real bank data writes to the planner
+  // Email starts as a preview until you turn it on (st.live), since its reader is pattern-based.
+  const isLive = st => LIVE0 && (PROVIDER !== 'email' || !!(st || load()).live);
+  const EMAIL_EVERY = 15 * 60e3;
   const DOC = `bank-${PROVIDER}-${MODE}`;               // providers and environments never share data
   const SYNC_HOUR = Number(env.BANK_SYNC_HOUR ?? 20);
   const KEEP_DAYS = 150;                                // transactions older than this are dropped
   if (PROVIDER && !READY) console.warn('[bank]', PROVIDER, 'not configured — missing', missing.join(', '));
-  else if (READY) console.log('[bank]', PROVIDER, MODE, LIVE ? '(live)' : '(dry run)');
+  else if (READY) console.log('[bank]', PROVIDER, MODE, LIVE0 ? '' : '(dry run)');
 
   const addDay = (d, n) => { const t = new Date(d + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
   const r2 = n => Math.round(n * 100) / 100;
@@ -124,7 +134,9 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       r.on('error', no); r.end();
     });
   }
-  const defaultTracked = a => a.type === 'depository' && a.subtype === 'checking';
+  // Checking is what the planner tracks. An alert that does not say which kind of account is
+  // assumed to be checking (debit-card and deposit alerts usually are).
+  const defaultTracked = a => a.type === 'depository' && (a.subtype === 'checking' || (PROVIDER === 'email' && !a.subtype));
   async function fetchTeller(item) {
     const token = unseal(item.token);
     const list = await teller('GET', '/accounts', token);
@@ -150,7 +162,36 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   /* ---- sync ----
      The network part collects; the apply part runs synchronously on a FRESH copy of the state,
      so a decision the page posts while Plaid is answering is never overwritten. */
-  const fetchItem = item => PROVIDER === 'teller' ? fetchTeller(item) : fetchPlaid(item);
+  const fetchItem = item => PROVIDER === 'email' ? fetchEmail(item) : PROVIDER === 'teller' ? fetchTeller(item) : fetchPlaid(item);
+  const chi = (d, o) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', ...o }).format(d);
+  const localDate = d => chi(d, { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const localHour = d => +chi(d, { hour: '2-digit', hour12: false }) % 24;
+  const slug = s => String(s).toLowerCase().replace(/[^a-z]+/g, '');
+  async function fetchEmail(item) {
+    const host = env.ALERT_IMAP_HOST || 'imap.gmail.com';
+    const got = await mail.fetchNew({ host, port: Number(env.ALERT_IMAP_PORT || 993), secure: env.ALERT_IMAP_TLS !== '0',
+      user: env.ALERT_EMAIL, pass: String(env.ALERT_EMAIL_PASSWORD).replace(/\s+/g, ''), folder: env.ALERT_IMAP_FOLDER || 'INBOX' },
+      item.cursor && typeof item.cursor === 'object' ? item.cursor : null);
+    const accounts = new Map(), upserts = [], balances = [], unread = [];
+    const acct = (bank, last4, type) => {
+      const id = `${slug(bank)}-${last4 || 'main'}`;
+      if (!accounts.has(id)) accounts.set(id, { id, name: `${bank}${type ? ' ' + type : ''}`, mask: last4 || '', type: type === 'credit' ? 'credit' : 'depository', subtype: type || '' });
+      return id;
+    };
+    for (const m of got.messages) {
+      let a;
+      try { a = mail.readAlert(mail.parseMessage(m.raw), { localDate, localHour, allowUnsigned: env.ALERT_ALLOW_UNSIGNED === '1' }); }
+      catch { a = null; }
+      if (!a) continue;                                         // not from a bank (or not signed by it)
+      if (a.kind === 'unknown') { unread.push({ subject: String(a.subject).slice(0, 140), date: a.date, bank: a.bank }); continue; }
+      if (a.kind === 'balance') { for (const x of a.accounts) balances.push({ account: acct(a.bank, x.last4, x.type), date: a.date, amount: x.balance }); continue; }
+      const msg = mail.parseMessage(m.raw);
+      upserts.push({ id: mail.msgId(msg, m.uid), account: acct(a.bank, a.last4, a.type), date: a.date, amount: a.amount, name: a.name, raw: msg.subject });
+    }
+    // A balance read becomes the account's current figure.
+    for (const b of balances) { const x = accounts.get(b.account); if (!x.balDate || b.date >= x.balDate) { x.current = b.amount; x.balDate = b.date; } }
+    return { cursor: got.cursor, upserts, removed: [], accounts: [...accounts.values()], balances, unread };
+  }
   async function fetchPlaid(item) {
     const token = unseal(item.token);
     let cursor = item.cursor || '', added = [], modified = [], removed = [];
@@ -200,16 +241,46 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       const p = st.tx[tid];
       if (p && ['new', 'review', 'history'].includes(p.status)) delete st.tx[tid];
     }
+    for (const b of f.balances || []) ((st.balances = st.balances || {})[b.account] = st.balances[b.account] || {})[b.date] = b.amount;
+    if (f.unread && f.unread.length) st.unread = [...f.unread.reverse(), ...(st.unread || [])].slice(0, 20);
     item.cursor = f.cursor; item.lastSync = at; item.error = null; item.errorCode = '';
   }
   function prune(st) {
     const cut = addDay(localNow().date, -KEEP_DAYS);
     for (const [k, t] of Object.entries(st.tx)) if (t.date < cut) delete st.tx[k];
+    for (const days of Object.values(st.balances || {})) for (const d of Object.keys(days)) if (d < addDay(localNow().date, -40)) delete days[d];
   }
   const trackedAccounts = st => Object.values(st.items).flatMap(i => Object.values(i.accounts).filter(a => a.tracked));
 
   /* Yesterday's closing balance, from the bank. Only when EVERY connection synced cleanly just now
      (a stale or broken one would give a wrong total), and never over a day already reconciled. */
+  /* Email: a day is reconciled when every tracked account that reports balances has one for that
+     day. Each balance alert says which day it closes (see readAlert). Returns the rows it added. */
+  function emailReconcile(st) {
+    const today = localNow().date, ids = trackedAccounts(st).map(a => a.id).filter(id => st.balances && st.balances[id]);
+    if (!ids.length) return [];
+    const start = addDay(Object.values(st.items).reduce((m, i) => i.startOn < m ? i.startOn : m, '9999-12-31'), -1);
+    const days = new Set(ids.flatMap(id => Object.keys(st.balances[id])));
+    const rows = [];
+    for (const D of [...days].sort()) {
+      if (D > today || D < start || D < RANGE_START || D > RANGE_END || store.has(D)) continue;
+      if (!ids.every(id => st.balances[id][D] != null)) continue;
+      const row = { date: D, actual: r2(ids.reduce((s, id) => s + st.balances[id][D], 0)), note: 'From the bank (balance alert)',
+                    source: 'bank', created_at: new Date().toISOString() };
+      store.insert(row); rows.push(row);
+      st.lastReconciled = { date: D, actual: row.actual, at: row.created_at };
+    }
+    return rows;
+  }
+  // What the email reconcile WOULD do, for the preview.
+  function emailWould(st) {
+    const ids = trackedAccounts(st).map(a => a.id).filter(id => st.balances && st.balances[id]);
+    if (!ids.length) return [];
+    const days = [...new Set(ids.flatMap(id => Object.keys(st.balances[id])))].sort().slice(-5);
+    return days.filter(D => ids.every(id => st.balances[id][D] != null))
+      .map(D => ({ date: D, actual: r2(ids.reduce((s, id) => s + st.balances[id][D], 0)), already: store.has(D) }));
+  }
+
   function autoReconcile(st) {
     const items = Object.values(st.items);
     if (!items.length || items.some(i => i.error || !i.lastSync || Date.now() - Date.parse(i.lastSync) > 3 * 36e5)) return null;
@@ -231,6 +302,11 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   function syncAll() {
     if (running) return running;
     running = (async () => {
+      if (PROVIDER === 'email') store.tx(() => {         // one standing "connection": the inbox
+        const st = load();
+        if (!st.items.email) { st.items.email = { id: 'email', institution: 'Bank alert emails', cursor: null, accounts: {},
+          startOn: addDay(localNow().date, -3), connectedAt: new Date().toISOString(), lastSync: null, error: null }; save(st); }
+      });
       const ids = Object.keys(load().items), fetched = {};
       for (const id of ids) {
         const item = load().items[id]; if (!item) continue;
@@ -241,7 +317,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
                           errorCode: relink ? 'relink' : (e.code || '') };
         }
       }
-      let rec = null;
+      let rec = null, recs = [];
       store.tx(() => {
         const st = load();
         for (const [id, f] of Object.entries(fetched)) {
@@ -250,10 +326,10 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
         }
         prune(st);
         st.lastRun = new Date().toISOString();
-        if (LIVE) rec = autoReconcile(st);
+        if (isLive(st)) { if (PROVIDER === 'email') { recs = emailReconcile(st); rec = recs[recs.length - 1] || null; } else { rec = autoReconcile(st); recs = rec ? [rec] : []; } }
         save(st);
       });
-      return { reconciled: rec };
+      return { reconciled: rec, reconciles: recs };
     })().finally(() => { running = null; });
     return running;
   }
@@ -272,13 +348,15 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     const recent = all.filter(t => ['matched', 'extra', 'ignored'].includes(t.status) && t.decidedAt)
       .sort((a, b) => a.decidedAt < b.decidedAt ? 1 : -1).slice(0, 25);
     const claimed = all.filter(t => t.status === 'matched' && t.key).map(t => t.key);
-    return { provider: PROVIDER, mode: MODE, ready: READY, live: LIVE, missing, syncHour: SYNC_HOUR, items,
+    return { provider: PROVIDER, mode: MODE, ready: READY, live: isLive(st), missing, syncHour: SYNC_HOUR, items,
+             address: PROVIDER === 'email' ? env.ALERT_EMAIL : undefined, unread: st.unread || [],
+             would: PROVIDER === 'email' && !isLive(st) ? emailWould(st) : [],
              appId: PROVIDER === 'teller' ? env.TELLER_APP_ID : undefined,
              lastRun: st.lastRun, lastReconciled: st.lastReconciled, open, recent, claimed, rules: st.rules, ...(extra || {}) };
   }
   // Unplanned transactions you (or the matcher) accepted: the page draws them as their own lines.
   function extras() {
-    if (!LIVE) return [];
+    if (!isLive()) return [];
     const st = load(), tracked = new Set(trackedAccounts(st).map(a => a.id));
     return Object.values(st.tx).filter(t => t.status === 'extra' && tracked.has(t.account) && t.date >= RANGE_START)
       .map(t => ({ id: t.id, date: t.date, amount: t.amount, name: t.name }));
@@ -343,7 +421,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       return readBody(req, 4096, async b => {
         if (b && b.resume && lastLink && lastLink.exp > Date.now()) return json(res, 200, { link_token: lastLink.token });
         try {
-          const redirect = env.PLAID_REDIRECT_URI || (LIVE ? rpFor(req).origin + '/plaid-oauth' : '');
+          const redirect = env.PLAID_REDIRECT_URI || (LIVE0 ? rpFor(req).origin + '/plaid-oauth' : '');
           const update = b && b.item && load().items[b.item];        // reconnecting a broken connection
           const out = await plaid('/link/token/create', {
             client_name: 'Cash Flow', language: 'en', country_codes: ['US'], user: { client_user_id: 'cash-flow-owner' },
@@ -387,8 +465,8 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       return readBody(req, 1024, async b => {
         const st = load();
         const age = st.lastRun ? Date.now() - Date.parse(st.lastRun) : Infinity;
-        if (!Object.keys(st.items).length) return json(res, 200, status());
-        if (age < (b && b.force ? 60e3 : 20 * 60e3)) return json(res, 200, status());
+        if (!Object.keys(st.items).length && PROVIDER !== 'email') return json(res, 200, status());
+        if (age < (b && b.force ? 60e3 : PROVIDER === 'email' ? 2 * 60e3 : 20 * 60e3)) return json(res, 200, status());
         try { const r = await syncAll(); json(res, 200, status(r)); } catch (e) { fail(e); }
       });
     }
@@ -420,8 +498,16 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
         json(res, 200, status());
       });
     }
+    // Email: leave the preview and start writing (or go back to the preview).
+    if (p === '/api/bank/live' && post && PROVIDER === 'email') {
+      return readBody(req, 1024, b => {
+        let recs = [];
+        store.tx(() => { const st = load(); st.live = !!(b && b.on); if (st.live) recs = emailReconcile(st); save(st); });
+        json(res, 200, status({ reconciles: recs, reconciled: recs[recs.length - 1] || null }));
+      });
+    }
     if (p === '/api/bank/decide' && post) {
-      if (!LIVE) return json(res, 409, { error: 'Test mode: nothing is written to the planner.' });
+      if (!isLive()) return json(res, 409, { error: 'Preview: nothing is written to the planner yet.' });
       return readBody(req, 262144, b => {
         if (!b) return json(res, 400, { error: 'Malformed request.' });
         const r = decide(b); json(res, r.code, r.code === 200 ? { ...r.body, bank: status() } : r.body);
@@ -433,6 +519,13 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   // Nightly: once a day after SYNC_HOUR. Checked every 10 minutes; a restart just checks again.
   function schedule() {
     if (!READY) return;
+    // Email: the inbox is checked every 15 minutes, all day (it costs nothing).
+    if (PROVIDER === 'email') {
+      const tick = () => syncAll().then(r => { if (r.reconciles.length) console.log('[bank] reconciled', r.reconciles.map(x => x.date).join(', ')); })
+                                 .catch(e => console.error('[bank] email check failed:', e.message));
+      setTimeout(tick, 5000); setInterval(tick, EMAIL_EVERY);
+      return;
+    }
     setInterval(() => {
       const n = localNow();
       if (n.hour < SYNC_HOUR) return;

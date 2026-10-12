@@ -4617,7 +4617,7 @@ async function bankRun(){
   }
 }
 async function bankSync(force){
-  if(!BANK || !BANK.ready || !BANK.items.length) return;
+  if(!BANK || !BANK.ready || (!BANK.items.length && BANK.provider!=='email')) return;
   const out=await bankPost('/api/bank/sync',{force:!!force});
   if(!out) return;
   bankTake(out);
@@ -4626,8 +4626,9 @@ async function bankSync(force){
 // A sync answer: the new bank state, and yesterday's balance if the server just reconciled it.
 function bankTake(out){
   BANK=out;
-  const r=out.reconciled;
-  if(r){ RECON[r.date]={actual:r.actual, note:r.note, source:'bank'}; OPPC={key:null}; render(); }
+  const rs=out.reconciles || (out.reconciled? [out.reconciled] : []);
+  rs.forEach(r=>{ RECON[r.date]={actual:r.actual, note:r.note, source:'bank'}; });
+  if(rs.length){ OPPC={key:null}; render(); }
 }
 const bankReviews = () => BANK? BANK.open.filter(t=>t.status==='review') : [];
 function bankBadge(){ const n=BANK && BANK.live? bankReviews().length : 0, b=$('recbadge');
@@ -4650,14 +4651,23 @@ function fillBank(){
   box.hidden=false;
   const test=!BANK.live, items=BANK.items, revs=bankReviews();
   let h=`<div class="bankhead"><b>Bank</b><span class="banksub">`;
+  const email=BANK.provider==='email';
   if(!BANK.ready) h+='Not set up';
+  else if(email) h+='Alerts to '+esc(BANK.address||'')+' · checked '+bankAgo(BANK.lastRun)+(test?' · preview':'');
   else if(!items.length) h+= test? 'Test mode (sandbox)' : 'Not connected';
   else h+=esc(items.map(i=>i.institution).join(' + '))+' · synced '+bankAgo(BANK.lastRun)+(test?' · test mode':'');
   h+=`</span>`;
   if(BANK.ready && items.length) h+=`<button type="button" class="ghostbtn" id="banksync">Sync</button>`;
   h+=`</div>`;
   if(!BANK.ready) h+=`<p class="bankhint">Automatic bank sync needs these Railway variables: <b>${esc(BANK.missing.join(', '))}</b>. See “Bank sync” in the README.</p>`;
-  if(test && BANK.ready) h+=`<p class="bankhint">Test mode: a sandbox bank with made-up data. Nothing is written to your planner — below is what it would do.`
+  if(email && test && BANK.ready){
+    h+=`<p class="bankhint"><b>Preview.</b> It is reading your bank's alert emails but not changing the planner yet.`
+      +` Check what it read below; when it looks right, turn it on.</p>`;
+    (BANK.would||[]).forEach(w=>{ h+=`<p class="bankhint">Balance ${shortDate(w.date)}: ${fmt(w.actual)} — `
+      +(w.already? 'already reconciled, would be left alone' : 'would reconcile that day')+`.</p>`; });
+    h+=`<button type="button" class="bankconnect" id="banklive">Looks right — turn it on</button>`;
+  }
+  else if(test && BANK.ready) h+=`<p class="bankhint">Test mode: a sandbox bank with made-up data. Nothing is written to your planner — below is what it would do.`
     +` It goes live with ${BANK.provider==='teller'? '<code>TELLER_ENV=development</code>' : '<code>PLAID_SECRET</code>'}.</p>`;
   if(BANK.live && BANK.lastReconciled) h+=`<p class="bankhint">Reconciled ${shortDate(BANK.lastReconciled.date)} from the bank: ${fmt(BANK.lastReconciled.actual)}.</p>`;
   if(BANK.live && revs.length){
@@ -4674,12 +4684,28 @@ function fillBank(){
     h+=`<div class="bankgrp">Would do · ${BANK_PREVIEW.length}</div><div class="banklist">`
       +BANK_PREVIEW.slice(0,40).map(x=>`<div><span class="trunc">${shortDate(x.t.date)} · ${esc(x.t.name)} <i>${esc(say(x))}</i></span><span>${fmt(x.t.amount)}</span></div>`).join('')+`</div>`;
   }
+  if(BANK.unread && BANK.unread.length){
+    h+=`<details class="bankmore"><summary>Alerts it could not read · ${BANK.unread.length}</summary>`
+      +`<p class="bankhint">Send me one of these (account numbers hidden) so it can learn the wording.</p><div class="banklist">`
+      +BANK.unread.map(u=>`<div><span class="trunc">${u.date?shortDate(u.date)+' · ':''}${esc(u.bank)}: ${esc(u.subject)}</span></div>`).join('')+`</div></details>`;
+  }
   if(BANK.live && BANK.recent.length){
     const say=t=> t.status==='matched'? '→ '+(t.label||'planned line') : t.status==='extra'? 'own line' : 'ignored';
     h+=`<details class="bankmore"><summary>Recent bank matches</summary><div class="banklist">`
       +BANK.recent.map(t=>`<div><span class="trunc">${shortDate(t.date)} · ${esc(t.name)} <i>${esc(say(t))}</i></span><span>${fmt(t.amount)}</span></div>`).join('')+`</div></details>`;
   }
-  if(BANK.ready){
+  if(BANK.ready && email){
+    const accts=items.flatMap(i=>i.accounts), err=items.find(i=>i.error);
+    h+=`<details class="bankmore"><summary>Accounts</summary>`
+      +(err? `<p class="bankhint"><span class="err">${esc(err.error)}</span></p>` : '')
+      +(accts.length? accts.map(a=>`<label class="bankacct"><input type="checkbox" data-acct="${esc(a.id)}"${a.tracked?' checked':''}>
+        <span>${esc(a.name)}${a.mask?' ··'+esc(a.mask):''}</span><span class="amt">${a.current==null?'':fmt(a.current)}</span></label>`).join('')
+        : `<p class="bankhint">No alerts read yet. Point Wells Fargo's alerts at ${esc(BANK.address||'the alerts inbox')}.</p>`)
+      +`<p class="bankhint">Ticked accounts are added together as the planner's balance. It only reads emails from the banks that Gmail verified as really theirs, and it never deletes or changes them.</p>`
+      +(BANK.live? `<button type="button" class="ghostbtn" id="bankpreview">Back to preview</button>` : '')
+      +`</details>`;
+  }
+  else if(BANK.ready){
     h+=`<details class="bankmore"${items.length?'':' open'}><summary>Connections</summary>`;
     h+=items.map(i=>`<div class="bankconn"><div class="bankline"><span class="lab"><b>${esc(i.institution)}</b>
         <small>${i.error? '<span class="err">'+esc(i.error)+'</span>' : 'synced '+bankAgo(i.lastSync)}</small></span>
@@ -4745,6 +4771,12 @@ async function tellerLink(item){
 $('bankbox').addEventListener('click',async e=>{
   const b=e.target.closest('button'); if(!b) return;
   if(b.id==='banksync'){ bankMsg('Syncing…'); await bankSync(true); if($('bankmsg').textContent==='Syncing…') bankMsg('Up to date.'); return; }
+  if(b.id==='banklive' || b.id==='bankpreview'){
+    const out=await bankPost('/api/bank/live',{on:b.id==='banklive'});
+    if(out){ bankTake(out); if(out.live) await bankRun(); fillBank(); bankBadge();
+      bankMsg(out.live? 'On. Alerts now update the planner.' : 'Back to preview: nothing is written.'); }
+    return;
+  }
   if(b.id==='bankconnect') return BANK.provider==='teller'? tellerLink() : bankLink();
   if(b.dataset.relink) return BANK.provider==='teller'? tellerLink(b.dataset.relink) : bankLink(b.dataset.relink);
   if(b.dataset.unlink){
@@ -4773,7 +4805,7 @@ async function bankInit(){
   bankBadge();
   if(!BANK.ready) return;
   if(BANK.provider==='plaid' && location.pathname==='/plaid-oauth' && /oauth_state_id=/.test(location.search)) return bankLink(null,true);
-  if(BANK.items.length) await bankSync(false);
+  if(BANK.items.length || BANK.provider==='email') await bankSync(false);
 }
 
 
