@@ -4573,15 +4573,14 @@ function bankAutoItems(){
   return items;
 }
 /* A planned line the bank hasn't shown by 8 PM (the server's rollHour) moves to tomorrow; one that
-   is already past moves to today (before 8 PM) or tomorrow. Only lines planned from the day the
-   first transaction alert arrived on — before that the bank wasn't telling us anything — and never
-   a line you adjusted yourself. After BANK_ROLL_MAX days of waiting it stops and asks you instead. */
+   is already past moves to today (before 8 PM) or tomorrow. Only lines planned from the day sync
+   was turned on — before that nothing was watching — and never a line you adjusted yourself. After BANK_ROLL_MAX days of waiting it stops and asks you instead. */
 const BANK_ROLL_MAX=5;
 function bankRollPlan(claimed){
   const out={roll:[], stuck:[]};
-  if(!BANK || !BANK.ready || !BANK.txSince || !LAST_DATA.length) return out;
+  if(!BANK || !BANK.ready || !LAST_DATA.length) return out;
   const to = BANK.now.hour>=BANK.rollHour? addD(BANK.now.date,1) : BANK.now.date;
-  const from = BANK.txSince>BANK.startOn? BANK.txSince : BANK.startOn;
+  const on = BANK.liveOn || BANK.now.date, from = on>BANK.startOn? on : BANK.startOn;
   for(const day of LAST_DATA){
     if(day.d>=to) break;
     for(const e of day.ev){

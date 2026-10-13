@@ -37,7 +37,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   const localHour = d => +chi(d, { hour: '2-digit', hour12: false }) % 24;
 
   /* ---- state: one document ----
-     { live, cursor:{uidValidity,lastUid}, startOn, lastRun, error, lastReconciled,
+     { live, liveOn (the day it was turned on), cursor:{uidValidity,lastUid}, startOn, lastRun, error, lastReconciled,
        accounts: {id: {id, name, mask, type, subtype, tracked, current}},
        balances: {account: {date: amount}},
        tx: {id: {id, account, date, amount (in = +), name, raw, sig, status, key?, label?, suggest?, decidedAt?}},
@@ -51,6 +51,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       Object.assign(st, { cursor: i.cursor || null, startOn: i.startOn, accounts: i.accounts || {} });
       delete st.items;
     }
+    if (st.live && !st.liveOn) st.liveOn = localNow().date;   // turned on before liveOn was kept (saved by the next sync)
     return { live: false, cursor: null, startOn: addDay(localNow().date, -3), lastRun: null, error: null, lastReconciled: null,
              accounts: {}, balances: {}, tx: {}, rules: {}, unread: [], rolled: {}, ...st };
   }
@@ -159,10 +160,8 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   function status(reconciles) {
     const st = load(), mine = new Set(tracked(st));
     const all = Object.values(st.tx).filter(t => mine.has(t.account));
-    // Lines planned from the day the first transaction alert arrived on are expected at the bank.
-    const seen = all.filter(t => t.status !== 'history').map(t => t.date).sort();
     return {
-      now: localNow(), rollHour: ROLL_HOUR, txSince: seen[0] || null, rolled: st.rolled, startOn: st.startOn,
+      now: localNow(), rollHour: ROLL_HOUR, liveOn: st.liveOn, rolled: st.rolled, startOn: st.startOn,
       ready: READY, missing, live: st.live, address: env.ALERT_EMAIL || '', lastRun: st.lastRun, error: st.error,
       lastReconciled: st.lastReconciled, unread: st.unread, would: st.live ? [] : reconcileDays(st, true),
       accounts: Object.values(st.accounts).map(a => ({ id: a.id, name: a.name, mask: a.mask, tracked: a.tracked, current: a.current })),
@@ -276,7 +275,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       // Leave the preview and start writing (or go back to the preview).
       if (p === '/api/bank/live') {
         let recs = [];
-        store.tx(() => { const st = load(); st.live = !!b.on; if (st.live) recs = reconcileDays(st); save(st); });
+        store.tx(() => { const st = load(); if (b.on && !st.live) st.liveOn = localNow().date; st.live = !!b.on; if (st.live) recs = reconcileDays(st); save(st); });
         return json(res, 200, status(recs));
       }
       if (p === '/api/bank/decide') {

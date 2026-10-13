@@ -87,9 +87,9 @@ What it does, every 15 minutes and whenever the app is opened:
 - **Moves what hasn't shown up**: from 8 PM (Chicago), a planned line the bank hasn't shown
   moves to tomorrow (one already past moves to today). After 5 days of waiting it stops and asks
   under **Not at the bank yet**: still coming (wait longer), it went through without an alert (back
-  to its day), or it won't happen (set to $0). Lines you adjusted yourself are never moved, and
-  nothing moves until the first transaction alert has arrived — so have the bank alert on **every**
-  transaction (set the amount threshold to the minimum), or lines it never alerts on will wait here.
+  to its day), or it won't happen (set to $0). Lines you adjusted yourself, and lines planned before
+  sync was turned on, are never moved. Have the bank alert on **every** transaction (set the amount
+  threshold to the minimum), or lines it never alerts on will end up waiting here.
 
 ---
 

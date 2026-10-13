@@ -94,8 +94,8 @@ apply to untouched transactions, so two open devices cannot both act. Transactio
 the start (setup minus 3 days) are `history`, never matched. It starts as a preview (`st.live`
 false: `/decide` 409, nothing reconciled) until **Turn it on** (`POST /api/bank/live`).
 After matching, `bankRoll` moves planned lines the bank hasn't shown: past lines to today, and
-from `rollHour` (20 = 8 PM Chicago) also today's to tomorrow. Only lines planned from `txSince`
-(the first transaction alert) and not adjusted by hand; `st.rolled[key] = {orig, since, done}`
+from `rollHour` (20 = 8 PM Chicago) also today's to tomorrow. Only lines planned from `liveOn`
+(the day sync was turned on) and not adjusted by hand; `st.rolled[key] = {orig, since, done}`
 counts the wait, and after `BANK_ROLL_MAX` (5) days the line goes to "Not at the bank yet"
 instead. Moves happen when the app is open (matching needs the projection); the result is the
 same as if they had happened at 8 PM. Early transactions: the unique exact-amount match uses the
