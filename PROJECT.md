@@ -60,6 +60,7 @@ check: `GET /api/health` (public) → `"storage": "sqlite"` (`"json"` means Node
 | `/api/bank/sync` | POST | read the inbox now (throttled 2 min, `{force}` 30 s); live: reconciles the days balance alerts close |
 | `/api/bank/live` | POST | `{on}`: leave the preview (and reconcile what it has) or go back to it |
 | `/api/bank/decide` | POST | live only: the page's matching decisions `{items:[{id, action: match\|extra\|ignore\|review, key, adjust, learn, auto}]}`; a `match` with `adjust` saves the adjustment like PUT /api/adjustments |
+| `/api/bank/roll` | POST | live only: `{items:[{key, action: roll\|came\|skip, moveTo, reset, …}]}` — a planned line not at the bank yet moves to today/tomorrow (`roll`), or goes back to its day (`came`) / to $0 (`skip`) and is never moved again |
 | `/api/bank/accounts` | POST | `{id, tracked}`: tick an account in/out of the balance |
 | `/api/reconciles` | PUT | correct an entry; every later entry moves by the same delta (their variances are kept), all in one transaction, each logged to `reconcile_edits` |
 
@@ -92,6 +93,13 @@ bank's figure, not a typed variance. Matching needs the projection, so the PAGE 
 apply to untouched transactions, so two open devices cannot both act. Transactions dated before
 the start (setup minus 3 days) are `history`, never matched. It starts as a preview (`st.live`
 false: `/decide` 409, nothing reconciled) until **Turn it on** (`POST /api/bank/live`).
+After matching, `bankRoll` moves planned lines the bank hasn't shown: past lines to today, and
+from `rollHour` (20 = 8 PM Chicago) also today's to tomorrow. Only lines planned from `txSince`
+(the first transaction alert) and not adjusted by hand; `st.rolled[key] = {orig, since, done}`
+counts the wait, and after `BANK_ROLL_MAX` (5) days the line goes to "Not at the bank yet"
+instead. Moves happen when the app is open (matching needs the projection); the result is the
+same as if they had happened at 8 PM. Early transactions: the unique exact-amount match uses the
+whole ±6-day window when the bank date is before the planned one.
 
 ## 4. The page
 

@@ -27,6 +27,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   const DOC = 'bank-email-alerts';
   const EVERY = 15 * 60e3;          // inbox check
   const KEEP_DAYS = 150;            // transactions older than this are dropped
+  const ROLL_HOUR = 20;             // from 8 PM (Chicago), a planned line the bank hasn't shown moves to tomorrow
   if (READY) console.log('[bank] reading alert emails sent to', env.ALERT_EMAIL);
 
   const addDay = (d, n) => { const t = new Date(d + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
@@ -40,7 +41,8 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
        accounts: {id: {id, name, mask, type, subtype, tracked, current}},
        balances: {account: {date: amount}},
        tx: {id: {id, account, date, amount (in = +), name, raw, sig, status, key?, label?, suggest?, decidedAt?}},
-       rules: {sig: label | '*extra' | '*ignore'}, unread: [{subject, date, bank}] }
+       rules: {sig: label | '*extra' | '*ignore'}, unread: [{subject, date, bank}],
+       rolled: {key: {orig, since, done?}} }  — planned lines moved on because the bank had not shown them
      status: history (before the start date; never matched) | new | review | matched | extra | ignored */
   function load() {
     const st = store.kvGet(DOC) || {};
@@ -50,7 +52,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       delete st.items;
     }
     return { live: false, cursor: null, startOn: addDay(localNow().date, -3), lastRun: null, error: null, lastReconciled: null,
-             accounts: {}, balances: {}, tx: {}, rules: {}, unread: [], ...st };
+             accounts: {}, balances: {}, tx: {}, rules: {}, unread: [], rolled: {}, ...st };
   }
   const save = st => store.kvSet(DOC, st);
 
@@ -111,6 +113,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     const today = localNow().date;
     for (const [k, t] of Object.entries(st.tx)) if (t.date < addDay(today, -KEEP_DAYS)) delete st.tx[k];
     for (const days of Object.values(st.balances)) for (const d of Object.keys(days)) if (d < addDay(today, -40)) delete days[d];
+    for (const [k, r] of Object.entries(st.rolled)) if (r.orig < addDay(today, -60)) delete st.rolled[k];
   }
 
   /* A day is reconciled once every ticked account that reports balances has one for it (each
@@ -156,7 +159,10 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   function status(reconciles) {
     const st = load(), mine = new Set(tracked(st));
     const all = Object.values(st.tx).filter(t => mine.has(t.account));
+    // Lines planned from the day the first transaction alert arrived on are expected at the bank.
+    const seen = all.filter(t => t.status !== 'history').map(t => t.date).sort();
     return {
+      now: localNow(), rollHour: ROLL_HOUR, txSince: seen[0] || null, rolled: st.rolled, startOn: st.startOn,
       ready: READY, missing, live: st.live, address: env.ALERT_EMAIL || '', lastRun: st.lastRun, error: st.error,
       lastReconciled: st.lastReconciled, unread: st.unread, would: st.live ? [] : reconcileDays(st, true),
       accounts: Object.values(st.accounts).map(a => ({ id: a.id, name: a.name, mask: a.mask, tracked: a.tracked, current: a.current })),
@@ -218,6 +224,39 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     return { done, adjustments: saved, shifted: [...finalAct].map(([date, actual]) => ({ date, actual })), extras: extras() };
   }
 
+  /* ---- planned lines the bank has not shown (the page finds them; see bankRoll in index.html) ----
+     roll : not at the bank yet — move it to today or tomorrow (nothing else is accepted).
+            `reset` restarts its count of days waited ("still coming").
+     came : it went through without an alert — back to its planned day and amount; never rolled again.
+     skip : it won't happen — amount 0 on its planned day; never rolled again. */
+  function roll(items) {
+    const saved = [], finalAct = new Map(), done = [];
+    store.tx(() => {
+      const st = load(), today = localNow().date, tomorrow = addDay(today, 1);
+      const claimed = new Set(Object.values(st.tx).filter(t => t.status === 'matched' && t.key).map(t => t.key));
+      for (const x of items) {
+        const key = String(x && x.key || ''), orig = key.slice(0, 10), r = st.rolled[key];
+        if (!KEY_RE.test(key) || claimed.has(key) || (r && r.done)) continue;
+        const projected = Number(x.projected), label = x.label, note = x.note;
+        let body;
+        if (x.action === 'roll') {
+          if (x.moveTo !== today && x.moveTo !== tomorrow) continue;
+          body = { label, amount: x.amount, projected, moveTo: x.moveTo, note };
+        } else if (x.action === 'came') body = { label, amount: projected, projected, moveTo: null, note: 'Went through (no bank alert)' };
+        else if (x.action === 'skip') body = { label, amount: 0, projected, moveTo: null, note: "Didn't happen" };
+        else continue;
+        const p = parseAdjustment(body, key);
+        if (p.error) throw new Error(p.error);
+        const o = saveAdjustment(p.row, store.getAdjustment(key));
+        o.shifted.forEach(s => finalAct.set(s.date, s.actual)); delete o.shifted; saved.push(o);
+        st.rolled[key] = x.action === 'roll' ? { orig, since: x.reset || !r ? today : r.since } : { orig, since: r ? r.since : today, done: true };
+        done.push(key);
+      }
+      save(st);
+    });
+    return { done, adjustments: saved, shifted: [...finalAct].map(([date, actual]) => ({ date, actual })) };
+  }
+
   /* ---- routes (the gate in server.js has already required a signed-in session) ---- */
   function routes(req, res, url) {
     const p = url.pathname, post = req.method === 'POST';
@@ -244,6 +283,12 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
         if (!load().live) return json(res, 409, { error: 'Preview: nothing is written to the planner yet.' });
         if (!Array.isArray(b.items) || !b.items.length || b.items.length > 300) return json(res, 400, { error: 'Nothing to save.' });
         try { return json(res, 200, { ...decide(b.items), bank: status() }); }
+        catch (e) { return json(res, 400, { error: e.message || 'Could not save.' }); }
+      }
+      if (p === '/api/bank/roll') {
+        if (!load().live) return json(res, 409, { error: 'Preview: nothing is written to the planner yet.' });
+        if (!Array.isArray(b.items) || !b.items.length || b.items.length > 300) return json(res, 400, { error: 'Nothing to save.' });
+        try { return json(res, 200, { ...roll(b.items), bank: status() }); }
         catch (e) { return json(res, 400, { error: e.message || 'Could not save.' }); }
       }
       json(res, 404, { error: 'Not found.' });

@@ -1319,7 +1319,7 @@ const nhCashToClose = () =>
 /* ---------- Scenario engine ---------- */
 const RECON = {};                           // date -> {actual, note}; loaded from /api/state
 // Bank sync state (see "Bank" below). BANKX is read by buildEvents, so it is declared up here.
-let BANK=null, BANKX=[], BANK_PREVIEW=[];
+let BANK=null, BANKX=[], BANK_PREVIEW=[], BANK_STUCK=[];
 /* Adjustments: key -> {amount, projected, note, label}. The actual amount of ONE projected
    transaction, entered in the Adjust & reconcile sheet (a paycheck that came in higher, a bill that
    was lower). Keyed by `date|label`, label without its trailing "(…)" detail — that part moves
@@ -4540,19 +4540,20 @@ function bankDecide(t, claimed){
   const c=bankCands(t, claimed), best=c[0];
   if(best && best.rule && best.ratio<=0.5) return {action:'match', cand:best};
   if(best && best.name && best.ratio<=0.10) return {action:'match', cand:best};
+  // The one line with that exact amount: within 3 days, or anywhere in the window when the bank is EARLY.
   const exact=c.filter(x=>x.diff<0.01);
-  if(exact.length===1 && exact[0].dd<=3) return {action:'match', cand:exact[0]};
+  if(exact.length===1 && (exact[0].dd<=3 || t.date<exact[0].day)) return {action:'match', cand:exact[0]};
   const near=c.find(x=>x.rule||x.name||x.ratio<=0.25);
   return near? {action:'review', cand:near} : {action:'extra'};
 }
 // The decision for "this transaction is that line": moves / re-amounts the line to match the bank.
 function bankMatch(t, e, auto, learn){
   const orig=e.key.slice(0,10), planned=e.adj? e.proj : e.a, x=ADJ[e.key];
-  const where = (x&&x.moveTo) || orig;
-  const same = e.a===t.amount && where===t.date;
+  const where = (x&&x.moveTo) || orig, rolled = !!BANK.rolled[e.key];   // moved on while waiting: replace that note
+  const same = !rolled && e.a===t.amount && where===t.date;
   return {id:t.id, action:'match', key:e.key, label:adjBase(e.l), auto, learn,
     adjust: same? null : {label:adjBase(e.l), amount:t.amount, projected:planned,
-      moveTo: t.date!==orig? t.date : null, note:(x&&x.note) || ('Bank: '+t.name).slice(0,500)}};
+      moveTo: t.date!==orig? t.date : null, note:(!rolled && x && x.note) || ('Bank: '+t.name).slice(0,500)}};
 }
 function bankAutoItems(){
   const claimed=new Set(BANK.claimed), fresh=BANK.open.filter(t=>t.status==='new'), items=[], done=new Set();
@@ -4570,6 +4571,38 @@ function bankAutoItems(){
     else items.push({id:t.id, action:d.action, auto:true, t});
   }
   return items;
+}
+/* A planned line the bank hasn't shown by 8 PM (the server's rollHour) moves to tomorrow; one that
+   is already past moves to today (before 8 PM) or tomorrow. Only lines planned from the day the
+   first transaction alert arrived on — before that the bank wasn't telling us anything — and never
+   a line you adjusted yourself. After BANK_ROLL_MAX days of waiting it stops and asks you instead. */
+const BANK_ROLL_MAX=5;
+function bankRollPlan(claimed){
+  const out={roll:[], stuck:[]};
+  if(!BANK || !BANK.ready || !BANK.txSince || !LAST_DATA.length) return out;
+  const to = BANK.now.hour>=BANK.rollHour? addD(BANK.now.date,1) : BANK.now.date;
+  const from = BANK.txSince>BANK.startOn? BANK.txSince : BANK.startOn;
+  for(const day of LAST_DATA){
+    if(day.d>=to) break;
+    for(const e of day.ev){
+      if(!e.key || !e.a || claimed.has(e.key) || e.l.startsWith('Bank: ')) continue;
+      const orig=e.key.slice(0,10), r=BANK.rolled[e.key], x=ADJ[e.key];
+      if(orig<from || (r&&r.done) || (x&&!r)) continue;
+      const line={key:e.key, label:adjBase(e.l), amount:e.a, projected:e.adj? e.proj : e.a, d:day.d, orig};
+      if(nDays(r? r.since : orig, to)>BANK_ROLL_MAX) out.stuck.push(line);
+      else out.roll.push({...line, action:'roll', moveTo:to, note:(x&&x.note) || `Not at the bank yet (planned ${shortDate(orig)})`});
+    }
+  }
+  return out;
+}
+async function bankRoll(){
+  const plan=bankRollPlan(new Set(BANK.claimed));
+  BANK_STUCK=plan.stuck;
+  if(plan.roll.length){
+    const out=await bankPost('/api/bank/roll',{items:plan.roll.map(({d,orig,...x})=>x)});
+    if(out){ bankApply(out); BANK_STUCK=bankRollPlan(new Set(BANK.claimed)).stuck; }
+  }
+  fillBank(); bankBadge();
 }
 async function bankPost(url, body){
   try{
@@ -4593,8 +4626,12 @@ function bankApply(out){
 async function bankRun(){
   if(!BANK || !BANK.ready || !LAST_DATA.length) return;
   const items=bankAutoItems();
-  if(!BANK.live){ BANK_PREVIEW=items; fillBank(); return; }
-  if(!items.length){ bankBadge(); return; }
+  if(!BANK.live){
+    const plan=bankRollPlan(new Set([...BANK.claimed, ...items.filter(x=>x.action==='match').map(x=>x.key)]));
+    BANK_PREVIEW=[...items, ...plan.roll.map(x=>({action:'roll', ...x, t:{date:x.d, name:x.label, amount:x.amount}}))];
+    fillBank(); return;
+  }
+  if(!items.length){ await bankRoll(); return; }
   const out=await bankPost('/api/bank/decide',{items:items.map(({t,...x})=>x)});
   if(out){
     const n=k=>items.filter(x=>x.action===k && out.done.includes(x.id)).length;
@@ -4602,6 +4639,7 @@ async function bankRun(){
     const bits=[n('match')&&`${n('match')} matched`, n('extra')&&`${n('extra')} added`, n('review')&&`${n('review')} to review`].filter(Boolean);
     if(bits.length) bankMsg('Bank: '+bits.join(', ')+'.');
   }
+  await bankRoll();
 }
 async function bankSync(force){
   if(!BANK || !BANK.ready) return;
@@ -4617,7 +4655,7 @@ function bankTake(out){
   if((out.reconciles||[]).length){ OPPC={key:null}; render(); }
 }
 const bankReviews = () => BANK? BANK.open.filter(t=>t.status==='review') : [];
-function bankBadge(){ const n=BANK && BANK.live? bankReviews().length : 0, b=$('recbadge');
+function bankBadge(){ const n=BANK && BANK.live? bankReviews().length+BANK_STUCK.length : 0, b=$('recbadge');
   b.hidden=!n; b.textContent=n>9?'9+':String(n||'');
   $('recbtn').setAttribute('aria-label', n? `Adjust & reconcile — ${n} bank transaction${n===1?'':'s'} to review` : "Reconcile a day's balance"); }
 const bankAgo = iso => { if(!iso) return 'never'; const m=Math.round((Date.now()-Date.parse(iso))/60000);
@@ -4635,7 +4673,7 @@ function fillBank(){
   const box=$('bankbox'); if(!box) return;
   if(!BANK){ box.hidden=true; return; }
   box.hidden=false;
-  const preview=!BANK.live, revs=bankReviews();
+  const preview=!BANK.live, revs=bankReviews(), stuck=preview? [] : BANK_STUCK;
   let h=`<div class="bankhead"><b>Bank</b><span class="banksub">`
     +(BANK.ready? 'Alerts to '+esc(BANK.address)+' · checked '+bankAgo(BANK.lastRun)+(preview?' · preview':'') : 'Not set up')+`</span>`
     +(BANK.ready? `<button type="button" class="ghostbtn" id="banksync">Check now</button>` : '')+`</div>`;
@@ -4659,10 +4697,22 @@ function fillBank(){
       <div class="bankact"><select aria-label="What is this?">${bankRowOptions(t)}</select>
         <button type="button" class="bankok">Save</button></div></div>`).join('');
   }
+  if(stuck.length){
+    h+=`<div class="bankgrp">Not at the bank yet · ${stuck.length}</div>`;
+    h+=stuck.map(x=>`<div class="bankrev" data-roll="${esc(x.key)}">
+      <div class="bankline"><span class="lab"><b>${esc(x.label)}</b><small>Planned ${longDate(x.orig)} · no alert since</small></span>
+        <span class="amt">${fmt(x.amount)}</span></div>
+      <div class="bankact"><select aria-label="What happened?">
+        <option value="roll">Still coming — wait longer</option>
+        <option value="came">It went through (no alert came)</option>
+        <option value="skip">It won't happen — remove it</option></select>
+        <button type="button" class="bankrollok">Save</button></div></div>`).join('');
+  }
   const row=(d,name,what,amt)=>`<div><span class="trunc">${shortDate(d)} · ${esc(name)} <i>${esc(what)}</i></span><span>${amt==null?'':fmt(amt)}</span></div>`;
   if(preview && BANK_PREVIEW.length){
     const say=x=> x.action==='match'? (x.adjust? (x.adjust.moveTo&&x.adjust.amount!==x.adjust.projected? 'move + adjust ' : x.adjust.moveTo? 'move ' : 'adjust ')+'→ '+x.label : '✓ '+x.label)
-      : x.action==='review'? 'ask you (maybe '+x.suggest.label+')' : x.action==='extra'? 'add as its own line' : 'ignore (transfer)';
+      : x.action==='review'? 'ask you (maybe '+x.suggest.label+')' : x.action==='extra'? 'add as its own line'
+      : x.action==='roll'? 'not at the bank yet → move to '+shortDate(x.moveTo) : 'ignore (transfer)';
     h+=bankList(`Would do · ${BANK_PREVIEW.length}`, BANK_PREVIEW.slice(0,40).map(x=>row(x.t.date,x.t.name,say(x),x.t.amount)).join(''), true);
   }
   if(BANK.unread.length)
@@ -4691,6 +4741,18 @@ $('bankbox').addEventListener('click',async e=>{
     const out=await bankPost('/api/bank/live',{on:b.id==='banklive'});
     if(out){ bankTake(out); if(out.live) await bankRun(); fillBank(); bankBadge();
       bankMsg(out.live? 'On. Alerts now update the planner.' : 'Back to preview: nothing is written.'); }
+    return;
+  }
+  if(b.classList.contains('bankrollok')){
+    const row=b.closest('[data-roll]'), x=BANK_STUCK.find(y=>y.key===row.dataset.roll), v=row.querySelector('select').value;
+    if(!x) return;
+    const to = BANK.now.hour>=BANK.rollHour? addD(BANK.now.date,1) : BANK.now.date;
+    b.disabled=true;
+    const out=await bankPost('/api/bank/roll',{items:[{key:x.key, label:x.label, amount:x.amount, projected:x.projected,
+      action:v, reset:true, moveTo:to, note:(ADJ[x.key]&&ADJ[x.key].note)||`Not at the bank yet (planned ${shortDate(x.orig)})`}]});
+    b.disabled=false;
+    if(out){ bankApply(out); BANK_STUCK=bankRollPlan(new Set(BANK.claimed)).stuck; fillBank(); bankBadge();
+      bankMsg(v==='roll'? `${x.label} moved to ${shortDate(to)}; it waits ${BANK_ROLL_MAX} more days.` : v==='came'? `${x.label} is back on ${shortDate(x.orig)}.` : `${x.label} removed (set to $0).`); }
     return;
   }
   if(b.classList.contains('bankok')){

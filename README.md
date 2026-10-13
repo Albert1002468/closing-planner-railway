@@ -82,7 +82,14 @@ What it does, every 15 minutes and whenever the app is opened:
 - **Matches each new transaction to the plan**: same line → nothing; on another day or a few %
   off → the line is moved/adjusted; not in the plan → added as its own line (`Bank: …`); unsure →
   **To review** (a badge on the check-mark button): pick the line once and that payee is
-  automatic from then on. A transfer between two ticked accounts is ignored.
+  automatic from then on. A transfer between two ticked accounts is ignored. A transaction that
+  comes **early** (up to 6 days before its planned day) moves its line to the day it came.
+- **Moves what hasn't shown up**: from 8 PM (Chicago), a planned line the bank hasn't shown
+  moves to tomorrow (one already past moves to today). After 5 days of waiting it stops and asks
+  under **Not at the bank yet**: still coming (wait longer), it went through without an alert (back
+  to its day), or it won't happen (set to $0). Lines you adjusted yourself are never moved, and
+  nothing moves until the first transaction alert has arrived — so have the bank alert on **every**
+  transaction (set the amount threshold to the minimum), or lines it never alerts on will wait here.
 
 ---
 
