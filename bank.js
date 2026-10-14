@@ -27,7 +27,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   const DOC = 'bank-email-alerts';
   const EVERY = 15 * 60e3;          // inbox check
   const KEEP_DAYS = 150;            // transactions older than this are dropped
-  const READER = 3;                 // bump when email.js learns a new alert format: the last 10 days are read again
+  const READER = 4;                 // bump when email.js learns a new alert format: the last 10 days are read again
   const ROLL_HOUR = 20;             // from 8 PM (Chicago), a planned line the bank hasn't shown moves to tomorrow
   if (READY) console.log('[bank] reading alert emails sent to', env.ALERT_EMAIL);
 
@@ -153,7 +153,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
         /* A day the bank reconciled follows the bank's latest figure for it (a later summary, or a
            corrected reader). One you reconciled yourself is never touched. */
         if (had.source !== 'bank' || Math.abs(had.actual - actual) < 0.005) continue;
-        const note = 'From the bank (balance alert)', at = new Date().toISOString();
+        const note = had.note || 'From the bank (balance alert)', at = new Date().toISOString();   // your note stays
         store.update({ date: D, actual, note });
         store.logEdit({ date: D, prev_actual: had.actual, prev_note: had.note, new_actual: actual, new_note: note,
                         reason: 'newer balance from the bank', edited_at: at });

@@ -174,13 +174,17 @@ function dateIn(text, year) {
   if (m) return `${m[3] || year}-${String(MONTHS[m[1].toLowerCase()]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
   return null;
 }
-// "As of 10/14/2026 at 03:38 a.m." — before 6 a.m. it is the previous day's close.
+// "As of 10/14/2026 at 03:38 a.m." — the hour it states (null without one); before 6 a.m. it is
+// the previous day's close.
+const asOfTime = text => { const i = text.search(/as of/i); if (i < 0) return null;
+  const t = /\b(\d{1,2}):\d{2}\s*([ap])\.?m\b/i.exec(text.slice(i, i + 80));
+  return t ? (+t[1] % 12) + (/p/i.test(t[2]) ? 12 : 0) : null; };
+const asOfMidday = text => { const h = asOfTime(text); return h != null && h >= 6 && h < 22; };
 function asOfDay(text, day) {
   const i = text.search(/as of/i); if (i < 0) return null;
-  const s = text.slice(i, i + 80), d = dateIn(s, day.slice(0, 4)); if (!d) return null;
-  const t = /\b(\d{1,2}):\d{2}\s*([ap])\.?m\b/i.exec(s);
-  const h = t ? (+t[1] % 12) + (/p/i.test(t[2]) ? 12 : 0) : 12;
-  return h < 6 ? addDay(d, -1) : d;
+  const d = dateIn(text.slice(i, i + 80), day.slice(0, 4)); if (!d) return null;
+  const h = asOfTime(text);
+  return h != null && h < 6 ? addDay(d, -1) : d;
 }
 /* Wells Fargo's daily "account update": the balances, then what POSTED since the last one, under
    "Withdrawals" / "Deposits" / "Checks" — each item its description followed by its $ amount.
@@ -234,12 +238,18 @@ function readAlert(msg, { localDate, localHour, allowUnsigned }) {
     const marks = []; while ((m = re.exec(all))) marks.push({ at: m.index, last4: m[1] });
     for (let i = 0; i < marks.length; i++) {
       const seg = all.slice(marks[i].at, i + 1 < marks.length ? marks[i + 1].at : undefined);
-      const b = /(?:available|current|ending|ledger|account)?\s*balance[^$\n]{0,40}\$\s?(-?[\d,]+\.\d{2})/i.exec(seg) || AMT.exec(seg);
+      /* "Your available balance is $7,510.04 for account ...5565": the figure can come BEFORE the
+         account, so with nothing after it, the last figure since the previous account counts. */
+      const before = [...all.slice(i ? marks[i - 1].at : 0, marks[i].at).matchAll(/\$\s?(-?[\d,]+\.\d{2})/g)];
+      const b = /(?:available|current|ending|ledger|account)?\s*balance[^$\n]{0,40}\$\s?(-?[\d,]+\.\d{2})/i.exec(seg) || AMT.exec(seg)
+             || before[before.length - 1];
       if (b && !accounts.some(a => a.last4 === marks[i].last4))
         accounts.push({ last4: marks[i].last4, type: typeOf(seg.slice(0, 120) + ' ' + msg.subject), balance: money(b[1]) });
     }
     if (!accounts.length) { const b = AMT.exec(all); if (b) accounts.push({ last4: '', type: typeOf(all), balance: money(b[1]) }); }
     if (!accounts.length) return { kind: 'unknown', bank: bank.name, subject: msg.subject, date: day };
+    // A balance "as of 2:15 p.m." is a moment in the day, not how it closed: not a reconcile.
+    if (asOfMidday(all)) return null;
     // "as of 10/12/2026" when it says; otherwise a morning email is the previous day's close.
     const date = asOfDay(all, day) || (localHour(sent) < 12 ? addDay(day, -1) : day);
     return { kind: 'balance', bank: bank.name, accounts, date };

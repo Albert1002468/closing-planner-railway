@@ -112,6 +112,9 @@ A re-read also clears stored balances and accounts nothing refers to any more. K
   that card's own alert and only one is kept (`src` alert/digest, `twin`); everything else (ACH such
   as NY Life) is dated the close day. This is the ONLY alert for ACH payments and deposits.
 - "Your balance is above $X" threshold alerts are ignored (not a day's close).
+- "Your available balance is $X for account ...5565, As of … 01:38 a.m." (figure before the account):
+  read as that account's close of the previous day. A balance "as of" 6 a.m.–10 p.m. is a moment in
+  the day, not a close, and is ignored. When the bank's figure for a day changes, your note on it stays.
 A bank-sourced reconcile follows the bank's latest figure for that day (logged as an edit).
 Matching compares a line's CURRENT amount (an adjusted line's own, never its old projection; $0
 lines are never candidates). On a day the owner reconciled by hand, an amount-only resemblance is
