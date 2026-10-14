@@ -113,6 +113,10 @@ A re-read also clears stored balances and accounts nothing refers to any more. K
   as NY Life) is dated the close day. This is the ONLY alert for ACH payments and deposits.
 - "Your balance is above $X" threshold alerts are ignored (not a day's close).
 A bank-sourced reconcile follows the bank's latest figure for that day (logged as an edit).
+Matching compares a line's CURRENT amount (an adjusted line's own, never its old projection; $0
+lines are never candidates). On a day the owner reconciled by hand, an amount-only resemblance is
+not a reason to ask: unless the name/rule points at a line it becomes an extra on that day (the
+typed balance already holds it). Open reviews are re-decided on every run.
 
 ## 4. The page
 

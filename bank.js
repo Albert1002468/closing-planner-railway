@@ -223,8 +223,8 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
      extra  : not in the plan; drawn as its own line.
      ignore : not money in or out of the plan (a transfer between your own accounts).
      review : the matcher was not sure; `suggest` is its best guess. Waits for you.
-     `learn` remembers the answer for this payee. `auto` decisions only apply to untouched (new)
-     transactions, so two open devices cannot both act on one. */
+     `learn` remembers the answer for this payee. `auto` decisions only apply to open (new, or
+     waiting for review) transactions, so two open devices cannot both act on one. */
   function decide(items) {
     const saved = [], finalAct = new Map(), done = [];
     store.tx(() => {
@@ -232,7 +232,8 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       const claimed = new Set(Object.values(st.tx).filter(t => t.status === 'matched' && t.key).map(t => t.key));
       for (const x of items) {
         const t = st.tx[String(x && x.id || '')]; if (!t) continue;
-        if (x.auto ? t.status !== 'new' : !['new', 'review', 'extra', 'ignored'].includes(t.status)) continue;
+        // `auto` only acts on what is still open (and never re-asks about one already waiting).
+        if (x.auto ? !(t.status === 'new' || (t.status === 'review' && x.action !== 'review')) : !['new', 'review', 'extra', 'ignored'].includes(t.status)) continue;
         const at = new Date().toISOString();
         if (x.action === 'match') {
           const key = String(x.key || '');

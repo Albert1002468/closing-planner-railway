@@ -4523,10 +4523,12 @@ function bankCands(t, claimed, win){
     if(day.d<lo) continue; if(day.d>hi) break;
     for(const e of day.ev){
       if(!e.key || claimed.has(e.key) || e.l.startsWith('Bank: ')) continue;
+      /* Compared with what the line says NOW: an adjusted line's own amount, not its old projection
+         (a $330 line you set to $0 is not "$6.51 off" a $6.51 purchase). A $0 line is never offered. */
       const planned = e.adj? e.proj : e.a;
-      if(Math.sign(planned)!==Math.sign(t.amount)) continue;
-      const diff=Math.min(Math.abs(e.a-t.amount), Math.abs(planned-t.amount));
-      out.push({e, day:day.d, planned, diff, ratio:diff/Math.max(1,Math.abs(planned)),
+      if(!e.a || Math.sign(e.a)!==Math.sign(t.amount)) continue;
+      const diff=Math.abs(e.a-t.amount);
+      out.push({e, day:day.d, planned, diff, ratio:diff/Math.max(1,Math.abs(e.a)),
                 rule:BANK.rules[t.sig]===adjBase(e.l), name:bankNameHit(t,e.l), dd:Math.abs(nDays(day.d,t.date))});
     }
   }
@@ -4543,7 +4545,10 @@ function bankDecide(t, claimed){
   // The one line with that exact amount: within 3 days, or anywhere in the window when the bank is EARLY.
   const exact=c.filter(x=>x.diff<0.01);
   if(exact.length===1 && (exact[0].dd<=3 || t.date<exact[0].day)) return {action:'match', cand:exact[0]};
-  const near=c.find(x=>x.rule||x.name||x.ratio<=0.25);
+  /* On a day you reconciled yourself, your balance already holds it: unless its NAME looks like a
+     planned line, it goes in as its own line on that day — a similar amount alone is no reason to ask. */
+  const mine = RECON[t.date] && RECON[t.date].source!=='bank';
+  const near=c.find(x=>x.rule||x.name||(!mine && x.ratio<=0.25));
   return near? {action:'review', cand:near} : {action:'extra'};
 }
 // The decision for "this transaction is that line": moves / re-amounts the line to match the bank.
@@ -4557,6 +4562,12 @@ function bankMatch(t, e, auto, learn){
 }
 function bankAutoItems(){
   const claimed=new Set(BANK.claimed), fresh=BANK.open.filter(t=>t.status==='new'), items=[], done=new Set();
+  // Still waiting for you: decided again — the rules may have learned, or the day been reconciled since.
+  for(const t of BANK.open.filter(t=>t.status==='review')){
+    const d=bankDecide(t, claimed);
+    if(d.action==='match'){ claimed.add(d.cand.e.key); items.push({...bankMatch(t,d.cand.e,true,false), t}); }
+    else if(d.action!=='review') items.push({id:t.id, action:d.action, auto:true, t});
+  }
   for(const t of fresh){                         // a transfer between your own accounts nets to zero
     if(done.has(t.id)) continue;
     const u=fresh.find(v=>v!==t && !done.has(v.id) && v.account!==t.account && v.amount===-t.amount

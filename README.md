@@ -87,7 +87,9 @@ What it does, every 15 minutes and whenever the app is opened:
 - **Matches each new transaction to the plan**: same line → nothing; on another day or a few %
   off → the line is moved/adjusted; not in the plan → added as its own line (`Bank: …`); unsure →
   **To review** (a badge on the check-mark button): pick the line once and that payee is
-  automatic from then on. A transfer between two ticked accounts is ignored. A transaction that
+  automatic from then on. A transfer between two ticked accounts is ignored.
+  On a day you reconciled yourself, a purchase that doesn't clearly match a planned line by name is
+  simply added on that day — your balance for it doesn't change. A transaction that
   comes **early** (up to 6 days before its planned day) moves its line to the day it came.
 - **Moves what hasn't shown up**: from 8 PM (Chicago), a planned line the bank hasn't shown
   moves to tomorrow (one already past moves to today). Lines that are waiting are listed under
