@@ -27,7 +27,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   const DOC = 'bank-email-alerts';
   const EVERY = 15 * 60e3;          // inbox check
   const KEEP_DAYS = 150;            // transactions older than this are dropped
-  const READER = 4;                 // bump when email.js learns a new alert format: the last 10 days are read again
+  const READER = 5;                 // bump when email.js learns a new alert format: the last 10 days are read again
   const ROLL_HOUR = 20;             // from 8 PM (Chicago), a planned line the bank hasn't shown moves to tomorrow
   if (READY) console.log('[bank] reading alert emails sent to', env.ALERT_EMAIL);
 
@@ -100,7 +100,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
           account: l.card ? acct(a.bank, l.card, 'checking') : acct(a.bank, a.accounts[0].last4, a.accounts[0].type) }));
       }
       else txs.push({ id, src: 'alert', account: acct(a.bank, a.last4, a.type),
-                      date: a.date, amount: a.amount, name: a.name, raw: a.name });
+                      date: a.date, amount: a.amount, name: a.name, raw: a.name, ...(a.early ? { early: true } : {}) });
     }
     return { cursor: got.cursor, accounts: [...accounts.values()], txs, balances, unread, notTx };
   }
@@ -117,13 +117,17 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(t.date)) || !Number.isFinite(t.amount)) continue;
       const prev = st.tx[t.id];
       /* The same purchase, told twice: by its card alert and again in the next day's summary. The
-         first one told stands; the other is dropped (`twin` keeps one alert from pairing twice). */
+         first one told stands; the other is dropped (`twin` keeps one alert from pairing twice).
+         An Early Pay Day deposit is told days before it posts: its summary line can come up to 5
+         days after it. */
       if (!prev) {
+        const near = (o, x) => { const d = (Date.parse(x.date) - Date.parse(o.date)) / 864e5;
+          return Math.abs(d) <= 1 || (o.early && x.src === 'digest' && d >= 0 && d <= 5) || (x.early && o.src === 'digest' && d <= 0 && d >= -5); };
         const twin = Object.values(st.tx).find(o => o.src && o.src !== t.src && o.account === t.account && o.amount === r2(t.amount)
-          && Math.abs(Date.parse(o.date) - Date.parse(t.date)) <= 864e5 && (!o.twin || o.twin === t.id));
+          && near(o, t) && (!o.twin || o.twin === t.id));
         if (twin) { twin.twin = t.id; continue; }
       }
-      st.tx[t.id] = { ...(prev || {}), id: t.id, src: t.src, account: t.account, date: t.date, amount: r2(t.amount),
+      st.tx[t.id] = { ...(prev || {}), id: t.id, src: t.src, ...(t.early ? { early: true } : {}), account: t.account, date: t.date, amount: r2(t.amount),
         name: String(t.name || t.raw || 'Bank transaction').slice(0, 120), raw: String(t.raw || '').slice(0, 200),
         sig: sigOf(t.raw || t.name), status: prev ? prev.status : (t.date < st.startOn ? 'history' : 'new') };
     }

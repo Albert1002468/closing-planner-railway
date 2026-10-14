@@ -260,12 +260,19 @@ function readAlert(msg, { localDate, localHour, allowUnsigned }) {
   const amt = Math.abs(money(a[1])), inbound = IN_WORDS.test(msg.subject) || (!/purchase|withdrawal|debit|charge|payment to|sent/i.test(msg.subject) && IN_WORDS.test(msg.text));
   // "Merchant details at CVS/PHARMACY #11092 in OKLAHOMA CITY UNITED STATES"
   const merchant = /merchant(?: details| name)?:?\s+(?:at\s+)?(.+?)(?=\s+in\s+[A-Z0-9][A-Za-z0-9 .'()-]*?(?:UNITED STATES|USA|\bUS\b)|\s+Date\b|\n|$)/i.exec(msg.text);
-  const who = merchant || /\b(?:at|to|from|with|by|merchant:?)\s+([A-Za-z0-9][\w &*'.#\/-]{1,40}?)(?=\s+(?:on|was|for|using|has|in the amount|from|exceeded)\b|[.,;](?=\s|$)|\n|$)/i.exec(msg.subject + '\n' + msg.text);
+  // "Deposited by: COTERRA ENERGY I PAYROLL 261016 930645528717CXK …" — the payer, without its codes.
+  const payer = /\bdeposited by:?\s+(.+)/i.exec(msg.text);
+  if (payer) { const cut = payer[1].search(/\s\d+(?:\s|$)/); if (cut >= 6) payer[1] = payer[1].slice(0, cut); }
+  const who = merchant || payer || /\b(?:at|to|from|with|by|merchant:?)\s+([A-Za-z0-9][\w &*'.#\/-]{1,40}?)(?=\s+(?:on|was|for|using|has|in the amount|from|exceeded)\b|[.,;](?=\s|$)|\n|$)/i.exec(msg.subject + '\n' + msg.text);
   const l4 = LAST4.exec(all);
   // The alert's own "Date 10/13/2026 04:17 PM" when it has one (a late email is still that day's).
   const when = /\bDate:?\s+(\d{1,2}\/\d{1,2}\/\d{4})/.exec(msg.text);
+  /* Wells Fargo "Early Pay Day" ("You just got paid early!"): usable today, but it posts — and the
+     morning email lists it — a day or two later (`early`, see the twin rule in bank.js). */
+  const early = inbound && /paid early|early pay day/i.test(all);
   return { kind: 'tx', bank: bank.name, last4: l4 ? l4[1] : '', type: typeOf(all),
-           amount: inbound ? amt : -amt, name: (who ? who[1] : msg.subject).trim().slice(0, 80), date: (when && dateIn(when[1])) || day };
+           amount: inbound ? amt : -amt, name: (who ? who[1] : msg.subject).trim().slice(0, 80), date: (when && dateIn(when[1])) || day,
+           ...(early ? { early: true } : {}) };
 }
 const addDay = (d, n) => { const t = new Date(d + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const msgId = (msg, uid) => 'em-' + crypto.createHash('sha1').update(String(msg.headers['message-id'] || uid)).digest('hex').slice(0, 20);
