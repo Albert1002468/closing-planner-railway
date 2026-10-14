@@ -131,12 +131,15 @@ The sheet opens on what matters now:
   what it couldn't decide (which planned line a payment is) and lines that never showed up at the
   bank. Otherwise it says nothing needs you.
 - **Your days**, newest first — tomorrow, today and the week before (**Earlier days** / **Later
-  days** for more, **Go to day** for any day, or **search** by name or note). Each day shows its
+  days** for more, **Go to day** for any day, or **search** by name or note — best match first
+  (a name that starts with what you typed, then one containing it, then a match in a note only),
+  and among equals the one nearest today). Each day shows its
   balance and where it came from (*From the bank*, *Reconciled by you*, or *Projected*), and its
   lines, each marked with what the bank said: **bank ✓** (it went through as planned, or was moved
   / re-amounted to match), **from the bank** (a purchase not in the plan), **waiting** (not at the
   bank yet).
-- At the bottom: what the bank matched lately, bank accounts & settings, and every change, newest first.
+- At the bottom: bank accounts & settings, and **History** — every balance, adjustment and bank
+  decision by day, newest first, each marked *bank* or *you*; tap one to open it in its day.
 
 Tap anything to change it; the editor opens right under it:
 
@@ -148,8 +151,8 @@ Tap anything to change it; the editor opens right under it:
   one, and every reconciled balance moves by the net change up to its date (moving a +$3,300
   rent off a reconciled day lowers that day's balance by $3,300; its variance is unchanged).
   The preview says which reconciled balances will move; each move is in the audit log.
-- **Several at once**: on a day with two or more lines tap **Select to move**, tick the lines (or
-  **Select all**), step **Move to** to the day they cleared and tap **Move**. One save (`PUT
+- **Several at once**: open one of the day's lines and tap **Move several lines from this day**,
+  tick the others (or **Select all**), step **Move to** to the day they cleared and tap **Move**. One save (`PUT
   /api/adjustments` with `items`): each keeps its amount and note, reconciled variances stay as
   entered, and moving a line back to its own day clears it.
 - **A day's balance** (the top of its card): *Reconcile ›* when it is eligible (enter the

@@ -349,7 +349,7 @@
   .adjlist .adjitem.on{background:var(--surface-1);border-color:var(--s1);
     box-shadow:0 0 0 3px color-mix(in srgb,var(--s1) 16%,transparent)}
   .adjlist .none{font-size:13px;color:var(--muted);padding:4px 0}
-  #adjmulti[hidden],#adjedit[hidden],#daybar[hidden],#adjmovefld[hidden],#adjclear[hidden]{display:none}
+  #adjmany[hidden],#adjmulti[hidden],#adjedit[hidden],#daybar[hidden],#adjmovefld[hidden],#adjclear[hidden]{display:none}
   .rechead{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .ghostbtn{background:none;border:0;color:var(--s1);font:inherit;font-size:14px;font-weight:600;
             padding:4px 0 4px 10px;cursor:pointer}
@@ -422,8 +422,15 @@
   .bankgrp.need{color:var(--crit);font-weight:650}
   .bankfoot .bankbox{margin:14px 0 0}
   .bankfoot .bankmore:first-child{margin-top:0}
-  details.reclist summary{cursor:pointer;color:var(--s1);font-size:12.5px;font-weight:600}
-  details.reclist[open] summary{margin-bottom:6px}
+  .manybtn{display:block;width:100%;margin-top:10px;background:none;border:1px dashed var(--axis);border-radius:10px;
+           color:var(--s1);font:inherit;font-size:13px;font-weight:600;padding:8px;cursor:pointer}
+  .histbox{border:1px solid var(--ring);border-radius:12px;padding:10px 12px;margin:10px 0 0;background:var(--page);font-size:13px}
+  .histbox summary{cursor:pointer;color:var(--s1);font-size:12.5px;font-weight:600}
+  .histbox[open] summary{margin-bottom:4px}
+  .adjlist.hist{gap:3px}
+  .adjlist.hist .adjitem{padding:8px 10px;font-size:13px;border-radius:10px}
+  .adjlist.hist .grp{margin:10px 0 2px}
+  .adjlist.hist .daymore{margin-top:8px}
   /* ---- Bank ---- */
   .bankbox{border:1px solid var(--ring);border-radius:12px;padding:10px 12px;margin:0 0 12px;background:var(--page);font-size:13px}
   .bankhead{display:flex;align-items:center;gap:8px}
@@ -1289,10 +1296,11 @@
               <button id="adjclear" class="ghost">Use projection</button>
               <span class="recmsg" id="adjmsg"></span>
             </div>
+            <button type="button" class="manybtn" id="adjmany" hidden>Move several lines from this day</button>
           </div>
           </div>
           <div class="bankfoot" id="bankfoot"></div>
-          <details class="reclist" id="adjrecent"><summary>Every change, newest first</summary><div id="adjrecentlist"></div></details>
+          <details class="histbox" id="adjrecent"><summary>History</summary><div class="adjlist hist" id="adjrecentlist"></div></details>
           <button type="button" class="signout" id="signout">Sign out of this device</button>
         </div>
       </div>
@@ -4084,8 +4092,6 @@ function refreshTrigger(){ $('recbtn').hidden = false; }
      - rec : a reconciled day — change its variance (PUT /api/reconciles, which moves every later
              reconcile with it so their variances stay as entered)
    Every row says what it is in a second line, so nothing has to be tapped to be identified. */
-const REC_PER=8;
-let RECPAGE=0;
 let ADJSEL=null, ADJSIGN=-1;
 const SEARCH_MAX=30;
 const adjDay = d => LAST_DATA.find(x=>x.d===d);
@@ -4139,20 +4145,25 @@ function itemRow(e, date, withDate){
   return `<button type="button" class="adjitem${cls}${e.key===ADJSEL?' on':''}" data-key="${esc(e.key)}" data-date="${date}"`
     +` title="${esc(title+' — '+sub)}">${lab}${amt}</button>`;
 }
+/* Best match first, then nearest today: a name that starts with what you typed beats one that only
+   contains it, which beats a match in the note alone; among equals, today, then the days either side. */
 function searchHits(q){
-  const words=q.toLowerCase().split(/\s+/).filter(Boolean);
-  const match=t=>{ t=t.toLowerCase(); return words.every(w=>t.includes(w)); };
+  const words=q.toLowerCase().split(/\s+/).filter(Boolean), t=dd(TODAY_ISO);
+  const fit=(name, note)=>{
+    name=name.toLowerCase(); const all=name+' '+note.toLowerCase();
+    if(!words.every(w=>all.includes(w))) return -1;
+    if(!words.every(w=>name.includes(w))) return 2;                       // only in the note
+    return name.split(/[^a-z0-9]+/).some(x=>x.startsWith(words[0]))? 0 : 1;
+  };
   const hits=[];
   for(const day of LAST_DATA){
-    for(const e of day.ev) if(e.key && match(e.l+' '+((ADJ[e.key]&&ADJ[e.key].note)||'')))
-      hits.push({d:day.d, e:{...e, kind:'tx'}});
-    if(day.rec && RECON[day.d] && match('reconciled balance '+(RECON[day.d].note||'')))
-      hits.push({d:day.d, e:recItem(day)});
+    for(const e of day.ev) if(e.key){ const f=fit(adjBase(e.l).replace(/^Bank: /,''), (ADJ[e.key]&&ADJ[e.key].note)||'');
+      if(f>=0) hits.push({d:day.d, e:{...e, kind:'tx'}, f}); }
+    if(day.rec && RECON[day.d]){ const f=fit('reconciled balance', RECON[day.d].note||''); if(f>=0) hits.push({d:day.d, e:recItem(day), f}); }
   }
-  // The ones nearest today are the ones worth adjusting; show them in date order.
-  const t=dd(TODAY_ISO);
-  const near=hits.slice().sort((a,b)=>Math.abs(dd(a.d)-t)-Math.abs(dd(b.d)-t)).slice(0,SEARCH_MAX)
-                 .sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+  // Past and future count alike by distance; on a tie the coming day goes first.
+  const far=h=>Math.abs(dd(h.d)-t)*2 + (dd(h.d)<t? 1 : 0);
+  const near=hits.sort((a,b)=>a.f-b.f || far(a)-far(b)).slice(0,SEARCH_MAX);
   return {near, total:hits.length};
 }
 /* The days: from ADJFWD days after the focus day (today, or the day you went to) back ADJBACK days,
@@ -4195,7 +4206,7 @@ function dayCard(date){
   const multi = MULTI && MULTI.day===date;
   const tools = multi? `<div class="adjtools"><span>${MULTI.keys.size} of ${txs.length} selected</span>`
                         +`<button type="button" data-tool="all" data-date="${date}">${MULTI.keys.size===txs.length?'Select none':'Select all'}</button></div>`
-              : txs.length>1 && !MULTI? `<div class="adjtools"><span></span><button type="button" data-tool="select" data-date="${date}">Select to move</button></div>` : '';
+              : '';
   return `<div class="daycard${date===today?' today':''}" data-day="${date}">${dayHead(date)}`
     +(txs.length? `<div class="daylines">${txs.map(e=>itemRow(e,date)).join('')}</div>` : '')
     +tools+`</div>`;
@@ -4212,7 +4223,7 @@ function fillAdj(){
     if(MULTI) MULTI=null;
     const {near,total}=searchHits(q);
     $('adjlist').innerHTML = near.length
-      ? `<div class="grp">${total} match${total===1?'':'es'}${total>near.length?` · ${near.length} nearest today`:''}</div>`
+      ? `<div class="grp">${total} match${total===1?'':'es'} · best first, then nearest today${total>near.length?` · top ${near.length}`:''}</div>`
         + near.map(h=>itemRow(h.e, h.d, true)).join('')
       : '<div class="none">Nothing matches.</div>';
     $('adjedit').hidden=true; $('adjmulti').hidden=true;
@@ -4252,6 +4263,8 @@ function fillEditor(sel){
   $('adjout').textContent = tx? '− Out' : '− Short';
   $('adjin').textContent  = tx? '+ In'  : '+ Over';
   $('adjmovefld').hidden = !tx;
+  // Several of this day's lines at once: from any one of them (select mode starts with it ticked).
+  $('adjmany').hidden = !tx || adjItems(date).filter(e=>e.kind==='tx').length<2 || !!$('adjq').value.trim();
   $('adjclear').hidden = !tx;
   $('adjsave').textContent = sel.kind==='new'? 'Save reconcile' : fromBank? 'Save note' : sel.kind==='rec'? 'Save variance' : 'Save adjustment';
   if(!fillAdj.keep){
@@ -4268,36 +4281,45 @@ function fillEditor(sel){
   $('adjclear').disabled=!sel.adj;
   adjPreview();
 }
-// Every reconcile and adjustment on record, newest first, a page at a time: tap one to open it.
+/* History: every balance, adjustment and bank decision, newest day first, each marked as the bank's
+   or yours. Tap one to open it in its day. */
+const REC_PER=12;
+let RECPAGE=0;              // how many extra pages are shown ("Show more")
+function historyRows(){
+  const claimed=new Set(BANK? BANK.claimed||[] : []), rolled=BANK&&BANK.rolled||{}, out=[];
+  Object.keys(RECON).forEach(d=>out.push({t:'rec', d, bank:RECON[d].source==='bank'}));
+  Object.keys(ADJ).forEach(k=>out.push({t:'adj', k, d:ADJ[k].moveTo||ADJ[k].date, bank:claimed.has(k)||!!rolled[k]}));
+  if(BANK && BANK.live){
+    BANKX.forEach(x=>out.push({t:'extra', d:x.date, x, bank:true}));
+    (BANK.recent||[]).filter(t=>t.status==='ignored').forEach(x=>out.push({t:'ign', d:x.date, x, bank:true}));
+  }
+  return out.sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:(a.t==='rec'?-1:b.t==='rec'?1:0));
+}
 function fillRecent(){
-  const all=[...Object.keys(RECON).map(d=>({t:'rec', d})),
-             ...Object.keys(ADJ).map(k=>({t:'adj', k, d:ADJ[k].moveTo||ADJ[k].date}))]
-    .sort((a,b)=>a.d<b.d?1:a.d>b.d?-1:(a.t==='rec'?1:-1));
-  const pages=Math.max(1,Math.ceil(all.length/REC_PER));
-  RECPAGE=Math.min(Math.max(0,RECPAGE),pages-1);
-  const rows=all.slice(RECPAGE*REC_PER,(RECPAGE+1)*REC_PER);
-  const pager = all.length>REC_PER
-    ? `<div class="recpg"><button type="button" data-p="-1" aria-label="Newer"${RECPAGE===0?' disabled':''}>&lsaquo;</button>`
-      +`<span>${RECPAGE*REC_PER+1}–${RECPAGE*REC_PER+rows.length} of ${all.length}</span>`
-      +`<button type="button" data-p="1" aria-label="Older"${RECPAGE>=pages-1?' disabled':''}>&rsaquo;</button></div>`
-    : '';
-  const row=(attr, on, b, small, right, col)=>`<div class="recpick${on?' on':''}" ${attr} role="button" tabindex="0" title="${esc(b+' — '+small)}">`
-    +`<span class="lab"><b>${esc(b)}</b><small>${esc(small)}</small></span><span style="color:var(${col})">${right}</span></div>`;
-  $('adjrecentlist').innerHTML = rows.length
-    ? rows.map(r=>{
-        if(r.t==='rec'){
-          const day=adjDay(r.d), x=RECON[r.d], v=day&&day.rec? day.rec.delta : null;
-          return row(`data-rec="${r.d}"`, ADJSEL==='rec|'+r.d, `${shortDate(r.d)} · Reconciled ${fmt(x.actual)}`,
-            (day&&day.rec? `projected ${fmt(day.rec.projected)}` : 'reconciled')+(x.note? ` · “${x.note}”` : ''),
-            v==null? '' : signed(v), varColor(v||0));
-        }
-        const x=ADJ[r.k], diff=+(x.amount-x.projected).toFixed(2);
-        return row(`data-adj="${esc(r.k)}"`, ADJSEL===r.k, `${shortDate(x.date)} · ${x.label}`,
-          `${fmt(x.amount)}`+(diff? ` · projected ${fmt(x.projected)}` : ' · as projected')
-            +(x.moveTo? ` · cleared ${shortDate(x.moveTo)}` : '')+(x.note? ` · “${x.note}”` : ''),
-          diff? signed(diff) : 'moved', diff>=0? '--vpos' : '--vneg');
-      }).join('')+pager
-    : '<div class="n"><span>Nothing reconciled or adjusted yet.</span><span></span></div>';
+  const all=historyRows(), n=(RECPAGE+1)*REC_PER, rows=all.slice(0,n);
+  const who=b=> b? '<span class="adjchip ok">bank</span>' : '<span class="adjchip">you</span>';
+  const row=(attr, chip, title, sub, right, col)=>`<button type="button" class="adjitem" ${attr} title="${esc(title+' — '+sub)}">`
+    +`<span class="lab"><b>${chip}${esc(title)}</b><small>${esc(sub)}</small></span>`
+    +`<span class="amt"${col?` style="color:var(${col})"`:''}>${right}</span></button>`;
+  let h='', last=null;
+  for(const r of rows){
+    if(r.d!==last){ h+=`<div class="grp">${esc(longDate(r.d))}</div>`; last=r.d; }
+    if(r.t==='rec'){
+      const day=adjDay(r.d), x=RECON[r.d], v=day&&day.rec? day.rec.delta : null;
+      h+=row(`data-rec="${r.d}"`, who(r.bank), `Balance ${fmt(x.actual)}`,
+        (r.bank? 'From the bank' : 'Reconciled by you')+(x.note? ` · “${x.note}”` : ''), v==null? '' : v? signed(v)+' vs plan' : 'as planned', varColor(v||0));
+    } else if(r.t==='adj'){
+      const x=ADJ[r.k], diff=+(x.amount-x.projected).toFixed(2), moved=x.moveTo && x.moveTo!==x.date;
+      const what=[moved? `moved from ${shortDate(x.date)}` : '', diff? `planned ${fmt(x.projected)}` : '', x.note? `“${x.note}”` : ''].filter(Boolean).join(' · ');
+      h+=row(`data-adj="${esc(r.k)}"`, who(r.bank), x.label, what || 'as planned', fmt(x.amount));
+    } else if(r.t==='extra'){
+      h+=row(`data-day="${r.d}"`, who(true), r.x.name, 'Added — not in the plan', fmt(r.x.amount));
+    } else {
+      h+=row(`data-day="${r.d}"`, who(true), r.x.name, 'Ignored — a transfer between your accounts', fmt(r.x.amount), '--muted');
+    }
+  }
+  $('adjrecentlist').innerHTML = !all.length? '<div class="none">Nothing reconciled or adjusted yet.</div>'
+    : h+(all.length>n? `<button type="button" class="daymore" data-p="more">Show more · ${all.length-n} older</button>` : '');
 }
 function adjSign(sign, quiet){
   ADJSIGN=sign;
@@ -4372,7 +4394,8 @@ function showDay(date){
 function openItem(date, key){
   $('adjq').value=''; showDay(date); ADJSEL=key; $('adjmsg').textContent='';
   fillAdj();
-  if(!$('adjedit').hidden) requestAnimationFrame(()=>$('adjedit').scrollIntoView({block:'nearest', behavior:'smooth'}));
+  const at = !$('adjedit').hidden? $('adjedit') : $('adjlist').querySelector(`[data-day="${date}"]`);
+  if(at) requestAnimationFrame(()=>at.scrollIntoView({block: key? 'nearest' : 'start', behavior:'smooth'}));
 }
 const clearDayMsg=()=>{ $('daymsg').textContent=''; };
 ['adjlist','adjrecent'].forEach(id=>$(id).addEventListener('click',clearDayMsg,true));
@@ -4462,14 +4485,17 @@ $('multisave').addEventListener('click',async ()=>{
   finally{ btn.disabled=false; btnLoading(btn,false); }
 });
 function recentPick(e){
-  const p=e.target.closest('button[data-p]');
-  if(p){ if(!p.disabled){ RECPAGE+=+p.dataset.p; fillRecent(); } return true; }
-  const r=e.target.closest('[data-rec]'); if(r){ openItem(r.dataset.rec, 'rec|'+r.dataset.rec); return true; }
-  const a=e.target.closest('[data-adj]'); if(a){ const x=ADJ[a.dataset.adj]; if(x) openItem(x.moveTo||x.date, x.key); return true; }
-  return false;
+  if(e.target.closest('[data-p]')){ RECPAGE++; fillRecent(); return; }
+  const r=e.target.closest('[data-rec]'); if(r){ openItem(r.dataset.rec, 'rec|'+r.dataset.rec); return; }
+  const a=e.target.closest('[data-adj]'); if(a){ const x=ADJ[a.dataset.adj]; if(x) openItem(x.moveTo||x.date, x.key); return; }
+  const d=e.target.closest('[data-day]'); if(d) openItem(d.dataset.day, null);
 }
-$('adjrecent').addEventListener('click',recentPick);
-$('adjrecent').addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ') && recentPick(e)) e.preventDefault(); });
+$('adjrecentlist').addEventListener('click',recentPick);
+$('adjmany').addEventListener('click',()=>{
+  const date=$('adjdate').value; MULTI={day:date, keys:new Set(ADJSEL? [ADJSEL] : [])};
+  ADJSEL=null; $('multito').value=''; $('multimsg').textContent=''; fillAdj();
+  requestAnimationFrame(()=>$('adjmulti').scrollIntoView({block:'nearest', behavior:'smooth'}));
+});
 $('adjout').addEventListener('click',()=>adjSign(-1));
 $('adjin').addEventListener('click',()=>adjSign(1));
 $('adjmove').addEventListener('change',adjPreview);
@@ -4832,10 +4858,6 @@ function fillBank(){
   if(BANK.unread.length)
     f+=bankList(`Alerts it could not read · ${BANK.unread.length}`, `<p class="bankhint">Send me one of these (account numbers hidden) so it can learn the wording.</p>`
       +BANK.unread.map(u=>`<div><span class="trunc">${u.date?shortDate(u.date)+' · ':''}${esc(u.bank)}: ${esc(u.subject)}</span></div>`).join(''));
-  if(!preview && BANK.recent.length){
-    const say=t=> t.status==='matched'? '→ '+(t.label||'planned line') : t.status==='extra'? 'own line' : 'ignored';
-    f+=bankList('What the bank matched lately', BANK.recent.map(t=>row(t.date,t.name,say(t),t.amount)).join(''));
-  }
   f+=`<details class="bankmore"><summary>Bank accounts &amp; settings</summary>`
     +(BANK.accounts.length? BANK.accounts.map(a=>`<label class="bankacct"><input type="checkbox" data-acct="${esc(a.id)}"${a.tracked?' checked':''}>
       <span>${esc(a.name)}${a.mask?' ··'+esc(a.mask):''}</span><span class="amt">${a.current==null?'':fmt(a.current)}</span></label>`).join('')
