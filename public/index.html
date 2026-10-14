@@ -401,6 +401,34 @@
   .daycard.arrive{animation:arrive 1.6s ease-in-out 1}
   @media (prefers-reduced-motion: reduce){ .daycard.arrive{animation:none;border-color:var(--s1)} }
   .daymore.home{border-style:solid;color:var(--ink)}
+  /* Phone: one column — the bank on top, then the days, then settings and history. */
+  #recmodal #stageform{display:flex;flex-direction:column}
+  .recmain,.recside{display:contents}
+  #stageform>.rechead,#stageform>.hint{order:0}
+  #bankbox{order:1} .daystools{order:2} #adjlist{order:3} #daymsg{order:4} #adjpark{order:5}
+  #bankfoot{order:6} #adjrecent{order:7} #signout{order:8}
+  /* Desktop: nearly the whole window, two columns that scroll on their own. */
+  @media (min-width:900px){
+    #recmodal .sheet{width:min(1240px,100%);height:calc(100vh - 28px);height:calc(100dvh - 28px);
+                     overflow:hidden;display:flex;flex-direction:column}
+    #recmodal #stageform{flex:1;min-height:0;display:grid;grid-template-columns:minmax(320px,380px) minmax(0,1fr);
+                         grid-template-rows:auto auto minmax(0,1fr);column-gap:22px}
+    #stageform>.rechead,#stageform>.hint{grid-column:1/-1}
+    .recside,.recmain{display:block;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;grid-row:3;
+                      padding:2px 4px 4px;margin:-2px -4px 0;overscroll-behavior:contain}
+    .recside{grid-column:1} .recmain{grid-column:2}
+    .recside #bankbox{margin-top:0}
+    .recmain .daystools{position:sticky;top:-2px;z-index:2;background:var(--surface-1);padding:2px 0 10px;margin:0}
+    .daycard .adjitem,.dayhead{font-size:14.5px}
+    /* The editor: what you type on the left, what it does (and Save) on the right. */
+    .daycard #adjedit:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:18px;align-items:start}
+    #adjedit>.adjwhat,#adjedit>#adjmany{grid-column:1/-1}
+    #adjedit>.fld{grid-column:1}
+    #adjedit>#adjpreview{grid-column:2;grid-row:2/span 3;margin-top:22px}
+    #adjedit>.recrow{grid-column:2;grid-row:5;margin-top:-4px}
+    #adjedit:has(#adjmovefld[hidden])>#adjpreview{grid-row:2/span 2}
+    #adjedit:has(#adjmovefld[hidden])>.recrow{grid-row:4}
+  }
   .dayhead{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;box-sizing:border-box;text-align:left;
            background:none;border:1px solid transparent;border-radius:11px;padding:9px 10px;font:inherit;color:var(--ink);
            cursor:pointer;font-variant-numeric:tabular-nums}
@@ -1243,8 +1271,9 @@
             <button type="button" id="recdone" class="ghostbtn">Done</button>
           </div>
           <p class="hint" id="rechint"></p>
-          <!-- Bank sync (alert emails): what it did, and what needs you. Filled by fillBank. -->
-          <div class="bankbox" id="bankbox" hidden></div>
+          <!-- On a desktop: two columns, each scrolling on its own — the bank, settings and history on the
+               left, your days on the right. On a phone they are one column (bank, days, the rest). -->
+          <div class="recmain">
           <!-- Your days, newest first: each day's balance (from the bank, by you, or projected) and its
                lines, each marked with what the bank said. Tap a line or a balance to change it. -->
           <div class="daystools">
@@ -1255,6 +1284,7 @@
               <input type="date" id="adjjump" aria-label="Go to a day"></label>
           </div>
           <input type="hidden" id="adjdate">
+
           <div class="adjlist" id="adjlist"></div>
           <div class="recmsg ok daymsg" id="daymsg" role="status"></div>
           <!-- The editor and select mode live here while unused; fillAdj moves them under the line
@@ -1306,9 +1336,14 @@
             <button type="button" class="manybtn" id="adjmany" hidden>Move several lines from this day</button>
           </div>
           </div>
-          <div class="bankfoot" id="bankfoot"></div>
-          <details class="histbox" id="adjrecent"><summary>History</summary><div class="adjlist hist" id="adjrecentlist"></div></details>
-          <button type="button" class="signout" id="signout">Sign out of this device</button>
+          </div>
+          <aside class="recside">
+            <!-- Bank sync (alert emails): what it did, and what needs you. Filled by fillBank. -->
+            <div class="bankbox" id="bankbox" hidden></div>
+            <div class="bankfoot" id="bankfoot"></div>
+            <details class="histbox" id="adjrecent"><summary>History</summary><div class="adjlist hist" id="adjrecentlist"></div></details>
+            <button type="button" class="signout" id="signout">Sign out of this device</button>
+          </aside>
         </div>
       </div>
     </div>
@@ -4537,6 +4572,8 @@ $('adjamt').addEventListener('input',e=>{
 function openModal(){
   $('recmodal').hidden=false;
   RECPAGE=0; ADJFOCUS=null; ADJBACK=6; ADJFWD=1; fillAdj(); fillBank();
+  // A desktop has the room: History starts open in its column. On a phone it stays tucked away.
+  if(matchMedia('(min-width:900px)').matches) $('adjrecent').open=true;
   document.body.style.overflow='hidden';
 }
 function closeModal(){

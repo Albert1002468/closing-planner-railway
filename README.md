@@ -141,6 +141,10 @@ The sheet opens on what matters now:
 - At the bottom: bank accounts & settings, and **History** — every balance, adjustment and bank
   decision by day, newest first, each marked *bank* or *you*; tap one to open it in its day.
 
+On a desktop the sheet fills the window in two columns that scroll on their own: the bank, its
+settings and History (open) on the left, your days on the right, and the editor lays out what you
+type beside what it does. On a phone it is one column, as above.
+
 Going to a day (Go to day, a History row, a search result, Back to today) brings its card into
 view with one slow glow of its border. Tap anything to change it; the editor opens right under it:
 
