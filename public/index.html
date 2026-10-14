@@ -1047,7 +1047,7 @@
       <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
       <span class="cashonly"><span class="sw" style="background:var(--s7);height:3px;border-radius:0"></span>buying power</span>
       <!-- Tap to draw the projection without reconciles beside the reconciled balance. -->
-      <button type="button" class="keybtn" id="projkey" aria-pressed="false" hidden><span class="sw projsw"></span>projected</button>
+      <button type="button" class="keybtn" id="projkey" aria-pressed="false" hidden><span class="sw projsw"></span>plan</button>
       <span id="keyoppwrap" hidden><span class="sw" style="background:var(--s8);height:3px;border-radius:0"></span><span id="keyopp">sell at lease end</span></span>
     </div>
     </section>
@@ -1876,6 +1876,9 @@ function payoffOn(dateS, inclusive){
 function buildEvents(sale, price, rent, home){
   const ev=[];
   const seenKey={};
+  /* Lines the BANK changed (matched to a different amount or day, or moved on because it had
+     not shown them) — the original plan undoes these; your own adjustments stay in it. */
+  const bankMade=new Set(BANK? [...(BANK.claimed||[]), ...Object.keys(BANK.rolled||{})] : []);
   const E=(d,a,l)=>{
     const base=d+'|'+adjBase(l), n=seenKey[base]=(seenKey[base]||0)+1;
     const key= n>1? base+'#'+n : base, proj=+a.toFixed(2), x=ADJ[key];
@@ -1883,8 +1886,11 @@ function buildEvents(sale, price, rent, home){
     // lands there; it remembers the projection (amount and day) it replaced.
     const when = x && x.moveTo ? x.moveTo : d;
     if(when<T0 || when>T1) return;
-    ev.push(x? {d:when, a:x.amount, l, key, proj, adj:true, from: when!==d? d : undefined}
-             : {d, a:proj, l, key});
+    const e = x? {d:when, a:x.amount, l, key, proj, adj:true, from: when!==d? d : undefined}
+               : {d, a:proj, l, key};
+    // `od`/`oa`: where and how much the original plan had it (see buildSeries)
+    if(x && bankMade.has(key)){ e.od=d; e.oa=proj; }
+    ev.push(e); return e;
   };
   /* Everything owed on one year's return settles as ONE line on the following April 15.
      Contributions arrive from three different places in this function, so they are collected
@@ -2299,7 +2305,7 @@ function buildEvents(sale, price, rent, home){
   const carOwedAtEnd = carPayoffOn(T1);
 
   // Bank transactions that are not in the plan (see "Bank"): drawn as the bank shows them.
-  BANKX.forEach(x=>E(x.date, x.amount, 'Bank: '+x.name));
+  BANKX.forEach(x=>{ const e=E(x.date, x.amount, 'Bank: '+x.name); if(e){ e.oa=0; delete e.od; } });  // not in the original plan
 
   // ---- ONE bundled settlement per tax year, due the following April 15. This must be the
   //      last thing emitted: contributions arrive from the fixed events, the rental block and
@@ -2348,14 +2354,21 @@ function buildSeries(sale, price, rent, home, rates){
   const {ev, ...built}=buildEvents(sale,price,rent,home);
   const map={};
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
-  /* `pbal` is the same walk with no reconciles: the pure projection, drawn as the optional
-     "projected" line so the drift the reconciled variances add up to can be seen. */
-  const series=[]; let bal=START_BAL, pbal=START_BAL, cur=T0;
+  /* Two more walks with no reconciles, for the optional "plan" line:
+     `qbal` — the projection as it stands (bank lines and the bank's changes included);
+     `pbal` — the ORIGINAL plan: no lines the bank added, the bank's changes undone (your own
+     adjustments stay). So balance − plan splits in two: q − p is what was unplanned, and
+     b − q is the reconcile variances (what the bank's alerts did not explain). */
+  const omap={};
+  ev.forEach(e=>{ const od=e.od||e.d, oa=e.oa!=null? e.oa : e.a; if(oa) omap[od]=(omap[od]||0)+oa; });
+  const series=[]; let bal=START_BAL, pbal=START_BAL, qbal=START_BAL, cur=T0;
   while(cur<=T1){
     bal += accrue(bal, rates, cur);            // two-tier, on the opening balance
     pbal += accrue(pbal, rates, cur);
-    (map[cur]||[]).forEach(e=>{ bal+=e.a; pbal+=e.a; });
-    const day={d:cur,b:+bal.toFixed(2),p:+pbal.toFixed(2),ev:(map[cur]||[]).map(e=>({a:e.a,l:e.l,key:e.key,proj:e.proj,adj:e.adj,from:e.from}))};
+    qbal += accrue(qbal, rates, cur);
+    (map[cur]||[]).forEach(e=>{ bal+=e.a; qbal+=e.a; });
+    pbal += omap[cur]||0;
+    const day={d:cur,b:+bal.toFixed(2),p:+pbal.toFixed(2),q:+qbal.toFixed(2),ev:(map[cur]||[]).map(e=>({a:e.a,l:e.l,key:e.key,proj:e.proj,adj:e.adj,from:e.from}))};
     const r=RECON[cur];
     if(r){
       const projected=+bal.toFixed(2);
@@ -2576,7 +2589,7 @@ function netWorth(res, sale, rent, home, asOf){
 const NS='http://www.w3.org/2000/svg';
 let LAST_DATA=[];
 let VIEW='2026';         // 'span' = the whole horizon, otherwise a 'YYYY' string
-let SHOW_PROJ=false;      // draw the no-reconcile projection beside the balance (the "projected" key)
+let SHOW_PROJ=false;      // draw the original plan beside the balance (the "plan" key)
 try{ SHOW_PROJ = localStorage.getItem('showProj')==='1'; }catch(e){}
 let CHART_MODE='cash';   // 'cash' | 'nw' — what the chart plots (see setChartMode)
 let TPAGE=null;          // table page — a 'YYYY-MM' key
@@ -3300,9 +3313,10 @@ function render(){
        is under three pixels — the two lines read as identical when they are not. So the gap is
        spelled out here rather than left to the eye. Only while the line is on screen. */
     if(PROJ_ON && d.p!==d.b){
-      const g3=d.b-d.p;
-      h+=`<div style="color:var(--s2);font-size:11px;margin:-1px 0 4px">`
-        +`${fmt(d.p)} projected · <b>${g3>=0?'+':'−'}${fmt(Math.abs(g3))}</b> from reconciles</div>`;
+      const sg=v=>`${v>=0?'+':'−'}${fmt(Math.abs(v))}`, un=+(d.q-d.p).toFixed(2), ux=+(d.b-d.q).toFixed(2);
+      h+=`<div style="color:var(--s2);font-size:11px;margin:-1px 0 4px">${fmt(d.p)} original plan · <b>${sg(d.b-d.p)}</b>`
+        +(un? `<br>${sg(un)} unplanned (the bank's lines and changes)` : '')
+        +(ux? `<br>${sg(ux)} unexplained (reconcile variances)` : '')+`</div>`;
     }
     if(d.ev.length) h+='<ul>'+d.ev.map(e=>`<li><span>${e.adj?'✎ ':''}${esc(e.l)}</span><span>${fmt(e.a)}</span></li>`).join('')+'</ul>';
     if(d.rec && d.rec.delta!==0){
