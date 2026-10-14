@@ -1319,7 +1319,7 @@ const nhCashToClose = () =>
 /* ---------- Scenario engine ---------- */
 const RECON = {};                           // date -> {actual, note}; loaded from /api/state
 // Bank sync state (see "Bank" below). BANKX is read by buildEvents, so it is declared up here.
-let BANK=null, BANKX=[], BANK_PREVIEW=[], BANK_STUCK=[];
+let BANK=null, BANKX=[], BANK_PREVIEW=[], BANK_STUCK=[], BANK_WAIT=[];
 /* Adjustments: key -> {amount, projected, note, label}. The actual amount of ONE projected
    transaction, entered in the Adjust & reconcile sheet (a paycheck that came in higher, a bill that
    was lower). Keyed by `date|label`, label without its trailing "(…)" detail — that part moves
@@ -4577,15 +4577,19 @@ function bankAutoItems(){
    was turned on — before that nothing was watching — and never a line you adjusted yourself. After BANK_ROLL_MAX days of waiting it stops and asks you instead. */
 const BANK_ROLL_MAX=5;
 function bankRollPlan(claimed){
-  const out={roll:[], stuck:[]};
+  const out={roll:[], stuck:[], waiting:[]};
   if(!BANK || !BANK.ready || !LAST_DATA.length) return out;
   const to = BANK.now.hour>=BANK.rollHour? addD(BANK.now.date,1) : BANK.now.date;
   const on = BANK.liveOn || BANK.now.date, from = on>BANK.startOn? on : BANK.startOn;
   for(const day of LAST_DATA){
-    if(day.d>=to) break;
+    if(day.d>addD(to,1)) break;
     for(const e of day.ev){
       if(!e.key || !e.a || claimed.has(e.key) || e.l.startsWith('Bank: ')) continue;
       const orig=e.key.slice(0,10), r=BANK.rolled[e.key], x=ADJ[e.key];
+      if(day.d>=to){                    // already moved, waiting for today's/tomorrow's alert
+        if(r && !r.done) out.waiting.push({key:e.key, label:adjBase(e.l), amount:e.a, projected:e.adj? e.proj : e.a, d:day.d, orig});
+        continue;
+      }
       if(orig<from || (r&&r.done) || (x&&!r)) continue;
       const line={key:e.key, label:adjBase(e.l), amount:e.a, projected:e.adj? e.proj : e.a, d:day.d, orig};
       if(nDays(r? r.since : orig, to)>BANK_ROLL_MAX) out.stuck.push(line);
@@ -4594,12 +4598,13 @@ function bankRollPlan(claimed){
   }
   return out;
 }
+function bankRollRefresh(){ const p=bankRollPlan(new Set(BANK.claimed)); BANK_STUCK=p.stuck; BANK_WAIT=p.waiting; }
 async function bankRoll(){
   const plan=bankRollPlan(new Set(BANK.claimed));
-  BANK_STUCK=plan.stuck;
+  BANK_STUCK=plan.stuck; BANK_WAIT=plan.waiting;
   if(plan.roll.length){
     const out=await bankPost('/api/bank/roll',{items:plan.roll.map(({d,orig,...x})=>x)});
-    if(out){ bankApply(out); BANK_STUCK=bankRollPlan(new Set(BANK.claimed)).stuck; }
+    if(out){ bankApply(out); bankRollRefresh(); }
   }
   fillBank(); bankBadge();
 }
@@ -4672,7 +4677,7 @@ function fillBank(){
   const box=$('bankbox'); if(!box) return;
   if(!BANK){ box.hidden=true; return; }
   box.hidden=false;
-  const preview=!BANK.live, revs=bankReviews(), stuck=preview? [] : BANK_STUCK;
+  const preview=!BANK.live, revs=bankReviews(), stuck=preview? [] : [...BANK_STUCK.map(x=>({...x,stuck:true})), ...BANK_WAIT];
   let h=`<div class="bankhead"><b>Bank</b><span class="banksub">`
     +(BANK.ready? 'Alerts to '+esc(BANK.address)+' · checked '+bankAgo(BANK.lastRun)+(preview?' · preview':'') : 'Not set up')+`</span>`
     +(BANK.ready? `<button type="button" class="ghostbtn" id="banksync">Check now</button>` : '')+`</div>`;
@@ -4699,11 +4704,12 @@ function fillBank(){
   if(stuck.length){
     h+=`<div class="bankgrp">Not at the bank yet · ${stuck.length}</div>`;
     h+=stuck.map(x=>`<div class="bankrev" data-roll="${esc(x.key)}">
-      <div class="bankline"><span class="lab"><b>${esc(x.label)}</b><small>Planned ${longDate(x.orig)} · no alert since</small></span>
+      <div class="bankline"><span class="lab"><b>${esc(x.label)}</b><small>Planned ${longDate(x.orig)} · ${x.stuck? `no alert in ${BANK_ROLL_MAX} days` : 'now on '+shortDate(x.d)}</small></span>
         <span class="amt">${fmt(x.amount)}</span></div>
       <div class="bankact"><select aria-label="What happened?">
-        <option value="roll">Still coming — wait longer</option>
-        <option value="came">It went through (no alert came)</option>
+        <option value="roll">Still coming${x.stuck? ' — wait longer' : ''}</option>
+        <option value="came:${BANK.now.date}">It went through today</option>
+        ${x.orig<BANK.now.date? `<option value="came:${x.orig}">It went through ${shortDate(x.orig)}</option>` : ''}
         <option value="skip">It won't happen — remove it</option></select>
         <button type="button" class="bankrollok">Save</button></div></div>`).join('');
   }
@@ -4743,15 +4749,17 @@ $('bankbox').addEventListener('click',async e=>{
     return;
   }
   if(b.classList.contains('bankrollok')){
-    const row=b.closest('[data-roll]'), x=BANK_STUCK.find(y=>y.key===row.dataset.roll), v=row.querySelector('select').value;
+    const key=row=>row.dataset.roll, row=b.closest('[data-roll]'), x=[...BANK_STUCK,...BANK_WAIT].find(y=>y.key===key(row));
     if(!x) return;
-    const to = BANK.now.hour>=BANK.rollHour? addD(BANK.now.date,1) : BANK.now.date;
+    const [v,on]=row.querySelector('select').value.split(':');
+    const to = on || (BANK.now.hour>=BANK.rollHour? addD(BANK.now.date,1) : BANK.now.date);
+    if(v==='roll' && x.d===to && !BANK_STUCK.includes(x)){ bankMsg(`${x.label} stays on ${shortDate(to)}.`); return; }
     b.disabled=true;
     const out=await bankPost('/api/bank/roll',{items:[{key:x.key, label:x.label, amount:x.amount, projected:x.projected,
       action:v, reset:true, moveTo:to, note:(ADJ[x.key]&&ADJ[x.key].note)||`Not at the bank yet (planned ${shortDate(x.orig)})`}]});
     b.disabled=false;
-    if(out){ bankApply(out); BANK_STUCK=bankRollPlan(new Set(BANK.claimed)).stuck; fillBank(); bankBadge();
-      bankMsg(v==='roll'? `${x.label} moved to ${shortDate(to)}; it waits ${BANK_ROLL_MAX} more days.` : v==='came'? `${x.label} is back on ${shortDate(x.orig)}.` : `${x.label} removed (set to $0).`); }
+    if(out){ bankApply(out); bankRollRefresh(); fillBank(); bankBadge();
+      bankMsg(v==='roll'? `${x.label} moved to ${shortDate(to)}; it waits ${BANK_ROLL_MAX} more days.` : v==='came'? `${x.label} went through ${shortDate(to)}.` : `${x.label} removed (set to $0).`); }
     return;
   }
   if(b.classList.contains('bankok')){

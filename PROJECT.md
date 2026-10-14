@@ -97,9 +97,14 @@ After matching, `bankRoll` moves planned lines the bank hasn't shown: past lines
 from `rollHour` (20 = 8 PM Chicago) also today's to tomorrow. Only lines planned from `liveOn`
 (the day sync was turned on) and not adjusted by hand; `st.rolled[key] = {orig, since, done}`
 counts the wait, and after `BANK_ROLL_MAX` (5) days the line goes to "Not at the bank yet"
-instead. Moves happen when the app is open (matching needs the projection); the result is the
+instead; lines already moved and waiting are listed there too (`BANK_WAIT`), so a payment that
+came without an alert can be marked `came` with `moveTo` = the day (up to today). Moves happen when the app is open (matching needs the projection); the result is the
 same as if they had happened at 8 PM. Early transactions: the unique exact-amount match uses the
 whole ±6-day window when the bank date is before the planned one.
+`READER` in bank.js: bump it whenever email.js learns a new alert format — the next sync clears
+"could not read" and re-reads the last 10 days (ids are Message-ID based, so nothing doubles).
+Known formats: Wells Fargo card purchase ("Purchase amount 33.97 USD", "Merchant details at …",
+"Date 10/13/2026 04:17 PM US/Pacific").
 
 ## 4. The page
 

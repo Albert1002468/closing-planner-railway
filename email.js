@@ -160,6 +160,9 @@ function bankOf(msg, allowUnsigned) {
 }
 const money = s => Number(String(s).replace(/[$,\s]/g, ''));
 const AMT = /\$\s?(-?[\d,]+\.\d{2})/;
+// Wells Fargo's tables: "Purchase amount 33.97 USD" (no $).
+const AMT_LABELED = /\b(?:purchase|transaction|withdrawal|deposit|payment|transfer|debit|credit)?\s*amount:?\s*\$?\s?(-?[\d,]+\.\d{2})(?:\s*USD)?/i;
+const AMT_USD = /\b(-?[\d,]+\.\d{2})\s*USD\b/;
 // "ending in 1234", "account …1234", "Checking ...1234", "x1234", "*1234".
 const LAST4 = /(?:(?:ending in|ending with|ending|account|card|acct|checking|savings)[^\d$]{0,12}(?:x+|\*+|\.{2,}|…)?\s?|(?:\bx{1,}|\*{1,}|\.{2,}|…)\s?)(\d{4})\b/i;
 const IN_WORDS = /\b(deposit(?:ed)?|direct dep|credit(?:ed)? to|received|refund|payroll|incoming|transfer from|zelle (?:payment )?from|paid you|sent you)\b/i;
@@ -199,14 +202,18 @@ function readAlert(msg, { localDate, localHour, allowUnsigned }) {
     const date = asOf || (localHour(sent) < 12 ? addDay(day, -1) : day);
     return { kind: 'balance', bank: bank.name, accounts, date };
   }
-  const a = AMT.exec(msg.subject) || AMT.exec(msg.text);
+  const a = AMT.exec(msg.subject) || AMT_LABELED.exec(msg.text) || AMT_USD.exec(msg.text) || AMT.exec(msg.text);
   if (!a || !/purchase|transaction|withdrawal|deposit|payment|transfer|debit|credit|charge|zelle|sent|received|paid|ach/i.test(all))
     return { kind: 'unknown', bank: bank.name, subject: msg.subject, date: day };
   const amt = Math.abs(money(a[1])), inbound = IN_WORDS.test(msg.subject) || (!/purchase|withdrawal|debit|charge|payment to|sent/i.test(msg.subject) && IN_WORDS.test(msg.text));
-  const who = /\b(?:at|to|from|with|by|merchant:?)\s+([A-Za-z0-9][\w &*'.#\/-]{1,40}?)(?=\s+(?:on|was|for|using|has|in the amount|from|exceeded)\b|[.,;](?=\s|$)|\n|$)/i.exec(msg.subject + '\n' + msg.text);
+  // "Merchant details at CVS/PHARMACY #11092 in OKLAHOMA CITY UNITED STATES"
+  const merchant = /merchant(?: details| name)?:?\s+(?:at\s+)?(.+?)(?=\s+in\s+[A-Z][A-Za-z .'-]*?(?:UNITED STATES|USA|\bUS\b)|\s+Date\b|\n|$)/i.exec(msg.text);
+  const who = merchant || /\b(?:at|to|from|with|by|merchant:?)\s+([A-Za-z0-9][\w &*'.#\/-]{1,40}?)(?=\s+(?:on|was|for|using|has|in the amount|from|exceeded)\b|[.,;](?=\s|$)|\n|$)/i.exec(msg.subject + '\n' + msg.text);
   const l4 = LAST4.exec(all);
+  // The alert's own "Date 10/13/2026 04:17 PM" when it has one (a late email is still that day's).
+  const when = /\bDate:?\s+(\d{1,2}\/\d{1,2}\/\d{4})/.exec(msg.text);
   return { kind: 'tx', bank: bank.name, last4: l4 ? l4[1] : '', type: typeOf(all),
-           amount: inbound ? amt : -amt, name: (who ? who[1] : msg.subject).trim().slice(0, 80), date: day };
+           amount: inbound ? amt : -amt, name: (who ? who[1] : msg.subject).trim().slice(0, 80), date: (when && dateIn(when[1])) || day };
 }
 const addDay = (d, n) => { const t = new Date(d + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const msgId = (msg, uid) => 'em-' + crypto.createHash('sha1').update(String(msg.headers['message-id'] || uid)).digest('hex').slice(0, 20);

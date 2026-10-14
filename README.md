@@ -85,8 +85,9 @@ What it does, every 15 minutes and whenever the app is opened:
   automatic from then on. A transfer between two ticked accounts is ignored. A transaction that
   comes **early** (up to 6 days before its planned day) moves its line to the day it came.
 - **Moves what hasn't shown up**: from 8 PM (Chicago), a planned line the bank hasn't shown
-  moves to tomorrow (one already past moves to today). After 5 days of waiting it stops and asks
-  under **Not at the bank yet**: still coming (wait longer), it went through without an alert (back
+  moves to tomorrow (one already past moves to today). Lines that are waiting are listed under
+  **Not at the bank yet**, where you can say it went through (today or on its planned day) — for
+  payments the bank doesn't alert on. After 5 days of waiting it stops and asks there: still coming (wait longer), it went through without an alert (back
   to its day), or it won't happen (set to $0). Lines you adjusted yourself, and lines planned before
   sync was turned on, are never moved. Have the bank alert on **every** transaction (set the amount
   threshold to the minimum), or lines it never alerts on will end up waiting here.

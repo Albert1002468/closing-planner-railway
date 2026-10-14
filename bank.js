@@ -27,6 +27,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   const DOC = 'bank-email-alerts';
   const EVERY = 15 * 60e3;          // inbox check
   const KEEP_DAYS = 150;            // transactions older than this are dropped
+  const READER = 2;                 // bump when email.js learns a new alert format: the last 10 days are read again
   const ROLL_HOUR = 20;             // from 8 PM (Chicago), a planned line the bank hasn't shown moves to tomorrow
   if (READY) console.log('[bank] reading alert emails sent to', env.ALERT_EMAIL);
 
@@ -142,10 +143,12 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     if (running) return running;
     running = (async () => {
       let f = null, err = null;
-      try { f = await readInbox(load().cursor); } catch (e) { err = e.message || 'Could not read the alerts inbox.'; }
+      const st0 = load(), reread = st0.reader !== READER;
+      try { f = await readInbox(reread ? null : st0.cursor); } catch (e) { err = e.message || 'Could not read the alerts inbox.'; }
       let recs = [];
       store.tx(() => {
         const st = load();
+        if (f && reread) { st.unread = []; st.reader = READER; }   // what it couldn't read is read again
         if (f) apply(st, f); else st.error = err;
         st.lastRun = new Date().toISOString();
         if (st.live) recs = reconcileDays(st);
@@ -226,7 +229,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   /* ---- planned lines the bank has not shown (the page finds them; see bankRoll in index.html) ----
      roll : not at the bank yet — move it to today or tomorrow (nothing else is accepted).
             `reset` restarts its count of days waited ("still coming").
-     came : it went through without an alert — back to its planned day and amount; never rolled again.
+     came : it went through without an alert — on `moveTo` (up to today) or its planned day; never rolled again.
      skip : it won't happen — amount 0 on its planned day; never rolled again. */
   function roll(items) {
     const saved = [], finalAct = new Map(), done = [];
@@ -241,7 +244,10 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
         if (x.action === 'roll') {
           if (x.moveTo !== today && x.moveTo !== tomorrow) continue;
           body = { label, amount: x.amount, projected, moveTo: x.moveTo, note };
-        } else if (x.action === 'came') body = { label, amount: projected, projected, moveTo: null, note: 'Went through (no bank alert)' };
+        } else if (x.action === 'came') {
+          const on = typeof x.moveTo === 'string' && x.moveTo > orig && x.moveTo <= today ? x.moveTo : null;
+          body = { label, amount: projected, projected, moveTo: on, note: 'Went through (no bank alert)' };
+        }
         else if (x.action === 'skip') body = { label, amount: 0, projected, moveTo: null, note: "Didn't happen" };
         else continue;
         const p = parseAdjustment(body, key);
