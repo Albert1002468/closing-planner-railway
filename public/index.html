@@ -4507,7 +4507,7 @@ $('adjclear').addEventListener('click',async ()=>{
      - the two legs of a transfer between your own tracked accounts → ignored
    In preview (until "Turn it on") the same matching runs but only shows what it WOULD do. */
 const BANK_WIN=6;                       // days either side of the bank date to look for the line
-const BANK_STOP=new Set(['the','and','for','new','home','est','your','with','from','fee','bill','payment','hrs']);
+const BANK_STOP=new Set(['the','and','for','new','home','est','your','with','from','fee','bill','payment','hrs','com']);
 const BANK_SYN={paycheck:['payroll','salary','dirdep','directdep'], mortgage:['mtg','loan','mortgage'],
                 taxes:['irs','usataxpymt','tax']};
 function bankNameHit(t, label){

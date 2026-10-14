@@ -174,7 +174,40 @@ function dateIn(text, year) {
   if (m) return `${m[3] || year}-${String(MONTHS[m[1].toLowerCase()]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
   return null;
 }
-/* → {kind:'balance', bank, accounts:[{last4, type, balance}], date}
+// "As of 10/14/2026 at 03:38 a.m." — before 6 a.m. it is the previous day's close.
+function asOfDay(text, day) {
+  const i = text.search(/as of/i); if (i < 0) return null;
+  const s = text.slice(i, i + 80), d = dateIn(s, day.slice(0, 4)); if (!d) return null;
+  const t = /\b(\d{1,2}):\d{2}\s*([ap])\.?m\b/i.exec(s);
+  const h = t ? (+t[1] % 12) + (/p/i.test(t[2]) ? 12 : 0) : 12;
+  return h < 6 ? addDay(d, -1) : d;
+}
+/* Wells Fargo's daily "account update": the balances, then what POSTED since the last one, under
+   "Withdrawals" / "Deposits" / "Checks" — each item its description followed by its $ amount.
+   Card purchases say "PURCHASE AUTHORIZED ON 10/08 … CARD 2954": that day and that card. */
+function digestLines(text, postedOn) {
+  const heads = [...text.matchAll(/\b(Withdrawals|Deposits|Credits|Checks)(?![a-z])/g)];
+  const stop = /As of\b|Note about balances|WellsFargo\.com|To modify or cancel/i, out = [];
+  heads.forEach((h, k) => {
+    let sec = text.slice(h.index + h[0].length, k + 1 < heads.length ? heads[k + 1].index : undefined);
+    const e = sec.search(stop); if (e >= 0) sec = sec.slice(0, e);
+    const sign = /Deposits|Credits/.test(h[1]) ? 1 : -1;
+    for (const m of sec.matchAll(/([^$]*?)\$\s?([\d,]+\.\d{2})/g)) {
+      const raw = m[1].replace(/\s+/g, ' ').trim();
+      if (!/[a-z]{3}/i.test(raw) || /\btotal\b/i.test(raw)) continue;
+      const auth = /AUTHORIZED ON (\d{1,2})\/(\d{1,2})/i.exec(raw), card = /CARD\s+(\d{4})\s*$/i.exec(raw);
+      let date = postedOn;
+      if (auth) { const y = +postedOn.slice(0, 4), mm = +auth[1];
+        date = `${mm > +postedOn.slice(5, 7) + 1 ? y - 1 : y}-${String(mm).padStart(2, '0')}-${String(auth[2]).padStart(2, '0')}`; }
+      let name = raw.replace(/^(?:PURCHASE|RECURRING PAYMENT|PAYMENT|ATM WITHDRAWAL)?\s*AUTHORIZED ON \d{1,2}\/\d{1,2}\s*/i, '')
+                    .replace(/\s+[A-Z]?\d{9,}\s+CARD\s+\d{4}\s*$/i, '').replace(/\s+CARD\s+\d{4}\s*$/i, '');
+      const cut = name.search(/\s\d+(?:\s|$)/); if (cut >= 6) name = name.slice(0, cut);   // "…PREM. OCT 26 13 653 349 NAME"
+      out.push({ date, amount: sign * money(m[2]), name: name.slice(0, 80), raw: name, card: card ? card[1] : '' });
+    }
+  });
+  return out;
+}
+/* → {kind:'balance', bank, accounts:[{last4, type, balance}], date, lines?}
      {kind:'tx', bank, last4, type, amount (in = +), name, date}
      {kind:'unknown', bank, subject}
    `localDate(d)`/`localHour(d)` turn the email's time into America/Chicago. */
@@ -182,7 +215,17 @@ function readAlert(msg, { localDate, localHour, allowUnsigned }) {
   const bank = bankOf(msg, allowUnsigned); if (!bank) return null;
   const sent = new Date(msg.headers.date || Date.now());
   const day = localDate(sent), all = `${msg.subject}\n${msg.text}`;
+  // "Your balance is above $0.01": a threshold alert at some moment of the day, not a day's close.
+  if (/balance (?:is )?(?:above|below)|zero balance/i.test(msg.subject)) return null;
   const typeOf = s => /credit card/i.test(s) ? 'credit' : /savings/i.test(s) ? 'savings' : /checking|debit card/i.test(s) ? 'checking' : '';
+  if (/balance summary/i.test(msg.text) && /(?:available|ending) balance/i.test(msg.text)) {
+    const l4 = LAST4.exec(all);
+    const b = /available balance(?:\s*\d(?![\d,.]))?\D{0,8}\$\s?(-?[\d,]+\.\d{2})/i.exec(msg.text) || /ending balance(?:\s*\d(?![\d,.]))?\D{0,8}\$\s?(-?[\d,]+\.\d{2})/i.exec(msg.text);
+    const date = asOfDay(msg.text, day) || (localHour(sent) < 12 ? addDay(day, -1) : day);
+    if (!b) return { kind: 'unknown', bank: bank.name, subject: msg.subject, date: day };
+    return { kind: 'balance', bank: bank.name, accounts: [{ last4: l4 ? l4[1] : '', type: typeOf(msg.subject), balance: money(b[1]) }],
+             date, lines: digestLines(msg.text, date) };
+  }
   // A balance alert: says "balance" up front and is not about one purchase or deposit.
   if (/balance/i.test(msg.subject) && !/purchase|transaction|withdrawal|deposit made|payment (?:to|of)/i.test(msg.subject)) {
     const accounts = [];
@@ -198,8 +241,7 @@ function readAlert(msg, { localDate, localHour, allowUnsigned }) {
     if (!accounts.length) { const b = AMT.exec(all); if (b) accounts.push({ last4: '', type: typeOf(all), balance: money(b[1]) }); }
     if (!accounts.length) return { kind: 'unknown', bank: bank.name, subject: msg.subject, date: day };
     // "as of 10/12/2026" when it says; otherwise a morning email is the previous day's close.
-    const asOf = /as of/i.test(all) ? dateIn(all.slice(all.search(/as of/i)), day.slice(0, 4)) : null;
-    const date = asOf || (localHour(sent) < 12 ? addDay(day, -1) : day);
+    const date = asOfDay(all, day) || (localHour(sent) < 12 ? addDay(day, -1) : day);
     return { kind: 'balance', bank: bank.name, accounts, date };
   }
   const a = AMT.exec(msg.subject) || AMT_LABELED.exec(msg.text) || AMT_USD.exec(msg.text) || AMT.exec(msg.text);
@@ -207,7 +249,7 @@ function readAlert(msg, { localDate, localHour, allowUnsigned }) {
     return { kind: 'unknown', bank: bank.name, subject: msg.subject, date: day };
   const amt = Math.abs(money(a[1])), inbound = IN_WORDS.test(msg.subject) || (!/purchase|withdrawal|debit|charge|payment to|sent/i.test(msg.subject) && IN_WORDS.test(msg.text));
   // "Merchant details at CVS/PHARMACY #11092 in OKLAHOMA CITY UNITED STATES"
-  const merchant = /merchant(?: details| name)?:?\s+(?:at\s+)?(.+?)(?=\s+in\s+[A-Z][A-Za-z .'-]*?(?:UNITED STATES|USA|\bUS\b)|\s+Date\b|\n|$)/i.exec(msg.text);
+  const merchant = /merchant(?: details| name)?:?\s+(?:at\s+)?(.+?)(?=\s+in\s+[A-Z0-9][A-Za-z0-9 .'()-]*?(?:UNITED STATES|USA|\bUS\b)|\s+Date\b|\n|$)/i.exec(msg.text);
   const who = merchant || /\b(?:at|to|from|with|by|merchant:?)\s+([A-Za-z0-9][\w &*'.#\/-]{1,40}?)(?=\s+(?:on|was|for|using|has|in the amount|from|exceeded)\b|[.,;](?=\s|$)|\n|$)/i.exec(msg.subject + '\n' + msg.text);
   const l4 = LAST4.exec(all);
   // The alert's own "Date 10/13/2026 04:17 PM" when it has one (a late email is still that day's).

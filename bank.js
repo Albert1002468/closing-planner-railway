@@ -27,7 +27,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   const DOC = 'bank-email-alerts';
   const EVERY = 15 * 60e3;          // inbox check
   const KEEP_DAYS = 150;            // transactions older than this are dropped
-  const READER = 2;                 // bump when email.js learns a new alert format: the last 10 days are read again
+  const READER = 3;                 // bump when email.js learns a new alert format: the last 10 days are read again
   const ROLL_HOUR = 20;             // from 8 PM (Chicago), a planned line the bank hasn't shown moves to tomorrow
   if (READY) console.log('[bank] reading alert emails sent to', env.ALERT_EMAIL);
 
@@ -78,7 +78,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       host: env.ALERT_IMAP_HOST || 'imap.gmail.com', port: Number(env.ALERT_IMAP_PORT || 993), secure: env.ALERT_IMAP_TLS !== '0',
       user: env.ALERT_EMAIL, pass: String(env.ALERT_EMAIL_PASSWORD).replace(/\s+/g, ''), folder: env.ALERT_IMAP_FOLDER || 'INBOX'
     }, cursor);
-    const accounts = new Map(), txs = [], balances = [], unread = [];
+    const accounts = new Map(), txs = [], balances = [], unread = [], notTx = [];
     const acct = (bank, last4, type) => {
       const id = `${bank.toLowerCase().replace(/[^a-z]+/g, '')}-${last4 || 'main'}`;
       if (!accounts.has(id)) accounts.set(id, { id, name: bank + (type ? ' ' + type : ''), mask: last4 || '', subtype: type || '' });
@@ -89,11 +89,20 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       try { msg = mail.parseMessage(m.raw); a = mail.readAlert(msg, { localDate, localHour, allowUnsigned: env.ALERT_ALLOW_UNSIGNED === '1' }); }
       catch { a = null; }
       if (!a) continue;                                         // not from a bank (or not signed by it)
+      const id = mail.msgId(msg, m.uid);
+      if (!a) { notTx.push(id); continue; }                     // e.g. a "balance is above" alert
+      if (a.kind !== 'tx') notTx.push(id);
       if (a.kind === 'unknown') unread.push({ subject: String(a.subject).slice(0, 140), date: a.date, bank: a.bank });
-      else if (a.kind === 'balance') for (const x of a.accounts) balances.push({ account: acct(a.bank, x.last4, x.type), date: a.date, amount: x.balance });
-      else txs.push({ id: mail.msgId(msg, m.uid), account: acct(a.bank, a.last4, a.type), date: a.date, amount: a.amount, name: a.name, raw: msg.subject });
+      else if (a.kind === 'balance') {
+        for (const x of a.accounts) balances.push({ account: acct(a.bank, x.last4, x.type), date: a.date, amount: x.balance });
+        // What posted: card purchases go to the card's account, so they meet the card's own alerts.
+        (a.lines || []).forEach((l, i) => txs.push({ id: id + '-' + i, src: 'digest', date: l.date, amount: l.amount, name: l.name, raw: l.raw,
+          account: l.card ? acct(a.bank, l.card, 'checking') : acct(a.bank, a.accounts[0].last4, a.accounts[0].type) }));
+      }
+      else txs.push({ id, src: 'alert', account: acct(a.bank, a.last4, a.type),
+                      date: a.date, amount: a.amount, name: a.name, raw: a.name });
     }
-    return { cursor: got.cursor, accounts: [...accounts.values()], txs, balances, unread };
+    return { cursor: got.cursor, accounts: [...accounts.values()], txs, balances, unread, notTx };
   }
   function apply(st, f) {
     for (const a of f.accounts) if (!st.accounts[a.id]) st.accounts[a.id] = { ...a, tracked: defaultTracked(a), current: null };
@@ -102,10 +111,19 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       const days = Object.keys(st.balances[b.account]).sort();
       st.accounts[b.account].current = st.balances[b.account][days[days.length - 1]];
     }
+    // Read before as a transaction but not one (a summary or threshold alert, before the reader knew it).
+    for (const id of f.notTx || []) delete st.tx[id];
     for (const t of f.txs) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(t.date)) || !Number.isFinite(t.amount)) continue;
       const prev = st.tx[t.id];
-      st.tx[t.id] = { ...(prev || {}), id: t.id, account: t.account, date: t.date, amount: r2(t.amount),
+      /* The same purchase, told twice: by its card alert and again in the next day's summary. The
+         first one told stands; the other is dropped (`twin` keeps one alert from pairing twice). */
+      if (!prev) {
+        const twin = Object.values(st.tx).find(o => o.src && o.src !== t.src && o.account === t.account && o.amount === r2(t.amount)
+          && Math.abs(Date.parse(o.date) - Date.parse(t.date)) <= 864e5 && (!o.twin || o.twin === t.id));
+        if (twin) { twin.twin = t.id; continue; }
+      }
+      st.tx[t.id] = { ...(prev || {}), id: t.id, src: t.src, account: t.account, date: t.date, amount: r2(t.amount),
         name: String(t.name || t.raw || 'Bank transaction').slice(0, 120), raw: String(t.raw || '').slice(0, 200),
         sig: sigOf(t.raw || t.name), status: prev ? prev.status : (t.date < st.startOn ? 'history' : 'new') };
     }
@@ -130,7 +148,19 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       if (!ids.every(id => st.balances[id][D] != null)) continue;
       const actual = r2(ids.reduce((s, id) => s + st.balances[id][D], 0));
       if (dry) { rows.push({ date: D, actual, already: store.has(D) }); continue; }
-      if (store.has(D)) continue;
+      const had = store.get(D);
+      if (had) {
+        /* A day the bank reconciled follows the bank's latest figure for it (a later summary, or a
+           corrected reader). One you reconciled yourself is never touched. */
+        if (had.source !== 'bank' || Math.abs(had.actual - actual) < 0.005) continue;
+        const note = 'From the bank (balance alert)', at = new Date().toISOString();
+        store.update({ date: D, actual, note });
+        store.logEdit({ date: D, prev_actual: had.actual, prev_note: had.note, new_actual: actual, new_note: note,
+                        reason: 'newer balance from the bank', edited_at: at });
+        rows.push({ date: D, actual, note, source: 'bank' });
+        st.lastReconciled = { date: D, actual, at };
+        continue;
+      }
       const row = { date: D, actual, note: 'From the bank (balance alert)', source: 'bank', created_at: new Date().toISOString() };
       store.insert(row); rows.push(row);
       st.lastReconciled = { date: D, actual, at: row.created_at };
@@ -148,8 +178,12 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       let recs = [];
       store.tx(() => {
         const st = load();
-        if (f && reread) { st.unread = []; st.reader = READER; }   // what it couldn't read is read again
+        // A better reader reads the last 10 days again from scratch: what it couldn't read, and the
+        // balances (and any account) an older reader got wrong.
+        if (f && reread) { st.unread = []; st.balances = {}; st.reader = READER; }
         if (f) apply(st, f); else st.error = err;
+        if (f && reread) for (const id of Object.keys(st.accounts))
+          if (!st.balances[id] && !Object.values(st.tx).some(t => t.account === id)) delete st.accounts[id];
         st.lastRun = new Date().toISOString();
         if (st.live) recs = reconcileDays(st);
         save(st);

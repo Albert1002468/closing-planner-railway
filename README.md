@@ -77,8 +77,13 @@ numbers hidden) so the reader can learn its wording.
 
 What it does, every 15 minutes and whenever the app is opened:
 
-- **Reconciles** the day a balance alert closes, from the bank's own balance. Marked "From the
-  bank"; adjusting a transaction never moves it.
+- **Reconciles** the day a balance alert closes, from the bank's own (available) balance. Marked
+  "From the bank"; adjusting a transaction never moves it. If the bank later reports a different
+  figure for that day, it follows the bank (the change is in the audit log).
+- Wells Fargo: turn on **Account balance (daily)** with **Deposit has posted** and **Withdrawal has
+  posted** — they arrive together as one morning email that lists everything that posted, including
+  automatic payments that have no alert of their own. Card purchase alerts make purchases show up the
+  same day; the morning email doesn't count them twice.
 - **Matches each new transaction to the plan**: same line → nothing; on another day or a few %
   off → the line is moved/adjusted; not in the plan → added as its own line (`Bank: …`); unsure →
   **To review** (a badge on the check-mark button): pick the line once and that payee is

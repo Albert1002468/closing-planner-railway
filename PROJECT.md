@@ -103,8 +103,16 @@ same as if they had happened at 8 PM. Early transactions: the unique exact-amoun
 whole ±6-day window when the bank date is before the planned one.
 `READER` in bank.js: bump it whenever email.js learns a new alert format — the next sync clears
 "could not read" and re-reads the last 10 days (ids are Message-ID based, so nothing doubles).
-Known formats: Wells Fargo card purchase ("Purchase amount 33.97 USD", "Merchant details at …",
-"Date 10/13/2026 04:17 PM US/Pacific").
+A re-read also clears stored balances and accounts nothing refers to any more. Known formats:
+- Wells Fargo card purchase ("Purchase amount 33.97 USD", "Merchant details at …", "Date 10/13/2026 04:17 PM US/Pacific").
+- Wells Fargo daily "Your account update is here" (`digestLines`): "Balance summary" (the AVAILABLE
+  balance is used — the owner's call), "As of 10/14/2026 at 03:38 a.m." (before 6 a.m. = the
+  previous day's close), then what posted under Withdrawals / Deposits / Checks. "PURCHASE
+  AUTHORIZED ON 10/08 … CARD 2954" is dated 10/08 and filed under the card's account, so it meets
+  that card's own alert and only one is kept (`src` alert/digest, `twin`); everything else (ACH such
+  as NY Life) is dated the close day. This is the ONLY alert for ACH payments and deposits.
+- "Your balance is above $X" threshold alerts are ignored (not a day's close).
+A bank-sourced reconcile follows the bank's latest figure for that day (logged as an edit).
 
 ## 4. The page
 
