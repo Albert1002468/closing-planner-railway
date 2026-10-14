@@ -131,7 +131,7 @@ The sheet opens on what matters now:
   what it couldn't decide (which planned line a payment is) and lines that never showed up at the
   bank. Otherwise it says nothing needs you.
 - **Your days**, newest first — tomorrow, today and the week before (**Earlier days** / **Later
-  days** for more, **Go to day** for any day, or **search** by name or note — best match first
+  days** for more and **Back to today** to return, **Go to day** for any day, or **search** by name or note — best match first
   (a name that starts with what you typed, then one containing it, then a match in a note only),
   and among equals the one nearest today). Each day shows its
   balance and where it came from (*From the bank*, *Reconciled by you*, or *Projected*), and its
@@ -141,7 +141,8 @@ The sheet opens on what matters now:
 - At the bottom: bank accounts & settings, and **History** — every balance, adjustment and bank
   decision by day, newest first, each marked *bank* or *you*; tap one to open it in its day.
 
-Tap anything to change it; the editor opens right under it:
+Going to a day (Go to day, a History row, a search result, Back to today) brings its card into
+view with one slow glow of its border. Tap anything to change it; the editor opens right under it:
 
 - **A transaction**: enter what actually happened and, if it cleared on another day, step
   **Cleared on** to that day (`PUT /api/adjustments`). The projection uses it from then on and

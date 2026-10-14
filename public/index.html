@@ -394,6 +394,13 @@
   .adjlist{gap:10px}
   .daycard{border:1px solid var(--grid);border-radius:14px;background:var(--page);padding:4px;display:flex;flex-direction:column;gap:4px}
   .daycard.today{border-color:color-mix(in srgb,var(--s1) 45%,var(--grid))}
+  /* One slow glow on the day you just went to. */
+  @keyframes arrive{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--s1) 0%,transparent);border-color:var(--grid)}
+    35%{box-shadow:0 0 0 4px color-mix(in srgb,var(--s1) 35%,transparent);border-color:var(--s1)}
+    100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--s1) 0%,transparent)}}
+  .daycard.arrive{animation:arrive 1.6s ease-in-out 1}
+  @media (prefers-reduced-motion: reduce){ .daycard.arrive{animation:none;border-color:var(--s1)} }
+  .daymore.home{border-style:solid;color:var(--ink)}
   .dayhead{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;box-sizing:border-box;text-align:left;
            background:none;border:1px solid transparent;border-radius:11px;padding:9px 10px;font:inherit;color:var(--ink);
            cursor:pointer;font-variant-numeric:tabular-nums}
@@ -4230,15 +4237,19 @@ function fillAdj(){
   } else {
     const hi=addD(ADJFOCUS,ADJFWD) > T1? T1 : addD(ADJFOCUS,ADJFWD), lo=addD(ADJFOCUS,-ADJBACK) < T0? T0 : addD(ADJFOCUS,-ADJBACK);
     const days=[]; for(let d=hi; d>=lo; d=addD(d,-1)) days.push(d);
+    // Anything but the usual week around today offers the way back (at the bottom too, once it is long).
+    const home = ADJFOCUS===today && ADJBACK===6 && ADJFWD===1;
+    const back = `<button type="button" class="daymore home" data-more="today">Back to today</button>`;
     const date=$('adjdate').value;
     if(ADJSEL && !(date>=lo && date<=hi && adjItems(date).some(e=>e.key===ADJSEL))) ADJSEL=null;
     if(MULTI && !(MULTI.day>=lo && MULTI.day<=hi)) MULTI=null;
     if(MULTI) ADJSEL=null;
     $('adjlist').innerHTML =
       (hi<T1? `<button type="button" class="daymore" data-more="fwd">Later days</button>` : '')
-      +(ADJFOCUS!==today? `<button type="button" class="daymore" data-more="today">Back to today</button>` : '')
+      +(home? '' : back)
       +days.map(dayCard).join('')
-      +(lo>T0? `<button type="button" class="daymore" data-more="back">Earlier days</button>` : '');
+      +(lo>T0? `<button type="button" class="daymore" data-more="back">Earlier days</button>` : '')
+      +(home || ADJBACK<=12? '' : back);
     // The editor opens under what you tapped; select mode under its day's lines.
     const sel=ADJSEL && adjItems(date).find(e=>e.key===ADJSEL);
     if(sel){ const at=$('adjlist').querySelector(`[data-key="${CSS.escape(ADJSEL)}"]`); if(at) at.after($('adjedit')); }
@@ -4393,9 +4404,17 @@ function showDay(date){
 }
 function openItem(date, key){
   $('adjq').value=''; showDay(date); ADJSEL=key; $('adjmsg').textContent='';
-  fillAdj();
-  const at = !$('adjedit').hidden? $('adjedit') : $('adjlist').querySelector(`[data-day="${date}"]`);
-  if(at) requestAnimationFrame(()=>at.scrollIntoView({block: key? 'nearest' : 'start', behavior:'smooth'}));
+  fillAdj(); arrive(date, key);
+}
+/* You went somewhere (Go to day, history, a search result, Back to today): that day's card comes
+   into view and its border glows once, so the eye lands on it. */
+function arrive(date, key){
+  const card=$('adjlist').querySelector(`.daycard[data-day="${date}"]`); if(!card) return;
+  const at = key && !$('adjedit').hidden? $('adjedit') : card;
+  requestAnimationFrame(()=>{
+    at.scrollIntoView({block: at===card? 'center' : 'nearest', behavior:'smooth'});
+    card.classList.remove('arrive'); void card.offsetWidth; card.classList.add('arrive');
+  });
 }
 const clearDayMsg=()=>{ $('daymsg').textContent=''; };
 ['adjlist','adjrecent'].forEach(id=>$(id).addEventListener('click',clearDayMsg,true));
@@ -4403,7 +4422,7 @@ const clearDayMsg=()=>{ $('daymsg').textContent=''; };
 // "Go to day": that day and the week before it.
 $('adjjump').addEventListener('change',e=>{ if(!e.target.value) return;
   ADJFOCUS=e.target.value; ADJBACK=6; ADJFWD=1; ADJSEL=null; MULTI=null; $('adjq').value=''; $('adjmsg').textContent=''; fillAdj();
-  $('adjlist').scrollIntoView({block:'start', behavior:'smooth'}); });
+  arrive(ADJFOCUS); });
 $('adjjump').addEventListener('click',e=>{ try{ e.target.showPicker(); }catch(_){} });
 $('adjq').addEventListener('input',()=>{ ADJSEL=null; fillAdj(); });
 $('adjq').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); }});
@@ -4411,7 +4430,7 @@ $('adjlist').addEventListener('click',e=>{
   const m=e.target.closest('[data-more]');
   if(m){ const {today}=nowInfo(), k=m.dataset.more;
     if(k==='back') ADJBACK+=ADJ_MORE; else if(k==='fwd') ADJFWD+=ADJ_MORE; else { ADJFOCUS=today; ADJBACK=6; ADJFWD=1; }
-    fillAdj(); return; }
+    fillAdj(); if(k==='today') arrive(today); return; }
   const t=e.target.closest('[data-tool]');
   if(t){ const date=t.dataset.date, txs=adjItems(date).filter(x=>x.kind==='tx');
     if(t.dataset.tool==='select'){ MULTI={day:date, keys:new Set()}; ADJSEL=null; $('multito').value=''; $('multimsg').textContent=''; }
