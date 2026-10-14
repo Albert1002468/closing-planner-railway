@@ -4163,14 +4163,19 @@ function fillEditor(sel){
   $('adjedit').hidden=!sel;
   if(!sel) return;
   const tx = sel.kind==='tx', date=$('adjdate').value;
+  /* A balance from the bank is the bank's number: only its note can be edited (the next inbox check
+     would put the bank's figure back anyway). Its variance follows from the days before it. */
+  const fromBank = sel.kind==='rec' && RECON[date] && RECON[date].source==='bank';
+  ['adjamt','adjout','adjin'].forEach(id=>{ $(id).disabled=fromBank; });
   $('adjwhat').innerHTML=`<b>${esc(sel.kind==='rec'? 'Reconciled balance' : sel.kind==='tx'? adjBase(sel.l) : sel.l)}</b>`
     +`<small>${esc(longDate(date)+' · '+itemDetail(sel))}</small>`;
-  $('adjamtlab').textContent = tx? 'What actually happened' : 'Variance — how far off the projected balance';
+  $('adjamtlab').textContent = tx? 'What actually happened' : fromBank? "Variance — set by the bank's balance; to change it, fix an earlier day"
+                                                                   : 'Variance — how far off the projected balance';
   $('adjout').textContent = tx? '− Out' : '− Short';
   $('adjin').textContent  = tx? '+ In'  : '+ Over';
   $('adjmovefld').hidden = !tx;
   $('adjclear').hidden = !tx;
-  $('adjsave').textContent = sel.kind==='new'? 'Save reconcile' : sel.kind==='rec'? 'Save variance' : 'Save adjustment';
+  $('adjsave').textContent = sel.kind==='new'? 'Save reconcile' : fromBank? 'Save note' : sel.kind==='rec'? 'Save variance' : 'Save adjustment';
   if(!fillAdj.keep){
     if(sel.kind==='new'){ $('adjamt').value=''; adjSign(-1,true); $('adjnote').value=''; }
     else { $('adjamt').value=Math.abs(sel.a).toFixed(2); adjSign(sel.a<0?-1:1, true); }
@@ -4456,12 +4461,12 @@ $('adjsave').addEventListener('click',async ()=>{
     return;
   }
   if(sel.kind==='rec'){
-    const actual=+(sel.proj+v).toFixed(2);
+    const actual = RECON[on].source==='bank'? RECON[on].actual : +(sel.proj+v).toFixed(2);
     if(actual===RECON[on].actual && note===(RECON[on].note||'')){
       msg.className='recmsg err'; msg.textContent='That is what is already recorded.'; return; }
     const out=await adjSend('/api/reconciles','PUT',{date:on, actual, note, reason:'adjusted variance'}, $('adjsave'));
     if(!out) return;
-    RECON[on]={actual:out.actual, note:out.note};
+    RECON[on]={...RECON[on], actual:out.actual, note:out.note};      // keeps source: 'bank'
     (out.shifted||[]).forEach(x=>{ if(RECON[x.date]) RECON[x.date].actual=x.actual; });
     OPPC={key:null}; render(); refill();
     const n=(out.shifted||[]).length;

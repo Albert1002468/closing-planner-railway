@@ -103,6 +103,9 @@ What it does, every 15 minutes and whenever the app is opened:
 
 ## Reconciliation rules (enforced on the server, not just the browser)
 
+- A balance **from the bank** can't be typed over — only its note. Its variance is whatever the
+  days before it leave: to change it, fix the earlier day.
+
 - The trigger is the check-mark icon in the app bar. It appears once any date is eligible or
   any entry exists (so a past entry can always be corrected).
 - It opens the Adjust & reconcile sheet (a bottom sheet on phones). Being signed in is the

@@ -524,6 +524,9 @@ const server = http.createServer((req, res) => {
       if (!prev) return json(res, 404, { error: 'That date has not been reconciled, so there is nothing to correct.' });
       const amt = Number(b.actual);
       if (!Number.isFinite(amt)) return json(res, 400, { error: 'Actual balance must be a number.' });
+      // The bank's balance is not typed over (the next inbox check would restore it): only its note.
+      if (prev.source === 'bank' && Math.round(amt * 100) !== Math.round(prev.actual * 100))
+        return json(res, 409, { error: "That balance is the bank's — fix an earlier day to change its variance." });
       const note = String(b.note ?? '').trim();
       if (note.length > 500) return json(res, 400, { error: 'Note too long (500 characters max).' });
       const reason = String(b.reason ?? '').trim().slice(0, 200);
