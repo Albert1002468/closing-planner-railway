@@ -407,6 +407,18 @@
   #stageform>.rechead,#stageform>.hint{order:0}
   #bankbox{order:1} .daystools{order:2} #adjlist{order:3} #daymsg{order:4} #adjpark{order:5}
   #bankfoot{order:6} #adjrecent{order:7} #signout{order:8}
+  /* Scrollbars in the sheets: a thin rounded thumb in the app's own grey, no track or arrows,
+     a little stronger under the pointer. Firefox/Chrome read scrollbar-color; Safari the
+     ::-webkit-scrollbar rules (Chrome ignores those once scrollbar-color is set). */
+  .sheet,.recside,.recmain{scrollbar-width:thin;scrollbar-color:var(--axis) transparent}
+  .sheet:hover,.recside:hover,.recmain:hover{scrollbar-color:var(--muted) transparent}
+  .sheet::-webkit-scrollbar,.recside::-webkit-scrollbar,.recmain::-webkit-scrollbar{width:10px;height:10px;background:transparent}
+  .sheet::-webkit-scrollbar-track,.recside::-webkit-scrollbar-track,.recmain::-webkit-scrollbar-track{background:transparent}
+  .sheet::-webkit-scrollbar-thumb,.recside::-webkit-scrollbar-thumb,.recmain::-webkit-scrollbar-thumb{
+    background:var(--axis);border-radius:999px;border:3px solid transparent;background-clip:padding-box;min-height:40px}
+  .sheet:hover::-webkit-scrollbar-thumb,.recside:hover::-webkit-scrollbar-thumb,.recmain:hover::-webkit-scrollbar-thumb{background-color:var(--muted)}
+  .sheet::-webkit-scrollbar-button,.recside::-webkit-scrollbar-button,.recmain::-webkit-scrollbar-button,
+  .sheet::-webkit-scrollbar-corner,.recside::-webkit-scrollbar-corner,.recmain::-webkit-scrollbar-corner{display:none;background:transparent}
   /* Desktop: nearly the whole window, two columns that scroll on their own. */
   @media (min-width:900px){
     #recmodal .sheet{width:min(1240px,100%);height:calc(100vh - 28px);height:calc(100dvh - 28px);
@@ -415,7 +427,7 @@
                          grid-template-rows:auto auto minmax(0,1fr);column-gap:22px}
     #stageform>.rechead,#stageform>.hint{grid-column:1/-1}
     .recside,.recmain{display:block;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;grid-row:3;
-                      padding:2px 4px 4px;margin:-2px -4px 0;overscroll-behavior:contain}
+                      padding:2px 10px 4px 4px;margin:-2px -10px 0 -4px;overscroll-behavior:contain;scrollbar-gutter:stable}
     .recside{grid-column:1} .recmain{grid-column:2}
     .recside #bankbox{margin-top:0}
     .recmain .daystools{position:sticky;top:-2px;z-index:2;background:var(--surface-1);padding:2px 0 10px;margin:0}
