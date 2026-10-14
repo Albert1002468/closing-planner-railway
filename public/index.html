@@ -384,6 +384,46 @@
   .adjtools{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:22px;
             font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px}
   .adjtools:empty{display:none}
+  /* ---- the days ---- */
+  .daystools{display:flex;gap:8px;align-items:stretch;margin-bottom:10px}
+  .daystools .adjq{flex:1;min-width:0;margin:0}
+  .jumpday{position:relative;flex:none;display:flex;align-items:center;padding:0 12px;border:1px solid var(--axis);
+           border-radius:10px;background:var(--page);color:var(--s1);font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .jumpday input{position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:16px;border:0;padding:0;margin:0;
+                 cursor:pointer;-webkit-appearance:none;appearance:none;background:none}
+  .adjlist{gap:10px}
+  .daycard{border:1px solid var(--grid);border-radius:14px;background:var(--page);padding:4px;display:flex;flex-direction:column;gap:4px}
+  .daycard.today{border-color:color-mix(in srgb,var(--s1) 45%,var(--grid))}
+  .dayhead{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;box-sizing:border-box;text-align:left;
+           background:none;border:1px solid transparent;border-radius:11px;padding:9px 10px;font:inherit;color:var(--ink);
+           cursor:pointer;font-variant-numeric:tabular-nums}
+  .dayhead.static{cursor:default}
+  .dayhead.on{border-color:var(--s1);box-shadow:0 0 0 3px color-mix(in srgb,var(--s1) 16%,transparent)}
+  .dayhead .lab{display:flex;flex-direction:column;min-width:0;gap:1px}
+  .dayhead .lab b{font-size:14.5px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dayhead .lab small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dayhead.bank .lab small{color:var(--goodtext)}
+  .dayhead .amt{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+  .dayhead .amt b{font-size:15px;font-weight:650}
+  .dayhead.static .amt b{color:var(--ink-2);font-weight:500}
+  .dayhead .amt small.todo{font-size:12px;font-weight:600;color:var(--s1)}
+  .dayhead.todo{border-color:color-mix(in srgb,var(--s1) 45%,transparent)}
+  .daylines{display:flex;flex-direction:column;gap:3px}
+  .daylines .adjitem{padding:8px 10px;font-size:13.5px;border-radius:10px}
+  .daycard .adjtools{margin:0 6px 2px}
+  .daycard #adjedit,.daycard #adjmulti{margin:0 6px 8px}
+  .daymore{background:none;border:1px dashed var(--axis);border-radius:10px;color:var(--s1);font:inherit;font-size:13px;
+           font-weight:600;padding:8px;cursor:pointer}
+  .adjchip.ok{color:var(--goodtext);background:color-mix(in srgb,var(--goodtext) 14%,transparent)}
+  .adjchip.bk{color:var(--ink-2);background:var(--grid)}
+  .adjchip.wt{color:var(--warn,#c98a00);background:color-mix(in srgb,var(--warn,#c98a00) 15%,transparent)}
+  .banklast{display:flex;justify-content:space-between;gap:10px;margin:8px 0 2px;font-variant-numeric:tabular-nums}
+  .banklast span{color:var(--muted);font-size:12px}
+  .bankgrp.need{color:var(--crit);font-weight:650}
+  .bankfoot .bankbox{margin:14px 0 0}
+  .bankfoot .bankmore:first-child{margin-top:0}
+  details.reclist summary{cursor:pointer;color:var(--s1);font-size:12.5px;font-weight:600}
+  details.reclist[open] summary{margin-bottom:6px}
   /* ---- Bank ---- */
   .bankbox{border:1px solid var(--ring);border-radius:12px;padding:10px 12px;margin:0 0 12px;background:var(--page);font-size:13px}
   .bankhead{display:flex;align-items:center;gap:8px}
@@ -1189,23 +1229,23 @@
             <button type="button" id="recdone" class="ghostbtn">Done</button>
           </div>
           <p class="hint" id="rechint"></p>
-          <!-- Bank sync (alert emails): status, transactions to review, accounts. Filled by fillBank. -->
+          <!-- Bank sync (alert emails): what it did, and what needs you. Filled by fillBank. -->
           <div class="bankbox" id="bankbox" hidden></div>
-          <!-- One view: find a day (stepper or search), tap a line to set what actually happened,
-               or tap the day's balance to reconcile it. -->
-          <input type="search" id="adjq" class="adjq" placeholder="Search — e.g. paycheck, mortgage"
-                 autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
-                 aria-label="Search transactions">
-          <div class="daybar" id="daybar">
-            <button type="button" id="dayprev" aria-label="Previous day">&lsaquo;</button>
-            <label class="daypick">
-              <span id="daylabel"></span><span class="daysub" id="daysub"></span>
-              <input type="date" id="adjdate" aria-label="Pick a day">
-            </label>
-            <button type="button" id="daynext" aria-label="Next day">&rsaquo;</button>
+          <!-- Your days, newest first: each day's balance (from the bank, by you, or projected) and its
+               lines, each marked with what the bank said. Tap a line or a balance to change it. -->
+          <div class="daystools">
+            <input type="search" id="adjq" class="adjq" placeholder="Search — e.g. paycheck, mortgage"
+                   autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
+                   aria-label="Search transactions">
+            <label class="jumpday" title="Go to a day"><span>Go to day</span>
+              <input type="date" id="adjjump" aria-label="Go to a day"></label>
           </div>
-          <div class="adjtools" id="adjtools"></div>
+          <input type="hidden" id="adjdate">
           <div class="adjlist" id="adjlist"></div>
+          <div class="recmsg ok daymsg" id="daymsg" role="status"></div>
+          <!-- The editor and select mode live here while unused; fillAdj moves them under the line
+               (or the day) they are for. -->
+          <div id="adjpark" hidden>
           <!-- Select mode: move several of the day's lines to another day in one save. -->
           <div id="adjmulti" hidden>
             <div class="fld">
@@ -1223,7 +1263,6 @@
               <span class="recmsg" id="multimsg"></span>
             </div>
           </div>
-          <div class="recmsg ok daymsg" id="daymsg" role="status"></div>
           <div id="adjedit" hidden>
             <div class="adjwhat" id="adjwhat"></div>
             <div class="fld">
@@ -1251,7 +1290,9 @@
               <span class="recmsg" id="adjmsg"></span>
             </div>
           </div>
-          <div class="reclist" id="adjrecent"></div>
+          </div>
+          <div class="bankfoot" id="bankfoot"></div>
+          <details class="reclist" id="adjrecent"><summary>Every change, newest first</summary><div id="adjrecentlist"></div></details>
           <button type="button" class="signout" id="signout">Sign out of this device</button>
         </div>
       </div>
@@ -4070,7 +4111,7 @@ function itemDetail(e){
   // The label's trailing "(…)" detail (P&I split, OT hours) reads here, not cut off in the title.
   const extra=e.l.slice(adjBase(e.l).length).trim().replace(/^\(|\)$/g,'');
   if(extra) bits.push(extra);
-  if(e.l.startsWith('Bank: ')) bits.push('From the bank — not in the plan');
+  if(e.l.startsWith('Bank: ')) bits.push(BANK && BANK.live? 'Not in the plan' : 'From the bank — not in the plan');
   else if(!e.adj) bits.push('Projected');
   else {
     bits.push(e.from? 'Moved from '+shortDate(e.from) : 'Adjusted');
@@ -4080,8 +4121,10 @@ function itemDetail(e){
   return bits.join(' · ');
 }
 function itemRow(e, date, withDate){
-  const chip = e.kind==='tx' && e.adj? `<span class="adjchip">${e.from?'moved':'adjusted'}</span>` : '';
-  const title = e.kind==='rec'? `Reconciled · ${fmt(e.actual)}` : e.kind==='tx'? adjBase(e.l) : e.l;
+  const bk = bankChip(e);
+  const chip = bk || (e.kind==='tx' && e.adj? `<span class="adjchip">${e.from?'moved':'adjusted'}</span>` : '');
+  // A line the bank added is marked as such; its name is the bank's, without the "Bank: " prefix.
+  const title = e.kind==='rec'? `Reconciled · ${fmt(e.actual)}` : e.kind==='tx'? adjBase(e.l).replace(bk? /^Bank: / : /^$/,'') : e.l;
   const amt = e.kind==='rec'? `<span class="amt" style="color:var(${varColor(e.a)})">${signed(e.a)}</span>`
             : e.kind==='new'? '<span class="amt">Reconcile ›</span>'
             : `<span class="amt">${fmt(e.a)}</span>`;
@@ -4112,50 +4155,85 @@ function searchHits(q){
                  .sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
   return {near, total:hits.length};
 }
-function fillAdj(){
-  const $d=$('adjdate'), q=$('adjq').value.trim();
-  $d.min=T0; $d.max=T1;
-  if(!$d.value || $d.value<T0 || $d.value>T1) $d.value = TODAY_ISO>=T0 && TODAY_ISO<=T1? TODAY_ISO : T0;
-  const date=$d.value, {today,hour}=nowInfo();
-  if(MULTI && (q || MULTI.day!==date)) MULTI=null;          // select mode belongs to one day
-  $('rechint').textContent=(SRV.online?'':'Offline — can’t save. ')
-    +'Tap a line to enter what actually happened. Reconcile a day from its balance at the bottom.';
-
-  // Day bar
+/* The days: from ADJFWD days after the focus day (today, or the day you went to) back ADJBACK days,
+   newest first. Each is a card — its balance and where that came from, then its lines. */
+let ADJFOCUS=null, ADJBACK=6, ADJFWD=1;
+const ADJ_MORE=7;
+// What the bank said about a line: matched it, added it, or still waiting for it.
+function bankChip(e){
+  if(!BANK || !BANK.live || e.kind!=='tx') return '';
+  if(e.l.startsWith('Bank: ')) return '<span class="adjchip bk">from the bank</span>';
+  if((BANK.claimed||[]).includes(e.key)) return '<span class="adjchip ok">bank ✓</span>';
+  const r=BANK.rolled&&BANK.rolled[e.key]; if(r && !r.done) return '<span class="adjchip wt">waiting</span>';
+  return '';
+}
+function dayHead(date){
+  const day=adjDay(date), {today}=nowInfo(), x=RECON[date];
   const rel = date===today? 'Today' : date===addD(today,-1)? 'Yesterday' : date===addD(today,1)? 'Tomorrow' : '';
-  const status = RECON[date]? 'Reconciled' : canReconcile(date)? 'Not reconciled' : '';
-  $('daylabel').textContent=longDate(date);
-  $('daysub').textContent=[rel,status].filter(Boolean).join(' · ') || 'Projected';
-  $('dayprev').disabled = date<=T0; $('daynext').disabled = date>=T1;
-  $('daybar').hidden = !!q;
-
+  const title = (rel? rel+' · ' : '')+longDate(date);
+  let sub, amt, key=null, cls='';
+  if(x && day && day.rec){
+    const v=day.rec.delta;
+    sub = (x.source==='bank'? 'From the bank' : 'Reconciled by you')+(v? ` · ${signed(v)} vs plan` : ' · as planned')
+        +(x.note? ` · “${x.note}”` : '');
+    amt = `<span class="amt"><b>${fmt(x.actual)}</b></span>`; key='rec|'+date; cls=x.source==='bank'? ' bank' : ' mine';
+  } else if(canReconcile(date)){
+    sub = 'Not reconciled · projected — tap to reconcile';
+    amt = `<span class="amt"><b>${fmt(day.b)}</b><small class="todo">Reconcile ›</small></span>`; key='new|'+date; cls=' todo';
+  } else {
+    sub = date>today? 'Projected'
+        : BANK && BANK.live? "Projected · the bank's morning update reconciles it"
+        : `Projected · can be reconciled from ${UNLOCK_HOUR%12||12} ${UNLOCK_HOUR<12?'am':'pm'}`;
+    amt = `<span class="amt"><b>${day? fmt(day.b) : ''}</b></span>`;
+  }
+  const lab=`<span class="lab"><b>${esc(title)}</b><small>${esc(sub)}</small></span>`;
+  return key? `<button type="button" class="dayhead${cls}${ADJSEL===key?' on':''}" data-key="${key}" data-date="${date}" title="${esc(title+' — '+sub)}">${lab}${amt}</button>`
+            : `<div class="dayhead static">${lab}${amt}</div>`;
+}
+function dayCard(date){
+  const items=adjItems(date), txs=items.filter(e=>e.kind==='tx'), {today}=nowInfo();
+  const multi = MULTI && MULTI.day===date;
+  const tools = multi? `<div class="adjtools"><span>${MULTI.keys.size} of ${txs.length} selected</span>`
+                        +`<button type="button" data-tool="all" data-date="${date}">${MULTI.keys.size===txs.length?'Select none':'Select all'}</button></div>`
+              : txs.length>1 && !MULTI? `<div class="adjtools"><span></span><button type="button" data-tool="select" data-date="${date}">Select to move</button></div>` : '';
+  return `<div class="daycard${date===today?' today':''}" data-day="${date}">${dayHead(date)}`
+    +(txs.length? `<div class="daylines">${txs.map(e=>itemRow(e,date)).join('')}</div>` : '')
+    +tools+`</div>`;
+}
+function fillAdj(){
+  const q=$('adjq').value.trim(), {today}=nowInfo();
+  if(!ADJFOCUS || ADJFOCUS<T0 || ADJFOCUS>T1) ADJFOCUS = today>=T0 && today<=T1? today : T0;
+  const $j=$('adjjump'); $j.min=T0; $j.max=T1; $j.value=ADJFOCUS;
+  $('rechint').textContent = SRV.online? '' : 'Offline — can’t save.';
+  $('rechint').hidden = SRV.online;
+  // The editor and select mode go back to their parking spot before the list is redrawn.
+  $('adjpark').append($('adjmulti'), $('adjedit'));
   if(q){
+    if(MULTI) MULTI=null;
     const {near,total}=searchHits(q);
     $('adjlist').innerHTML = near.length
       ? `<div class="grp">${total} match${total===1?'':'es'}${total>near.length?` · ${near.length} nearest today`:''}</div>`
         + near.map(h=>itemRow(h.e, h.d, true)).join('')
       : '<div class="none">Nothing matches.</div>';
-    $('adjedit').hidden=true; $('adjtools').innerHTML=''; $('adjmulti').hidden=true;
+    $('adjedit').hidden=true; $('adjmulti').hidden=true;
   } else {
-    const items=adjItems(date), day=adjDay(date), txs=items.filter(e=>e.kind==='tx');
-    if(ADJSEL && !items.some(e=>e.key===ADJSEL)) ADJSEL=null;
+    const hi=addD(ADJFOCUS,ADJFWD) > T1? T1 : addD(ADJFOCUS,ADJFWD), lo=addD(ADJFOCUS,-ADJBACK) < T0? T0 : addD(ADJFOCUS,-ADJBACK);
+    const days=[]; for(let d=hi; d>=lo; d=addD(d,-1)) days.push(d);
+    const date=$('adjdate').value;
+    if(ADJSEL && !(date>=lo && date<=hi && adjItems(date).some(e=>e.key===ADJSEL))) ADJSEL=null;
+    if(MULTI && !(MULTI.day>=lo && MULTI.day<=hi)) MULTI=null;
     if(MULTI) ADJSEL=null;
-    $('adjtools').innerHTML = !txs.length? ''
-      : MULTI? `<span>${MULTI.keys.size} of ${txs.length} selected</span>`
-          +`<button type="button" data-tool="all">${MULTI.keys.size===txs.length?'Select none':'Select all'}</button>`
-      : `<span>${txs.length} transaction${txs.length===1?'':'s'}</span>`
-          +(txs.length>1? '<button type="button" data-tool="select">Select to move</button>' : '');
-    let html = txs.map(e=>itemRow(e,date)).join('')
-            || '<div class="none">No transactions on this day.</div>';
-    const bal=items.find(e=>e.kind!=='tx');
-    if(MULTI) {}                                             // the balance row is not movable
-    else if(bal) html+=itemRow(bal,date);
-    else if(day) html+=`<div class="adjitem balitem static"><span class="lab"><b>End-of-day balance</b><small>`
-      +(date===today? `Projected · today can be reconciled from ${UNLOCK_HOUR%12||12} ${UNLOCK_HOUR<12?'am':'pm'}` : 'Projected')
-      +`</small></span><span class="amt">${fmt(day.b)}</span></div>`;
-    $('adjlist').innerHTML=html;
-    fillEditor(items.find(e=>e.key===ADJSEL));
-    fillMulti(txs);
+    $('adjlist').innerHTML =
+      (hi<T1? `<button type="button" class="daymore" data-more="fwd">Later days</button>` : '')
+      +(ADJFOCUS!==today? `<button type="button" class="daymore" data-more="today">Back to today</button>` : '')
+      +days.map(dayCard).join('')
+      +(lo>T0? `<button type="button" class="daymore" data-more="back">Earlier days</button>` : '');
+    // The editor opens under what you tapped; select mode under its day's lines.
+    const sel=ADJSEL && adjItems(date).find(e=>e.key===ADJSEL);
+    if(sel){ const at=$('adjlist').querySelector(`[data-key="${CSS.escape(ADJSEL)}"]`); if(at) at.after($('adjedit')); }
+    fillEditor(sel);
+    if(MULTI){ const card=$('adjlist').querySelector(`[data-day="${MULTI.day}"]`); if(card) card.append($('adjmulti')); }
+    fillMulti(MULTI? adjItems(MULTI.day).filter(e=>e.kind==='tx') : []);
   }
   fillRecent();
 }
@@ -4205,8 +4283,8 @@ function fillRecent(){
     : '';
   const row=(attr, on, b, small, right, col)=>`<div class="recpick${on?' on':''}" ${attr} role="button" tabindex="0" title="${esc(b+' — '+small)}">`
     +`<span class="lab"><b>${esc(b)}</b><small>${esc(small)}</small></span><span style="color:var(${col})">${right}</span></div>`;
-  $('adjrecent').innerHTML = rows.length
-    ? '<div class="n"><span>Recent changes · tap one to open it</span><span></span></div>'+rows.map(r=>{
+  $('adjrecentlist').innerHTML = rows.length
+    ? rows.map(r=>{
         if(r.t==='rec'){
           const day=adjDay(r.d), x=RECON[r.d], v=day&&day.rec? day.rec.delta : null;
           return row(`data-rec="${r.d}"`, ADJSEL==='rec|'+r.d, `${shortDate(r.d)} · Reconciled ${fmt(x.actual)}`,
@@ -4285,28 +4363,44 @@ const recNote = sh => !sh||!sh.length? '' : sh.length===1
 const applyShifted = out => (out.shifted||[]).forEach(x=>{ if(RECON[x.date]) RECON[x.date].actual=x.actual; });
 // Open one item: its day, selected, with the editor in view. No auto-focus — on a phone that
 // pops the keyboard and shoves the sheet around before you have read what you picked.
+// Make `date` the open day, keeping the list as it is when that day is in it (else: that day's week).
+function showDay(date){
+  const f=ADJFOCUS||nowInfo().today;
+  if(!(date<=addD(f,ADJFWD) && date>=addD(f,-ADJBACK))){ ADJFOCUS=date; ADJBACK=6; ADJFWD=1; }
+  $('adjdate').value=date;
+}
 function openItem(date, key){
-  $('adjq').value=''; $('adjdate').value=date; ADJSEL=key; $('adjmsg').textContent='';
+  $('adjq').value=''; showDay(date); ADJSEL=key; $('adjmsg').textContent='';
   fillAdj();
   if(!$('adjedit').hidden) requestAnimationFrame(()=>$('adjedit').scrollIntoView({block:'nearest', behavior:'smooth'}));
 }
 const clearDayMsg=()=>{ $('daymsg').textContent=''; };
-['adjlist','adjtools','dayprev','daynext','adjrecent'].forEach(id=>$(id).addEventListener('click',clearDayMsg,true));
-['adjdate','adjq'].forEach(id=>$(id).addEventListener('input',clearDayMsg,true));
-function stepDay(n){
-  const d=addD($('adjdate').value,n); if(d<T0||d>T1) return;
-  $('adjdate').value=d; ADJSEL=null; $('adjmsg').textContent=''; fillAdj();
-}
-$('dayprev').addEventListener('click',()=>stepDay(-1));
-$('daynext').addEventListener('click',()=>stepDay(1));
-$('adjdate').addEventListener('change',()=>{ ADJSEL=null; $('adjmsg').textContent=''; fillAdj(); });
+['adjlist','adjrecent'].forEach(id=>$(id).addEventListener('click',clearDayMsg,true));
+['adjjump','adjq'].forEach(id=>$(id).addEventListener('input',clearDayMsg,true));
+// "Go to day": that day and the week before it.
+$('adjjump').addEventListener('change',e=>{ if(!e.target.value) return;
+  ADJFOCUS=e.target.value; ADJBACK=6; ADJFWD=1; ADJSEL=null; MULTI=null; $('adjq').value=''; $('adjmsg').textContent=''; fillAdj();
+  $('adjlist').scrollIntoView({block:'start', behavior:'smooth'}); });
+$('adjjump').addEventListener('click',e=>{ try{ e.target.showPicker(); }catch(_){} });
 $('adjq').addEventListener('input',()=>{ ADJSEL=null; fillAdj(); });
 $('adjq').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); }});
-$('adjlist').addEventListener('click',e=>{ const b=e.target.closest('button[data-key]'); if(!b) return;
-  if(MULTI){ const k=b.dataset.key; MULTI.keys.has(k)? MULTI.keys.delete(k) : MULTI.keys.add(k);
+$('adjlist').addEventListener('click',e=>{
+  const m=e.target.closest('[data-more]');
+  if(m){ const {today}=nowInfo(), k=m.dataset.more;
+    if(k==='back') ADJBACK+=ADJ_MORE; else if(k==='fwd') ADJFWD+=ADJ_MORE; else { ADJFOCUS=today; ADJBACK=6; ADJFWD=1; }
+    fillAdj(); return; }
+  const t=e.target.closest('[data-tool]');
+  if(t){ const date=t.dataset.date, txs=adjItems(date).filter(x=>x.kind==='tx');
+    if(t.dataset.tool==='select'){ MULTI={day:date, keys:new Set()}; ADJSEL=null; $('multito').value=''; $('multimsg').textContent=''; }
+    else if(t.dataset.tool==='all') MULTI.keys = MULTI.keys.size===txs.length? new Set() : new Set(txs.map(x=>x.key));
+    fillAdj(); return; }
+  const b=e.target.closest('button[data-key]'); if(!b) return;
+  if(MULTI){ if(b.dataset.date!==MULTI.day || !b.classList.contains('adjitem')) return;
+    const k=b.dataset.key; MULTI.keys.has(k)? MULTI.keys.delete(k) : MULTI.keys.add(k);
     $('multimsg').textContent=''; fillAdj(); return; }
   if($('adjq').value.trim()){ $('adjq').blur(); openItem(b.dataset.date, b.dataset.key); return; }
-  ADJSEL = ADJSEL===b.dataset.key? null : b.dataset.key;      // tap again to close
+  const same = ADJSEL===b.dataset.key;                        // tap again to close
+  ADJSEL = same? null : b.dataset.key; $('adjdate').value=b.dataset.date;
   $('adjmsg').textContent=''; fillAdj();
   if(ADJSEL) requestAnimationFrame(()=>$('adjedit').scrollIntoView({block:'nearest', behavior:'smooth'}));
 });
@@ -4339,13 +4433,6 @@ function fillMulti(txs){
       +(recs.length===1? muted(`Reconciled ${shortDate(recs[0][0])} moves by ${signed(recs[0][1])} — its variance stays as entered`)
         : recs.length? muted(`${recs.length} reconciled balances move with them — their variances stay as entered`) : '');
 }
-$('adjtools').addEventListener('click',e=>{
-  const b=e.target.closest('[data-tool]'); if(!b) return;
-  const date=$('adjdate').value, txs=adjItems(date).filter(x=>x.kind==='tx');
-  if(b.dataset.tool==='select'){ MULTI={day:date, keys:new Set()}; ADJSEL=null; $('multito').value=''; $('multimsg').textContent=''; }
-  else if(b.dataset.tool==='all') MULTI.keys = MULTI.keys.size===txs.length? new Set() : new Set(txs.map(x=>x.key));
-  fillAdj();
-});
 const stepMulti=n=>{ const d=addD($('multito').value,n); if(d<T0||d>T1) return; $('multito').value=d; fillAdj(); };
 $('multiprev').addEventListener('click',()=>stepMulti(-1));
 $('multinext').addEventListener('click',()=>stepMulti(1));
@@ -4369,7 +4456,7 @@ $('multisave').addEventListener('click',async ()=>{
     const moved=recNote(out.shifted); applyShifted(out);
     (out.items||[]).forEach(x=>{ if(x.cleared) delete ADJ[x.key]; else ADJ[x.key]=x; });
     OPPC={key:null}; MULTI=null; render();
-    $('adjdate').value=to; fillAdj();                     // follow them to their new day
+    showDay(to); fillAdj();                               // follow them to their new day
     $('daymsg').textContent=`Moved ${sel.length} from ${shortDate(from)} to ${shortDate(to)}.`+moved;
   }catch(e){ msg.className='recmsg err'; msg.textContent='Network error — not saved.'; }
   finally{ btn.disabled=false; btnLoading(btn,false); }
@@ -4388,7 +4475,7 @@ $('adjin').addEventListener('click',()=>adjSign(1));
 $('adjmove').addEventListener('change',adjPreview);
 // The date inputs sit invisibly over their labels; desktop browsers only open the picker from
 // the (hidden) calendar icon, so ask for it on click.
-['adjdate','adjmove'].forEach(id=>$(id).addEventListener('click',e=>{ try{ e.target.showPicker(); }catch(_){} }));
+$('adjmove').addEventListener('click',e=>{ try{ e.target.showPicker(); }catch(_){} });
 const stepMove=n=>{ const d=addD($('adjmove').value||$('adjdate').value,n); if(d<T0||d>T1) return; $('adjmove').value=d; adjPreview(); };
 $('moveprev').addEventListener('click',()=>stepMove(-1));
 $('movenext').addEventListener('click',()=>stepMove(1));
@@ -4404,7 +4491,7 @@ $('adjamt').addEventListener('input',e=>{
 // straight onto today — no PIN.
 function openModal(){
   $('recmodal').hidden=false;
-  RECPAGE=0; fillAdj(); fillBank();
+  RECPAGE=0; ADJFOCUS=null; ADJBACK=6; ADJFWD=1; fillAdj(); fillBank();
   document.body.style.overflow='hidden';
 }
 function closeModal(){
@@ -4483,7 +4570,7 @@ $('adjsave').addEventListener('click',async ()=>{
   const moved=recNote(out.shifted); applyShifted(out); delete out.shifted;
   ADJ[out.key]=out; OPPC={key:null};
   render();
-  $('adjdate').value = out.moveTo || out.date;      // follow it to the day it now lands on
+  showDay(out.moveTo || out.date);                  // follow it to the day it now lands on
   refill();
   msg.className='recmsg ok';
   msg.textContent=`Saved — ${fmt(out.amount)}`+(out.moveTo? ` on ${shortDate(out.moveTo)}` : '')
@@ -4496,7 +4583,7 @@ $('adjclear').addEventListener('click',async ()=>{
   if(!out) return;
   const moved=recNote(out.shifted); applyShifted(out);
   delete ADJ[key]; OPPC={key:null};
-  render(); $('adjdate').value=home; fillAdj();
+  render(); showDay(home); fillAdj();
   $('adjmsg').className='recmsg ok'; $('adjmsg').textContent='Back to the projection.'+moved;
 });
 
@@ -4667,6 +4754,7 @@ async function bankSync(force){
   if(!out) return;
   bankTake(out);
   await bankRun(); fillBank(); bankBadge();
+  if(!$('recmodal').hidden) refill();          // the days' "bank ✓" marks
 }
 // A server answer: the new bank state, plus any days it just reconciled from balance alerts.
 function bankTake(out){
@@ -4690,12 +4778,12 @@ function bankRowOptions(t){
 function bankFind(key){ for(const day of LAST_DATA) for(const e of day.ev) if(e.key===key) return {...e, d:day.d}; return null; }
 const bankList = (title, rows, open) => `<details class="bankmore"${open?' open':''}><summary>${title}</summary><div class="banklist">${rows}</div></details>`;
 function fillBank(){
-  const box=$('bankbox'); if(!box) return;
-  if(!BANK){ box.hidden=true; return; }
-  box.hidden=false;
+  const box=$('bankbox'), foot=$('bankfoot'); if(!box) return;
+  if(!BANK){ box.hidden=true; foot.innerHTML=''; return; }
+  box.hidden=false; foot.innerHTML='';
   const preview=!BANK.live, revs=bankReviews(), stuck=preview? [] : [...BANK_STUCK.map(x=>({...x,stuck:true})), ...BANK_WAIT];
   let h=`<div class="bankhead"><b>Bank</b><span class="banksub">`
-    +(BANK.ready? 'Alerts to '+esc(BANK.address)+' · checked '+bankAgo(BANK.lastRun)+(preview?' · preview':'') : 'Not set up')+`</span>`
+    +(BANK.ready? 'Checked '+bankAgo(BANK.lastRun)+(preview?' · preview':'') : 'Not set up')+`</span>`
     +(BANK.ready? `<button type="button" class="ghostbtn" id="banksync">Check now</button>` : '')+`</div>`;
   if(!BANK.ready){
     box.innerHTML=h+`<p class="bankhint">Automatic bank sync needs these Railway variables: <b>${esc(BANK.missing.join(', '))}</b>. See “Bank sync” in the README.</p>`;
@@ -4708,9 +4796,12 @@ function fillBank(){
     BANK.would.forEach(w=>{ h+=`<p class="bankhint">Balance ${shortDate(w.date)}: ${fmt(w.actual)} — `
       +(w.already? 'already reconciled, would be left alone' : 'would reconcile that day')+`.</p>`; });
     h+=`<button type="button" class="bankon" id="banklive">Looks right — turn it on</button>`;
-  } else if(BANK.lastReconciled) h+=`<p class="bankhint">Reconciled ${shortDate(BANK.lastReconciled.date)} from the bank: ${fmt(BANK.lastReconciled.actual)}.</p>`;
+  } else {
+    if(BANK.lastReconciled) h+=`<p class="banklast"><span>Latest balance from the bank · ${shortDate(BANK.lastReconciled.date)}</span><b>${fmt(BANK.lastReconciled.actual)}</b></p>`;
+    if(!revs.length && !stuck.length) h+=`<p class="bankhint">Nothing needs you — it matches what the bank shows to your plan on its own.</p>`;
+  }
   if(!preview && revs.length){
-    h+=`<div class="bankgrp">To review · ${revs.length}</div>`;
+    h+=`<div class="bankgrp need">Needs you · which line is this? · ${revs.length}</div>`;
     h+=revs.map(t=>`<div class="bankrev" data-id="${esc(t.id)}">
       <div class="bankline"><span class="lab"><b>${esc(t.name)}</b><small>${longDate(t.date)}${t.suggest?` · looks like ${esc(t.suggest.label)}`:' · not found in the plan'}</small></span>
         <span class="amt">${fmt(t.amount)}</span></div>
@@ -4718,7 +4809,7 @@ function fillBank(){
         <button type="button" class="bankok">Save</button></div></div>`).join('');
   }
   if(stuck.length){
-    h+=`<div class="bankgrp">Not at the bank yet · ${stuck.length}</div>`;
+    h+=`<div class="bankgrp${BANK_STUCK.length?' need':''}">Not at the bank yet · ${stuck.length}</div>`;
     h+=stuck.map(x=>`<div class="bankrev" data-roll="${esc(x.key)}">
       <div class="bankline"><span class="lab"><b>${esc(x.label)}</b><small>Planned ${longDate(x.orig)} · ${x.stuck? `no alert in ${BANK_ROLL_MAX} days` : 'now on '+shortDate(x.d)}</small></span>
         <span class="amt">${fmt(x.amount)}</span></div>
@@ -4736,26 +4827,27 @@ function fillBank(){
       : x.action==='roll'? 'not at the bank yet → move to '+shortDate(x.moveTo) : 'ignore (transfer)';
     h+=bankList(`Would do · ${BANK_PREVIEW.length}`, BANK_PREVIEW.slice(0,40).map(x=>row(x.t.date,x.t.name,say(x),x.t.amount)).join(''), true);
   }
+  h+=`<div class="recmsg" id="bankmsg" role="status"></div>`;
+  let f='';
   if(BANK.unread.length)
-    h+=bankList(`Alerts it could not read · ${BANK.unread.length}`, `<p class="bankhint">Send me one of these (account numbers hidden) so it can learn the wording.</p>`
+    f+=bankList(`Alerts it could not read · ${BANK.unread.length}`, `<p class="bankhint">Send me one of these (account numbers hidden) so it can learn the wording.</p>`
       +BANK.unread.map(u=>`<div><span class="trunc">${u.date?shortDate(u.date)+' · ':''}${esc(u.bank)}: ${esc(u.subject)}</span></div>`).join(''));
   if(!preview && BANK.recent.length){
     const say=t=> t.status==='matched'? '→ '+(t.label||'planned line') : t.status==='extra'? 'own line' : 'ignored';
-    h+=bankList('Recent bank matches', BANK.recent.map(t=>row(t.date,t.name,say(t),t.amount)).join(''));
+    f+=bankList('What the bank matched lately', BANK.recent.map(t=>row(t.date,t.name,say(t),t.amount)).join(''));
   }
-  h+=`<details class="bankmore"><summary>Accounts</summary>`
+  f+=`<details class="bankmore"><summary>Bank accounts &amp; settings</summary>`
     +(BANK.accounts.length? BANK.accounts.map(a=>`<label class="bankacct"><input type="checkbox" data-acct="${esc(a.id)}"${a.tracked?' checked':''}>
       <span>${esc(a.name)}${a.mask?' ··'+esc(a.mask):''}</span><span class="amt">${a.current==null?'':fmt(a.current)}</span></label>`).join('')
       : `<p class="bankhint">No alerts read yet. Point the bank's alerts at ${esc(BANK.address)}.</p>`)
-    +`<p class="bankhint">Ticked accounts are added together as the planner's balance. It only reads emails from the banks that Gmail verified as really theirs, and it never deletes or changes them.</p>`
+    +`<p class="bankhint">Alerts go to ${esc(BANK.address)}. Ticked accounts are added together as the planner's balance. It only reads emails from the banks that Gmail verified as really theirs, and it never deletes or changes them.</p>`
     +(preview? '' : `<button type="button" class="ghostbtn" id="bankpreview">Back to preview</button>`)
     +`</details>`;
-  h+=`<div class="recmsg" id="bankmsg" role="status"></div>`;
   const keep=$('bankmsg')? [$('bankmsg').className,$('bankmsg').textContent] : null;
-  box.innerHTML=h;
+  box.innerHTML=h; foot.innerHTML=`<div class="bankbox">${f}</div>`;
   if(keep){ $('bankmsg').className=keep[0]; $('bankmsg').textContent=keep[1]; }
 }
-$('bankbox').addEventListener('click',async e=>{
+async function bankClick(e){
   const b=e.target.closest('button'); if(!b) return;
   if(b.id==='banksync'){ bankMsg('Checking…'); await bankSync(true); if($('bankmsg').textContent==='Checking…') bankMsg('Up to date.'); return; }
   if(b.id==='banklive' || b.id==='bankpreview'){
@@ -4789,8 +4881,9 @@ $('bankbox').addEventListener('click',async e=>{
     b.disabled=false;
     if(out){ bankApply(out); bankMsg(v.startsWith('k:')? `Matched to ${item.label} — next time it will be automatic.` : v==='extra'? 'Added as its own line; this payee will be next time too.' : 'Ignored; this payee will be next time too.'); }
   }
-});
-$('bankbox').addEventListener('change',async e=>{
+}
+['bankbox','bankfoot'].forEach(id=>$(id).addEventListener('click',bankClick));
+$('bankfoot').addEventListener('change',async e=>{
   const c=e.target.closest('input[data-acct]'); if(!c) return;
   const out=await bankPost('/api/bank/accounts',{id:c.dataset.acct, tracked:c.checked}); if(out){ BANK=out; fillBank(); }
 });

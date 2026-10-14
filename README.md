@@ -125,10 +125,20 @@ What it does, every 15 minutes and whenever the app is opened:
 
 ### Adjust & reconcile (one view)
 
-The sheet shows one day at a time — step with **‹ ›** or tap the date for the
-system picker — or **search** by name ("paycheck", "mortgage", a note) to list the matches
-nearest today. Every row has a second line saying what it is (projected, adjusted, moved, the
-projection it replaced, its note).
+The sheet opens on what matters now:
+
+- **Bank** (top): when it last checked, the latest balance from the bank, and **Needs you** — only
+  what it couldn't decide (which planned line a payment is) and lines that never showed up at the
+  bank. Otherwise it says nothing needs you.
+- **Your days**, newest first — tomorrow, today and the week before (**Earlier days** / **Later
+  days** for more, **Go to day** for any day, or **search** by name or note). Each day shows its
+  balance and where it came from (*From the bank*, *Reconciled by you*, or *Projected*), and its
+  lines, each marked with what the bank said: **bank ✓** (it went through as planned, or was moved
+  / re-amounted to match), **from the bank** (a purchase not in the plan), **waiting** (not at the
+  bank yet).
+- At the bottom: what the bank matched lately, bank accounts & settings, and every change, newest first.
+
+Tap anything to change it; the editor opens right under it:
 
 - **A transaction**: enter what actually happened and, if it cleared on another day, step
   **Cleared on** to that day (`PUT /api/adjustments`). The projection uses it from then on and
@@ -138,13 +148,13 @@ projection it replaced, its note).
   one, and every reconciled balance moves by the net change up to its date (moving a +$3,300
   rent off a reconciled day lowers that day's balance by $3,300; its variance is unchanged).
   The preview says which reconciled balances will move; each move is in the audit log.
-- **Several at once**: tap **Select to move**, tick the lines (or **Select all**), step **Move
-  to** to the day they cleared and tap **Move**. One save (`PUT /api/adjustments` with
-  `items`): each keeps its amount and note, reconciled variances stay as entered, and moving a
-  line back to its own day clears it.
-- **The day's balance** (last row): *Reconcile this day* when it is eligible (enter the
-  variance, `POST /api/reconciles`), or *Reconciled* to change the variance.
-- **Recent changes** lists every reconcile and adjustment, newest first; tap one to open it.
+- **Several at once**: on a day with two or more lines tap **Select to move**, tick the lines (or
+  **Select all**), step **Move to** to the day they cleared and tap **Move**. One save (`PUT
+  /api/adjustments` with `items`): each keeps its amount and note, reconciled variances stay as
+  entered, and moving a line back to its own day clears it.
+- **A day's balance** (the top of its card): *Reconcile ›* when it is eligible (enter the
+  variance, `POST /api/reconciles`), or tap a reconciled one to change its variance — or, for one
+  from the bank, its note.
 
 ### What a reconcile does
 
