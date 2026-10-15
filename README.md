@@ -88,8 +88,9 @@ What it does, every 15 minutes and whenever the app is opened:
   it posts a few days later, the morning email's Deposits line for it is not counted again.
 - **Matches each new transaction to the plan**: same line → nothing; on another day or a few %
   off → the line is moved/adjusted; not in the plan → added as its own line (`Bank: …`); unsure →
-  **To review** (a badge on the check-mark button): pick the line once and that payee is
-  automatic from then on. A transfer between two ticked accounts is ignored.
+  **To review** (a red count on the check-mark button): pick the line once and that payee is
+  automatic from then on. A **green dot** there means the bank added or matched lines since you last
+  opened Adjust & reconcile on that device; opening it clears the dot. A transfer between two ticked accounts is ignored.
   On a day you reconciled yourself, a purchase that doesn't clearly match a planned line by name is
   simply added on that day — your balance for it doesn't change. A transaction that
   comes **early** (up to 6 days before its planned day) moves its line to the day it came.

@@ -509,6 +509,9 @@
   .recbadge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:var(--crit);color:#fff;
             font-size:10px;font-weight:700;line-height:16px;text-align:center;padding:0 4px;box-sizing:border-box}
   .recbadge[hidden]{display:none}
+  /* Green: the bank added or matched lines since this device last opened the sheet (no number). */
+  .recbadge.new{background:var(--good);min-width:10px;width:10px;height:10px;top:8px;right:7px;padding:0;
+            box-shadow:0 0 0 2px var(--page)}
   .adjtools button{background:none;border:0;color:var(--s1);font:inherit;font-size:13px;font-weight:600;
                    text-transform:none;letter-spacing:0;padding:2px 0 2px 12px;cursor:pointer}
   .adjitem .tick{flex:none;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--axis);
@@ -4597,7 +4600,7 @@ $('adjamt').addEventListener('input',e=>{
 // straight onto today — no PIN.
 function openModal(){
   $('recmodal').hidden=false;
-  RECPAGE=0; ADJFOCUS=null; ADJBACK=6; ADJFWD=1; fillAdj(); fillBank();
+  RECPAGE=0; ADJFOCUS=null; ADJBACK=6; ADJFWD=1; fillAdj(); fillBank(); bankBadge();   // opened: the green dot is seen
   // A desktop has the room: History starts open in its column. On a phone it stays tucked away.
   if(matchMedia('(min-width:900px)').matches) $('adjrecent').open=true;
   document.body.style.overflow='hidden';
@@ -4871,9 +4874,19 @@ function bankTake(out){
   if((out.reconciles||[]).length){ OPPC={key:null}; render(); }
 }
 const bankReviews = () => BANK? BANK.open.filter(t=>t.status==='review') : [];
+/* The badge on the check-mark: red with a count when something needs you; otherwise a green dot
+   when the bank added or matched lines since this device last opened the sheet (per device). */
+const bankLatest = () => (BANK&&BANK.recent||[]).filter(t=>t.status!=='ignored').reduce((m,t)=>t.decidedAt>m?t.decidedAt:m, '');
+function bankSeen(mark){
+  try{ const k='bankSeen', v=localStorage.getItem(k), now=bankLatest();
+    if(mark || v==null){ if(now) localStorage.setItem(k, now); return now; }
+    return v; }catch(e){ return bankLatest(); }
+}
 function bankBadge(){ const n=BANK && BANK.live? bankReviews().length+BANK_STUCK.length : 0, b=$('recbadge');
-  b.hidden=!n; b.textContent=n>9?'9+':String(n||'');
-  $('recbtn').setAttribute('aria-label', n? `Adjust & reconcile — ${n} bank transaction${n===1?'':'s'} to review` : "Reconcile a day's balance"); }
+  const fresh = !n && BANK && BANK.live && bankLatest() > bankSeen(!$('recmodal').hidden);
+  b.hidden=!n && !fresh; b.classList.toggle('new', !!fresh); b.textContent=n? (n>9?'9+':String(n)) : '';
+  $('recbtn').setAttribute('aria-label', n? `Adjust & reconcile — ${n} bank transaction${n===1?'':'s'} to review`
+    : fresh? 'Adjust & reconcile — new from the bank' : "Reconcile a day's balance"); }
 const bankAgo = iso => { if(!iso) return 'never'; const m=Math.round((Date.now()-Date.parse(iso))/60000);
   return m<1?'just now': m<60? m+' min ago' : m<1440? Math.round(m/60)+' h ago' : shortDate(iso.slice(0,10)); };
 function bankRowOptions(t){
