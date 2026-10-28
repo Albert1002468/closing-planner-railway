@@ -1120,8 +1120,8 @@
       <ul>
         <li><b>Starting point:</b> $99,026.57 available on Aug 14, 2026. A reconciled day resets the
             projection to the actual balance; only days after today are forecast.</li>
-        <li><b>Pay:</b> biweekly paychecks (5 OT hours), +3%/yr from 2028. The March bonus is netted at
-            65.6% of gross; each year's taxes settle the following April 15.</li>
+        <li><b>Pay:</b> biweekly paychecks (5 OT hours), +3%/yr from 2028. The March bonus ($30,000 gross) grows with
+            your pay from 2029 and is netted at 65.6% of gross; each year's taxes settle the following April 15.</li>
         <li><b>OKC home:</b> closed Sep 18, 2026 — 22% down at 5.99%. Its escrow was set against the lot,
             so the first full-house tax ($6,000/yr assumed) lands Dec 2027 and resets the payment.</li>
         <li><b>Midland home:</b> let from Sep 25, 2026 at $3,300 (lease to Sep 30, 2027); 10% management,
@@ -1135,8 +1135,8 @@
             Oklahoma); rental losses are suspended and released at a sale.</li>
         <li><b>Car:</b> 6.74% simple interest; paid off two months after a sale, otherwise amortised.
             <b>Vivint:</b> $57.77/mo, paused Oct 2026–Sep 2027, final payment Jun 20, 2031.</li>
-        <li><b>Growth:</b> from 2028 costs inflate at your inflation rate (not loan payments or the
-            level-premium life policy); the Midland value grows at your appreciation rate, OKC at 3%.</li>
+        <li><b>Growth:</b> from 2028 costs inflate at your inflation rate — home insurance on both houses
+            included (not loan payments or the level-premium life policy); the Midland value grows at your appreciation rate, OKC at 3%.</li>
         <li><b>Net worth:</b> cash + OKC equity (after 7% selling costs) + Midland equity (after 7.5%) −
             car loan − property tax accrued beyond escrow − tax a sale would trigger.</li>
         <li><b>Estimates, not statements:</b> utilities, the $6,000 OKC tax, the non-homestead Midland
@@ -1492,7 +1492,7 @@ const VIVINT_RESUME='2027-10', VIVINT_LAST_FULL='2031-05', VIVINT_FINAL='2031-06
    same $50 minimum. Collecting $50 against a $135 lot bill banks a small surplus through
    2026-27, but the first full-house bill lands Dec 2027 and blows the account open anyway,
    exactly as Midland's does. */
-const NH_INS = 1702.00;               // annual homeowners premium
+const NH_INS = 1702.00;               // annual homeowners premium (2026–27; inflates from 2028)
 const NH_LOT_TAX = 135.00;            // the unimproved-lot assessment actually billed
 const NH_TAX_ESC_MO = 50.00;          // the lender's minimum monthly tax collection
 const NH_TAX_FULL = 6000.00;          // assumed reassessed annual tax
@@ -1515,6 +1515,9 @@ const BONUS_GROSS=30000.00;
 // (no Roth deferral was taken). Oklahoma now withholds 4.75% supplemental on top.
 const BONUS_NET = +(BONUS_GROSS*(0.7035-0.0475)).toFixed(2);   // 19,680.00
 const IRS_AMT=5000.00;                      // recurs each March while the bonus does
+/* The bonus is a share of pay, so it grows with your raises: the March bonus is for the year
+   before, so it first grows in 2029 (for 2028's raised pay). The IRS balance it leaves grows with it. */
+const bonusAt = y => Math.pow(1+RAISE_PCT, Math.max(0, +y-1-2027));
 const yearsAhead = () => { const a=[]; for(let y=2027;y<=YR(T1);y++) a.push(String(y)); return a; };
 
 /* Depreciation recapture: only bites if the Midland home was rented and then sold.
@@ -1581,7 +1584,11 @@ let MID_APPREC        = 0.03;         // appraised value tracks the market; set 
        The first assessment including the house is Jan 1 2026, billed Jan 31 2027. That single
        disbursement blows the account open, and the annual analysis resets the payment from the
        following June with the shortage spread over 12 months. --- */
-const MID_INS        = 1329.00;       // annual homeowners premium
+const MID_INS        = 1329.00;       // annual homeowners premium (2026–27; inflates from 2028)
+/* Premiums rise like every other cost: at your inflation rate from 2028 (`inflAt`). Both escrow
+   accounts, the bills after a payoff and the Schedule E all read these, never the bare figure. */
+const nhInsForYear  = y => +(NH_INS *inflAt(y+'-06-01')).toFixed(2);
+const midInsForYear = y => +(MID_INS*inflAt(y+'-06-01')).toFixed(2);
 /* Northwest Passage HOA. ⚠️ An OWNER cost, not a tenant one: the lease makes the tenant follow
    the rules and reimburse any fines, but the HOA's contract is with the owner and it bills you
    whoever lives there. Not part of `rentCostTotal` for the same reason property tax and
@@ -1726,7 +1733,7 @@ const midTaxForYear = y => +((y<=HOMESTEAD_LAST_YEAR? MID_TAX_HS : MID_TAX_NONHS
 function escrowPlan(cfg){
   const plan={}, notes={};
   let bal=cfg.start, base=cfg.baseStart, shortMo=0, shortLeft=0;
-  const disb=(y,m)=>(m===cfg.insMonth? cfg.ins : 0)
+  const disb=(y,m)=>(m===cfg.insMonth? cfg.ins(y) : 0)
                    +(m===cfg.taxMonth? cfg.taxForYear(y+cfg.taxYearOffset) : 0);
   cfg.dates.forEach(d=>{
     const y=YR(d), m=+d.slice(5,7);
@@ -1767,7 +1774,7 @@ function postPayoffBills(cfg){
   const bal = cfg.notes[last].bal;
   if(bal>0) out.push([addD(last,30), bal, cfg.refundLabel]);
   for(let y=YR(last); y<=YR(T1); y++){
-    out.push([bumpWk(`${y}-${p2(cfg.insMonth)}-${p2(cfg.insDay)}`), -cfg.ins, cfg.insLabel]);
+    out.push([bumpWk(`${y}-${p2(cfg.insMonth)}-${p2(cfg.insDay)}`), -cfg.ins(y), cfg.insLabel]);
     out.push([bumpWk(`${y}-${p2(cfg.taxMonth)}-${p2(cfg.taxDay)}`),
               -cfg.taxForYear(y+cfg.taxYearOffset), cfg.taxLabel]);
   }
@@ -1780,7 +1787,7 @@ const nhDates = () => ['2026-11-02','2026-12-01']
 const nhEscrowPlan = () => escrowPlan({
   dates:nhDates(), start:NH_ESC_START, pi:nhPI(),
   baseStart:+(NH_INS/12 + NH_TAX_ESC_MO).toFixed(2),   // collection, not the actual bill
-  ins:NH_INS, insMonth:9,                 // policy renews on the closing anniversary
+  ins:nhInsForYear, insMonth:9,           // policy renews on the closing anniversary
   taxForYear:nhTaxForYear, taxMonth:12, taxYearOffset:0,   // Oklahoma bills Nov, due Dec 31
   analysisMonth:12, firstAnalysis:'2027-12-01', cushion:2, spread:12 });
 
@@ -1790,17 +1797,17 @@ const nhEscrowPlan = () => escrowPlan({
    shortage against a 2-month cushion, spread over the following 12 payments. */
 /* The last escrow note on or before a date, by binary search over a cached sorted list —
    netWorth used to rebuild Object.entries of every note on each call. */
-const midEscrowSorted = memoOn(()=>T1+'|'+MID_APPREC, ()=>Object.entries(midEscrowPlan().notes).sort((a,b)=>a[0]<b[0]?-1:1));
+const midEscrowSorted = memoOn(()=>T1+'|'+MID_APPREC+'|'+INFL_PCT, ()=>Object.entries(midEscrowPlan().notes).sort((a,b)=>a[0]<b[0]?-1:1));
 function midEscrowSeen(asOf){
   const a=midEscrowSorted(); let lo=0, hi=a.length-1, at=-1;
   while(lo<=hi){ const mid=(lo+hi)>>1; if(a[mid][0]<=asOf){ at=mid; lo=mid+1; } else hi=mid-1; }
   return at<0? null : a[at][1];
 }
-const midEscrowPlan = memoOn(()=>T1+'|'+MID_APPREC, () => escrowPlan({
+const midEscrowPlan = memoOn(()=>T1+'|'+MID_APPREC+'|'+INFL_PCT, () => escrowPlan({
   dates:mortgageSchedule().map(r=>r.draft), start:MID_ESC_START, pi:MTG_PI,
   baseStart:+((MID_INS+MID_LAND_TAX)/12).toFixed(2),
   pmi:MID_PMI, pmiUntil:MID_PMI_OFF,
-  ins:MID_INS, insMonth:5,                // renews with the mid-May closing anniversary
+  ins:midInsForYear, insMonth:5,          // renews with the mid-May closing anniversary
   taxForYear:midTaxForYear, taxMonth:1, taxYearOffset:-1,  // Texas bills Jan 31 for the PRIOR year
   analysisMonth:ESC_ANALYSIS_M, firstAnalysis:'2027-01-01',
   cushion:ESC_CUSHION_MO, spread:12 }));
@@ -1953,7 +1960,7 @@ function buildEvents(sale, price, rent, home){
         +`${pl.short? ', incl. shortage '+fmt(pl.short):''})`);
     });
     postPayoffBills({ dates:nhDates(), notes:NHE.notes, retired:nhDates().length===NH_TERM_PMTS,
-      ins:NH_INS, insMonth:9, insDay:18, taxForYear:nhTaxForYear, taxMonth:12, taxDay:31,
+      ins:nhInsForYear, insMonth:9, insDay:18, taxForYear:nhTaxForYear, taxMonth:12, taxDay:31,
       taxYearOffset:0, refundLabel:'NEW home escrow refund (loan paid off, account closed)',
       insLabel:'NEW home insurance (billed direct — escrow closed)',
       taxLabel:'OKC property tax (billed direct — escrow closed)'
@@ -2014,8 +2021,9 @@ function buildEvents(sale, price, rent, home){
 
   // ---- rules 3 & 4: the March 2027 bonus and the IRS payment ----
   yearsAhead().forEach(y=>{
-    E(bumpWk(y+'-03-01'), BONUS_NET, `Annual bonus — ${fmt0(BONUS_GROSS)} gross, net of fed/OASDI/Medicare/OK`);
-    addTax(+y-1, 'IRS balance', IRS_AMT);   // paid with the return filed in year y
+    const k=bonusAt(y);
+    E(bumpWk(y+'-03-01'), +(BONUS_NET*k).toFixed(2), `Annual bonus — ${fmt0(BONUS_GROSS*k)} gross, net of fed/OASDI/Medicare/OK`);
+    addTax(+y-1, 'IRS balance', +(IRS_AMT*k).toFixed(2));   // paid with the return filed in year y
   });
 
   // ---- sale-dependent ----
@@ -2101,7 +2109,7 @@ function buildEvents(sale, price, rent, home){
      final draft, so a sale before payoff filters all of them out on its own. */
   postPayoffBills({ dates:sched.map(r=>r.draft), notes:ESC.notes,
     retired: !!sched.length && sched[sched.length-1].balAfter<=0,
-    ins:MID_INS, insMonth:5, insDay:15, taxForYear:midTaxForYear, taxMonth:1, taxDay:31,
+    ins:midInsForYear, insMonth:5, insDay:15, taxForYear:midTaxForYear, taxMonth:1, taxDay:31,
     taxYearOffset:-1, refundLabel:'PennyMac escrow refund (loan paid off, account closed)',
     insLabel:'Midland insurance (billed direct — escrow closed)',
     taxLabel:'Midland property tax (billed direct — escrow closed)'
@@ -2245,7 +2253,7 @@ function buildEvents(sale, price, rent, home){
       add(y,'mgmt',r.mgmt);
       add(y,'maint',r.maint);
       add(y,'tax',midTaxForYear(y)/12);
-      add(y,'ins',MID_INS/12);
+      add(y,'ins',midInsForYear(y)/12);
       add(y,'dep',rent.basis/DEPREC_YEARS/12*(r.pro||1));   // the stub month is a fraction, as in recapture
     });
     sched.forEach(r=>{ if(rented(r.draft)) add(YR(r.draft),'int',r.int); });
