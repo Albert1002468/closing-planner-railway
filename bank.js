@@ -133,7 +133,9 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
          days after it. */
       if (!prev) {
         const near = (o, x) => { const d = (Date.parse(x.date) - Date.parse(o.date)) / 864e5;
-          return Math.abs(d) <= 1 || (o.early && x.src === 'digest' && d >= 0 && d <= 5) || (x.early && o.src === 'digest' && d <= 0 && d >= -5); };
+          return Math.abs(d) <= 1 || (o.early && x.src === 'digest' && d >= 0 && d <= 5) || (x.early && o.src === 'digest' && d <= 0 && d >= -5)
+            // one you entered yourself (src 'manual', e.g. a deposit the bank counted but never itemised): its posting, up to 30 days on
+            || (o.src === 'manual' && d >= -1 && d <= 30); };
         const twin = Object.values(st.tx).find(o => o.src && o.src !== t.src && o.account === t.account && o.amount === r2(t.amount)
           && near(o, t) && (!o.twin || o.twin === t.id));
         if (twin) { twin.twin = t.id; continue; }
@@ -158,7 +160,8 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     st.cursor = f.cursor; st.error = null;
     // Keep ~5 months of transactions and ~6 weeks of balances.
     const today = localNow().date;
-    for (const [k, t] of Object.entries(st.tx)) if (t.date < addDay(today, -KEEP_DAYS)) delete st.tx[k];
+    // …but never a line in the plan ('extra', added by you or the matcher): past days are drawn from it.
+    for (const [k, t] of Object.entries(st.tx)) if (t.date < addDay(today, -KEEP_DAYS) && t.status !== 'extra') delete st.tx[k];
     for (const days of Object.values(st.balances)) for (const d of Object.keys(days)) if (d < addDay(today, -40)) delete days[d];
     for (const [k, r] of Object.entries(st.rolled)) if (r.orig < addDay(today, -60)) delete st.rolled[k];
   }
