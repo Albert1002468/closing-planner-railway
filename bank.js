@@ -136,12 +136,25 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
           return Math.abs(d) <= 1 || (o.early && x.src === 'digest' && d >= 0 && d <= 5) || (x.early && o.src === 'digest' && d <= 0 && d >= -5)
             // one you entered yourself (src 'manual', e.g. a deposit the bank counted but never itemised): its posting, up to 30 days on
             || (o.src === 'manual' && d >= -1 && d <= 30); };
+        // A re-charged hold (`recharged`, below) posts in a later summary: that line is it too (`posted`).
+        const repost = o => o.recharged && t.src === 'digest' && (!o.posted || o.posted === t.id)
+          && Math.abs(Date.parse(t.date) - Date.parse(o.recharged)) <= 864e5;
         const twin = Object.values(st.tx).find(o => o.src && o.src !== t.src && o.account === t.account && o.amount === r2(t.amount)
-          && near(o, t) && (!o.twin || o.twin === t.id));
-        if (twin) { twin.twin = t.id; continue; }
+          && ((near(o, t) && (!o.twin || o.twin === t.id)) || repost(o)));
+        if (twin) { if (repost(twin)) twin.posted = t.id; else twin.twin = t.id; continue; }
         // A restaurant: the card alert told it before the tip, the summary tells it with it.
         const alert = t.src === 'digest' && Object.values(st.tx).find(o => tipped(o, { ...t, sig: sigOf(t.raw || t.name) }));
         if (alert) { takeTip(alert, t); continue; }
+        /* A hold that dropped off and was charged again (AT&T authorised a phone's tax, released it a week
+           later, then charges it when it ships): same card, merchant and amount, 5–30 days after an alert
+           the bank never posted. The first one stands — the line is already in the plan. */
+        const sig = sigOf(t.raw || t.name);
+        const held = t.src === 'alert' && Object.values(st.tx).find(o => o.src === 'alert' && !o.twin && o.account === t.account
+          && o.amount === r2(t.amount) && o.amount <= -20 && !!o.sig && sig.split(' ').includes(o.sig.split(' ')[0])
+          // …and morning emails came in between without ever listing it (so it truly never posted)
+          && Object.values(st.balances).some(days => Object.keys(days).filter(d => d > addDay(o.date, 1) && d < t.date).length >= 2)
+          && (Date.parse(t.date) - Date.parse(o.date)) / 864e5 >= 5 && (Date.parse(t.date) - Date.parse(o.date)) / 864e5 <= 30);
+        if (held) { held.twin = t.id; held.recharged = t.date; continue; }
       }
       st.tx[t.id] = { ...(prev || {}), id: t.id, src: t.src, ...(t.early ? { early: true } : {}), account: t.account, date: t.date,
         amount: prev && prev.tipFrom != null ? prev.amount : r2(t.amount),          // read again: the tip stays
