@@ -289,8 +289,9 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   }
 
   /* ---- planned lines the bank has not shown (the page finds them; see bankRoll in index.html) ----
-     roll : not at the bank yet — move it to today or tomorrow (nothing else is accepted).
-            `reset` restarts its count of days waited ("still coming").
+     roll : not at the bank yet — move it to today or tomorrow. `reset` restarts its count of days
+            waited ("still coming"). `pick`: you chose a later day (up to 60 days ahead) — it waits
+            there, and its count starts on that day.
      came : it went through without an alert — on `moveTo` (up to today) or its planned day; never rolled again.
      skip : it won't happen — amount 0 on its planned day; never rolled again. */
   function roll(items) {
@@ -304,7 +305,9 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
         const projected = Number(x.projected), label = x.label, note = x.note;
         let body;
         if (x.action === 'roll') {
-          if (x.moveTo !== today && x.moveTo !== tomorrow) continue;
+          const picked = x.pick && typeof x.moveTo === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x.moveTo)
+            && x.moveTo > tomorrow && x.moveTo <= addDay(today, 60);
+          if (x.moveTo !== today && x.moveTo !== tomorrow && !picked) continue;
           body = { label, amount: x.amount, projected, moveTo: x.moveTo, note };
         } else if (x.action === 'came') {
           const on = typeof x.moveTo === 'string' && x.moveTo > orig && x.moveTo <= today ? x.moveTo : null;
@@ -316,7 +319,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
         if (p.error) throw new Error(p.error);
         const o = saveAdjustment(p.row, store.getAdjustment(key), { fromBank: true });
         o.shifted.forEach(s => finalAct.set(s.date, s.actual)); delete o.shifted; saved.push(o);
-        st.rolled[key] = x.action === 'roll' ? { orig, since: x.reset || !r ? today : r.since } : { orig, since: r ? r.since : today, done: true };
+        st.rolled[key] = x.action === 'roll' ? { orig, since: x.pick && x.moveTo > today ? x.moveTo : x.reset || !r ? today : r.since } : { orig, since: r ? r.since : today, done: true };
         done.push(key);
       }
       save(st);

@@ -491,6 +491,10 @@
   .bankline .lab small{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .bankline .amt{flex:none;font-variant-numeric:tabular-nums}
   .bankact{display:flex;gap:8px;margin-top:6px}
+  .bankpick{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13px;color:var(--ink-2)}
+  .bankpick[hidden]{display:none}
+  .bankpick input{flex:1;min-width:0;font:inherit;font-size:16px;padding:5px 8px;border-radius:8px;border:1px solid var(--axis);
+    background:var(--surface-1);color:var(--ink)}
   .bankact select{flex:1;min-width:0;font:inherit;font-size:16px;padding:6px 8px;border-radius:8px;border:1px solid var(--axis);
                   background:var(--surface-1);color:var(--ink)}
   .bankact button,.bankon{border:0;border-radius:8px;padding:7px 14px;font:inherit;font-weight:600;background:var(--s1);color:#fff;cursor:pointer}
@@ -4936,11 +4940,14 @@ function fillBank(){
       <div class="bankline"><span class="lab"><b>${esc(x.label)}</b><small>Planned ${longDate(x.orig)} · ${x.stuck? `no alert in ${BANK_ROLL_MAX} days` : 'now on '+shortDate(x.d)}</small></span>
         <span class="amt">${fmt(x.amount)}</span></div>
       <div class="bankact"><select aria-label="What happened?">
-        <option value="roll">Still coming${x.stuck? ' — wait longer' : ''}</option>
+        <option value="roll">Not yet — move to ${BANK.now.hour>=BANK.rollHour? 'tomorrow' : 'today'} and keep watching</option>
+        <option value="later">Coming later — pick the day…</option>
         <option value="came:${BANK.now.date}">It went through today</option>
         ${x.orig<BANK.now.date? `<option value="came:${x.orig}">It went through ${shortDate(x.orig)}</option>` : ''}
         <option value="skip">It won't happen — remove it</option></select>
-        <button type="button" class="bankrollok">Save</button></div></div>`).join('');
+        <button type="button" class="bankrollok">Save</button></div>
+      <label class="bankpick" hidden>Posts on <input type="date" min="${addD(BANK.now.date,1)}" max="${addD(BANK.now.date,60)}"
+        value="${addD(BANK.now.date,7)}"></label></div>`).join('');
   }
   const row=(d,name,what,amt)=>`<div><span class="trunc">${shortDate(d)} · ${esc(name)} <i>${esc(what)}</i></span><span>${amt==null?'':fmt(amt)}</span></div>`;
   if(preview && BANK_PREVIEW.length){
@@ -4977,15 +4984,17 @@ async function bankClick(e){
   if(b.classList.contains('bankrollok')){
     const key=row=>row.dataset.roll, row=b.closest('[data-roll]'), x=[...BANK_STUCK,...BANK_WAIT].find(y=>y.key===key(row));
     if(!x) return;
-    const [v,on]=row.querySelector('select').value.split(':');
+    let [v,on]=row.querySelector('select').value.split(':'); const pick = v==='later';
+    if(pick){ v='roll'; on=row.querySelector('.bankpick input').value;
+      if(!on || on<=BANK.now.date || on>addD(BANK.now.date,60)){ bankMsg('Pick a day from tomorrow up to 60 days ahead.',true); return; } }
     const to = on || (BANK.now.hour>=BANK.rollHour? addD(BANK.now.date,1) : BANK.now.date);
     if(v==='roll' && x.d===to && !BANK_STUCK.includes(x)){ bankMsg(`${x.label} stays on ${shortDate(to)}.`); return; }
     b.disabled=true;
     const out=await bankPost('/api/bank/roll',{items:[{key:x.key, label:x.label, amount:x.amount, projected:x.projected,
-      action:v, reset:true, moveTo:to, note:(ADJ[x.key]&&ADJ[x.key].note)||`Not at the bank yet (planned ${shortDate(x.orig)})`}]});
+      action:v, reset:true, moveTo:to, pick, note:(ADJ[x.key]&&ADJ[x.key].note)||`Not at the bank yet (planned ${shortDate(x.orig)})`}]});
     b.disabled=false;
     if(out){ bankApply(out); bankRollRefresh(); fillBank(); bankBadge();
-      bankMsg(v==='roll'? `${x.label} moved to ${shortDate(to)}; it waits ${BANK_ROLL_MAX} more days.` : v==='came'? `${x.label} went through ${shortDate(to)}.` : `${x.label} removed (set to $0).`); }
+      bankMsg(pick? `${x.label} moved to ${shortDate(to)}; it's watched for from then.` : v==='roll'? `${x.label} moved to ${shortDate(to)}; it waits ${BANK_ROLL_MAX} more days.` : v==='came'? `${x.label} went through ${shortDate(to)}.` : `${x.label} removed (set to $0).`); }
     return;
   }
   if(b.classList.contains('bankok')){
@@ -5001,6 +5010,9 @@ async function bankClick(e){
   }
 }
 ['bankbox','bankfoot'].forEach(id=>$(id).addEventListener('click',bankClick));
+// "Coming later — pick the day…" shows its date field.
+$('bankbox').addEventListener('change',e=>{ const row=e.target.closest('[data-roll]'); if(!row || e.target.tagName!=='SELECT') return;
+  row.querySelector('.bankpick').hidden = e.target.value!=='later'; });
 $('bankfoot').addEventListener('change',async e=>{
   const c=e.target.closest('input[data-acct]'); if(!c) return;
   const out=await bankPost('/api/bank/accounts',{id:c.dataset.acct, tracked:c.checked}); if(out){ BANK=out; fillBank(); }
