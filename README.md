@@ -96,9 +96,9 @@ What it does, every 15 minutes and whenever the app is opened:
   simply added on that day — your balance for it doesn't change. A transaction that
   comes **early** (up to 6 days before its planned day) moves its line to the day it came.
 - **Moves what hasn't shown up**: from 8 PM (Chicago), a planned line the bank hasn't shown
-  moves to tomorrow (one already past moves to today). Lines that are waiting are listed under
-  **Not at the bank yet**, where you can say it went through (today or on its planned day) — for
-  payments the bank doesn't alert on. After 5 days of waiting it stops and asks there: **not yet** (move it to today or tomorrow and keep
+  moves to tomorrow (one already past moves to today). Lines that are waiting are folded away under
+  **Waiting for the bank** (nothing to do; open it to say one went through, today or on its planned
+  day — for payments the bank doesn't alert on — or pick the day it will come). After 5 days of waiting it stops and asks there: **not yet** (move it to today or tomorrow and keep
   watching), **coming later** (pick the day it will post, up to 60 days ahead; it is watched for from
   then), it went through without an alert (back to its day), or it won't happen (set to $0). Lines you adjusted yourself, and lines planned before
   sync was turned on, are never moved. Have the bank alert on **every** transaction (set the amount
