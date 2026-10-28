@@ -159,6 +159,8 @@ view with one slow glow of its border. Tap anything to change it; the editor ope
   one, and every reconciled balance moves by the net change up to its date (moving a +$3,300
   rent off a reconciled day lowers that day's balance by $3,300; its variance is unchanged).
   The preview says which reconciled balances will move; each move is in the audit log.
+  This is only for changes **you** make. When the **bank** moves or re-amounts a line (a match, a
+  line not there yet), no reconciled balance moves: they were real balances, so the variance changes.
 - **Several at once**: open one of the day's lines and tap **Move several lines from this day**,
   tick the others (or **Select all**), step **Move to** to the day they cleared and tap **Move**. One save (`PUT
   /api/adjustments` with `items`): each keeps its amount and note, reconciled variances stay as

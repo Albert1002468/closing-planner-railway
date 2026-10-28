@@ -245,7 +245,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
           if (x.adjust) {
             const p = parseAdjustment(x.adjust, key);
             if (p.error) throw new Error(p.error);
-            const o = saveAdjustment(p.row, store.getAdjustment(key));
+            const o = saveAdjustment(p.row, store.getAdjustment(key), { fromBank: true });
             o.shifted.forEach(s => finalAct.set(s.date, s.actual)); delete o.shifted; saved.push(o);
           }
           claimed.add(key);
@@ -291,7 +291,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
         else continue;
         const p = parseAdjustment(body, key);
         if (p.error) throw new Error(p.error);
-        const o = saveAdjustment(p.row, store.getAdjustment(key));
+        const o = saveAdjustment(p.row, store.getAdjustment(key), { fromBank: true });
         o.shifted.forEach(s => finalAct.set(s.date, s.actual)); delete o.shifted; saved.push(o);
         st.rolled[key] = x.action === 'roll' ? { orig, since: x.reset || !r ? today : r.since } : { orig, since: r ? r.since : today, done: true };
         done.push(key);

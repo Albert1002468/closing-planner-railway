@@ -422,8 +422,10 @@ function parseAdjustment(b, key) {
                   projected: Math.round(projected * 100) / 100, note, moveTo, updated_at: new Date().toISOString() } };
 }
 // Runs inside store.tx. What was there before: the previous adjustment, or else the projection.
-function saveAdjustment(row, prev) {
-  const shifted = keepVariances(prev ? (prev.moveTo || prev.date) : row.date, prev ? prev.amount : row.projected,
+/* `fromBank`: the bank says what happened (a match, a line not there yet). Your reconciled balances
+   were real balances, so none of them moves — their variance changes instead. */
+function saveAdjustment(row, prev, { fromBank = false } = {}) {
+  const shifted = fromBank ? [] : keepVariances(prev ? (prev.moveTo || prev.date) : row.date, prev ? prev.amount : row.projected,
                                 row.moveTo || row.date, row.amount, `adjusted ${row.label || row.key}`);
   store.setAdjustment(row);
   return { ...row, shifted };
