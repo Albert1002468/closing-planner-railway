@@ -190,8 +190,8 @@ liquidity floor, investment rate above it; nothing accrues before today), then t
 events, then a reconcile (if any) **rebases** the balance to the actual.
 Alongside it two walks with no reconciles (each with its own interest): `day.q`, the projection
 as it stands, and `day.p`, the **original plan**: without the bank's added lines (`oa:0`) and with
-the bank's changes to planned lines undone (`od`/`oa` on events whose key the bank claimed or
-rolled; your own adjustments stay). `p` is the dashed line the chart key's **plan** chip toggles
+the bank's amounts on planned lines undone (`oa` on events whose key the bank claimed or rolled,
+kept on the bank's day so timing is not unplanned; your own adjustments stay). `p` is the dashed line the chart key's **plan** chip toggles
 (`SHOW_PROJ`, saved in localStorage); the readout splits b − p into q − p (unplanned) and
 b − q (unexplained: the reconcile variances).
 
