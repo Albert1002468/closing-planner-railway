@@ -1893,9 +1893,6 @@ function payoffOn(dateS, inclusive){
 function buildEvents(sale, price, rent, home){
   const ev=[];
   const seenKey={};
-  /* Lines the BANK changed (matched to a different amount or day, or moved on because it had
-     not shown them) — the original plan undoes their AMOUNT; your own adjustments stay in it. */
-  const bankMade=new Set(BANK? [...(BANK.claimed||[]), ...Object.keys(BANK.rolled||{})] : []);
   const E=(d,a,l)=>{
     const base=d+'|'+adjBase(l), n=seenKey[base]=(seenKey[base]||0)+1;
     const key= n>1? base+'#'+n : base, proj=+a.toFixed(2), x=ADJ[key];
@@ -1905,9 +1902,11 @@ function buildEvents(sale, price, rent, home){
     if(when<T0 || when>T1) return;
     const e = x? {d:when, a:x.amount, l, key, proj, adj:true, from: when!==d? d : undefined}
                : {d, a:proj, l, key};
-    /* `oa`: how much the original plan had it (see buildSeries). It keeps the BANK's day: a line
-       that came early or late, or is still waiting, is timing — not unplanned money. */
-    if(x && bankMade.has(key)) e.oa=proj;
+    /* `oa`: how much the original plan had it (see buildSeries). ANY line that came in at another
+       amount — matched by the bank or changed by you (a bigger paycheck, a smaller bill) — counts
+       its difference as unplanned. It keeps the actual day: early, late or still waiting is timing,
+       not unplanned money. */
+    if(x) e.oa=proj;
     ev.push(e); return e;
   };
   /* Everything owed on one year's return settles as ONE line on the following April 15.
@@ -2387,8 +2386,8 @@ function buildSeries(sale, price, rent, home, rates){
   ev.forEach(e=>{(map[e.d]=map[e.d]||[]).push(e);});
   /* Two more walks with no reconciles, for the optional "plan" line:
      `qbal` — the projection as it stands (bank lines and the bank's changes included);
-     `pbal` — the ORIGINAL plan: no lines the bank added, the bank's amounts undone (on the bank's
-     day, so timing is not counted; your own adjustments stay). So balance − plan splits in two: q − p is what was unplanned, and
+     `pbal` — the ORIGINAL plan: no lines the bank added, every line at its planned amount (on the
+     day it actually came, so timing is not counted). So balance − plan splits in two: q − p is what was unplanned, and
      b − q is the reconcile variances (what the bank's alerts did not explain). */
   const omap={};
   ev.forEach(e=>{ const oa=e.oa!=null? e.oa : e.a; if(oa) omap[e.d]=(omap[e.d]||0)+oa; });
@@ -3346,7 +3345,7 @@ function render(){
     if(PROJ_ON && d.p!==d.b){
       const sg=v=>`${v>=0?'+':'−'}${fmt(Math.abs(v))}`, un=+(d.q-d.p).toFixed(2), ux=+(d.b-d.q).toFixed(2);
       h+=`<div style="color:var(--s2);font-size:11px;margin:-1px 0 4px">${fmt(d.p)} original plan · <b>${sg(d.b-d.p)}</b>`
-        +(un? `<br>${sg(un)} unplanned (the bank's lines and amounts)` : '')
+        +(un? `<br>${sg(un)} unplanned (lines not in the plan, amounts that differed)` : '')
         +(ux? `<br>${sg(ux)} unexplained (reconcile variances)` : '')+`</div>`;
     }
     if(d.ev.length) h+='<ul>'+d.ev.map(e=>`<li><span>${e.adj?'✎ ':''}${esc(e.l)}</span><span>${fmt(e.a)}</span></li>`).join('')+'</ul>';
