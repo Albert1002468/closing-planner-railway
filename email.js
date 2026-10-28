@@ -203,7 +203,7 @@ function digestLines(text, postedOn) {
       let date = postedOn;
       if (auth) { const y = +postedOn.slice(0, 4), mm = +auth[1];
         date = `${mm > +postedOn.slice(5, 7) + 1 ? y - 1 : y}-${String(mm).padStart(2, '0')}-${String(auth[2]).padStart(2, '0')}`; }
-      let name = raw.replace(/^(?:PURCHASE|RECURRING PAYMENT|PAYMENT|ATM WITHDRAWAL)?\s*AUTHORIZED ON \d{1,2}\/\d{1,2}\s*/i, '')
+      let name = raw.replace(/^(?:PURCHASE RETURN|PURCHASE|RECURRING PAYMENT|PAYMENT|MONEY TRANSFER|ATM WITHDRAWAL)?\s*AUTHORIZED ON \d{1,2}\/\d{1,2}\s*/i, '')
                     .replace(/\s+[A-Z]?\d{9,}\s+CARD\s+\d{4}\s*$/i, '').replace(/\s+CARD\s+\d{4}\s*$/i, '');
       const cut = name.search(/\s\d+(?:\s|$)/); if (cut >= 6) name = name.slice(0, cut);   // "…PREM. OCT 26 13 653 349 NAME"
       out.push({ date, amount: sign * money(m[2]), name: name.slice(0, 80), raw: name, card: card ? card[1] : '' });
@@ -259,7 +259,7 @@ function readAlert(msg, { localDate, localHour, allowUnsigned }) {
     return { kind: 'unknown', bank: bank.name, subject: msg.subject, date: day };
   const amt = Math.abs(money(a[1])), inbound = IN_WORDS.test(msg.subject) || (!/purchase|withdrawal|debit|charge|payment to|sent/i.test(msg.subject) && IN_WORDS.test(msg.text));
   // "Merchant details at CVS/PHARMACY #11092 in OKLAHOMA CITY UNITED STATES"
-  const merchant = /merchant(?: details| name)?:?\s+(?:at\s+)?(.+?)(?=\s+in\s+[A-Z0-9][A-Za-z0-9 .'()-]*?(?:UNITED STATES|USA|\bUS\b)|\s+Date\b|\n|$)/i.exec(msg.text);
+  const merchant = /merchant(?: details| name)?:?\s+(?:at\s+)?(.+?)(?=\s+in\s+\+?[A-Z0-9][A-Za-z0-9 .'()+-]*?(?:UNITED STATES|USA|\bUS\b)|\s+Date\b|\n|$)/i.exec(msg.text);
   // "Deposited by: COTERRA ENERGY I PAYROLL 261016 930645528717CXK …" — the payer, without its codes.
   const payer = /\bdeposited by:?\s+(.+)/i.exec(msg.text);
   if (payer) { const cut = payer[1].search(/\s\d+(?:\s|$)/); if (cut >= 6) payer[1] = payer[1].slice(0, cut); }

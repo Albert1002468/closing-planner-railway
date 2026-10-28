@@ -83,7 +83,8 @@ What it does, every 15 minutes and whenever the app is opened:
 - Wells Fargo: turn on **Account balance (daily)** with **Deposit has posted** and **Withdrawal has
   posted** — they arrive together as one morning email that lists everything that posted, including
   automatic payments that have no alert of their own. Card purchase alerts make purchases show up the
-  same day; the morning email doesn't count them twice. **Early Pay Day** deposits ("You just got
+  same day; the morning email doesn't count them twice — a restaurant's posted amount with the tip
+  (up to 35% more, same card, day and name) updates the alert's line instead of adding another. **Early Pay Day** deposits ("You just got
   paid early!") count on the day the money is usable, under the payer's name ("Deposited by"); when
   it posts a few days later, the morning email's Deposits line for it is not counted again.
 - **Matches each new transaction to the plan**: same line → nothing; on another day or a few %

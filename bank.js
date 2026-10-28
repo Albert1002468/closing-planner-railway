@@ -65,6 +65,17 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     'checkcard', 'withdrawal', 'deposit', 'electronic', 'bill', 'autopay', 'auto', 'ref', 'trn', 'xx', 'xxxx']);
   const sigOf = s => String(s || '').toLowerCase().replace(/[^a-z]+/g, ' ').split(' ')
     .filter(w => w.length > 1 && !NOISE.has(w)).slice(0, 4).join(' ');
+  /* `o` (a card alert) and `d` (the summary's posted line) are one purchase that grew: same card,
+     same day (±1), the posted amount a bit more (a tip: up to 35%), and the same merchant name. */
+  const tipped = (o, d) => o.src === 'alert' && d.src === 'digest' && !o.twin && o.account === d.account
+    && o.amount < 0 && d.amount < o.amount && d.amount >= o.amount * 1.35 - 1
+    && Math.abs(Date.parse(o.date) - Date.parse(d.date)) <= 864e5
+    && !!o.sig && !!d.sig && d.sig.split(' ').includes(o.sig.split(' ')[0]);
+  // The alert now says what posted. Matched to a planned line at the old amount: decided again.
+  function takeTip(o, d) {
+    Object.assign(o, { twin: d.id, tipFrom: o.tipFrom ?? o.amount, amount: r2(d.amount) });
+    if (o.status === 'matched') Object.assign(o, { status: 'new', key: null, decidedAt: null });
+  }
   // Checking is what the planner tracks. An alert that does not say which kind of account is
   // assumed to be checking (debit-card and deposit alerts usually are).
   const defaultTracked = a => a.subtype === 'checking' || !a.subtype;
@@ -126,10 +137,22 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
         const twin = Object.values(st.tx).find(o => o.src && o.src !== t.src && o.account === t.account && o.amount === r2(t.amount)
           && near(o, t) && (!o.twin || o.twin === t.id));
         if (twin) { twin.twin = t.id; continue; }
+        // A restaurant: the card alert told it before the tip, the summary tells it with it.
+        const alert = t.src === 'digest' && Object.values(st.tx).find(o => tipped(o, { ...t, sig: sigOf(t.raw || t.name) }));
+        if (alert) { takeTip(alert, t); continue; }
       }
-      st.tx[t.id] = { ...(prev || {}), id: t.id, src: t.src, ...(t.early ? { early: true } : {}), account: t.account, date: t.date, amount: r2(t.amount),
+      st.tx[t.id] = { ...(prev || {}), id: t.id, src: t.src, ...(t.early ? { early: true } : {}), account: t.account, date: t.date,
+        amount: prev && prev.tipFrom != null ? prev.amount : r2(t.amount),          // read again: the tip stays
         name: String(t.name || t.raw || 'Bank transaction').slice(0, 120), raw: String(t.raw || '').slice(0, 200),
         sig: sigOf(t.raw || t.name), status: prev ? prev.status : (t.date < st.startOn ? 'history' : 'new') };
+    }
+    /* Repair: a summary line stored as its own transaction (before this rule) next to the alert it
+       is — the alert takes its amount and the line goes. */
+    for (const d of Object.values(st.tx)) {
+      const o = d.src === 'digest' && !Object.values(st.tx).some(x => x.twin === d.id) && Object.values(st.tx).find(x => tipped(x, d));
+      if (!o) continue;
+      if (d.status === 'matched' && o.status !== 'matched') Object.assign(o, { status: 'matched', key: d.key, label: d.label, decidedAt: d.decidedAt });
+      takeTip(o, d); delete st.tx[d.id];
     }
     if (f.unread.length) st.unread = [...f.unread.reverse(), ...st.unread].slice(0, 20);
     st.cursor = f.cursor; st.error = null;
