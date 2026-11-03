@@ -1120,7 +1120,8 @@
       <ul>
         <li><b>Starting point:</b> $99,026.57 available on Aug 14, 2026. A reconciled day resets the
             projection to the actual balance; only days after today are forecast.</li>
-        <li><b>Pay:</b> biweekly paychecks (5 OT hours), +3%/yr from 2028. The March bonus ($30,000 gross) grows with
+        <li><b>Pay:</b> biweekly paychecks (5 OT hours), +3%/yr from 2028. Year-end payroll change: full cheque Thu Dec 24, a short
+            one Thu Dec 31 (Dec 20–25, estimated at half), none Jan 8, then every other Friday from Jan 15. The March bonus ($30,000 gross) grows with
             your pay from 2029 and is netted at 65.6% of gross; each year's taxes settle the following April 15.</li>
         <li><b>OKC home:</b> closed Sep 18, 2026 — 22% down at 5.99%. Its escrow was set against the lot,
             so the first full-house tax ($6,000/yr assumed) lands Dec 2027 and resets the payment.</li>
@@ -1939,10 +1940,16 @@ function buildEvents(sale, price, rent, home){
   E('2026-09-04',PAY10,'Paycheck (10 OT hrs)');
   // Landed two days early; the rest of the biweekly run is unaffected.
   E('2026-09-16',PAY10,'Paycheck (10 OT hrs) — landed early');
-  ['2026-10-02','2026-10-16','2026-10-30','2026-11-13','2026-11-27','2026-12-11','2026-12-25']
+  ['2026-10-02','2026-10-16','2026-10-30','2026-11-13','2026-11-27','2026-12-11']
     .forEach(d=>E(d,PAY5,'Paycheck (5 OT hrs)'));
-  // biweekly from the last 2026 cheque; 3%/yr raise lands on the first cheque of each year
-  for(let d=addD('2026-12-25',14); d<=T1; d=addD(d,14)) E(d,payAt(d),'Paycheck (5 OT hrs)');
+  /* 2027 payroll calendar change (employer notice): Thu Dec 24 is a full CTRA cheque; Thu Dec 31 a
+     short one for Dec 20–25 (5 of 10 workdays, no medical/dental/vision/HSA taken — so a little
+     more than half; estimated at half until it lands); NO Jan 8 cheque; DVN pays from Fri Jan 15,
+     every other Friday. */
+  E('2026-12-24',PAY5,'Paycheck (5 OT hrs)');
+  E('2026-12-31',+(PAY5/2).toFixed(2),'Paycheck — short transition, Dec 20–25 (est.)');
+  // biweekly from the first DVN cheque; 3%/yr raise lands on the first cheque of each year
+  for(let d='2027-01-15'; d<=T1; d=addD(d,14)) E(d,payAt(d),'Paycheck (5 OT hrs)');
   E(WIRE_DATE,-nhCashToClose(),
     `CLOSING WIRE — cash to close, ${nice(CLOSING_DATE)} closing `
     +`(${DOWN_PCT}% down, loan ${fmt0(nhLoan())})`);
