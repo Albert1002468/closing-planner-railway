@@ -1980,7 +1980,12 @@ function buildEvents(sale, price, rent, home){
   E('2026-09-02',-80.65,'AT&T');
   ['2026-10-02','2026-11-02','2026-12-02'].forEach(d=>E(d,-20.00,'AT&T Internet'));
   monthly(7,'2026-10','2026-12').forEach(d=>E(d,-138.48,'AT&T Wireless'));
-  ['2026-09-01','2026-10-01','2026-11-02','2026-12-01'].forEach(d=>E(d,-50.00,'Credit-card autopays'));
+  ['2026-09-01','2026-10-01'].forEach(d=>E(d,-50.00,'Credit-card autopays'));
+  /* From November each card has its own line, so the bank's two autopays match one line each:
+     Citi pays on the 1st, the Wells Fargo card on the 3rd (next business day). Same $50 a month
+     between them; inflates from 2028 like the single line did. */
+  monthly(1,'2026-11',TM()).forEach(d=>E(d,-25.00*inflAt(d),'Citi card autopay'));
+  monthly(3,'2026-11',TM()).forEach(d=>E(d,-25.00*inflAt(d),'Wells Fargo card autopay'));
   ['2026-09-10','2026-10-12','2026-11-10','2026-12-10'].forEach(d=>E(d,-59.10,'NY Life'));
   E('2026-09-14',-112.00,'Apple Cash');
   ['2026-09-14','2026-10-14','2026-11-14','2026-12-14'].forEach(d=>E(d,-21.65,'Claude subscription (Apple.com)'));
@@ -1988,7 +1993,6 @@ function buildEvents(sale, price, rent, home){
   ['2026-08-18','2026-09-18','2026-10-19','2026-11-18','2026-12-18'].forEach(d=>E(d,-20.56,'Spotify'));
   monthly(2,'2027-01',TM()).forEach(d=>E(d,-20.00*inflAt(d),'AT&T Internet'));
   monthly(7,'2027-01',TM()).forEach(d=>E(d,-138.48*inflAt(d),'AT&T Wireless'));
-  monthly(1,'2027-01',TM()).forEach(d=>E(d,-50.00*inflAt(d),'Credit-card autopays'));
   // Level-premium life policy: the premium is fixed for the life of the contract, so this is
   // the one recurring bill that must NOT be inflated. In real terms it gets cheaper every year.
   monthly(10,'2027-01',TM()).forEach(d=>E(d,-59.10,'NY Life (level premium)'));
@@ -4748,16 +4752,20 @@ $('adjclear').addEventListener('click',async ()=>{
 const BANK_WIN=6;                       // days either side of the bank date to look for the line
 // Too common in bank descriptions to identify a payee ("… OKLAHOMA CITY OK", a gas station).
 const BANK_STOP=new Set(['the','and','for','new','home','est','your','with','from','fee','bill','payment','hrs','com',
-  'city','oklahoma','gas']);
+  'city','oklahoma','gas','card','credit','autopay','auto','pay','wells']);
 const BANK_SYN={paycheck:['payroll','salary','dirdep','directdep'], mortgage:['mtg','loan','mortgage'],
                 taxes:['irs','usataxpymt','tax'], electric:['oge']};
+/* Label words that match ONLY through these: "Wells Fargo card autopay" must find "WF Credit Card AUTO
+   PAY", never "WELLS FARGO AUTO DRAFT" (the car loan); "Car payment" must not find every "card". */
+const BANK_ALIAS={fargo:['wfcreditcard','wellsfargocard'], car:['autodraft']};
 /* The new home's utilities match on: "City of OKC water & trash" → okc / water / trash; "OG&E electric"
    → oge / electric; "Oklahoma Natural Gas" → natural (city, oklahoma, gas are too common). */
 function bankNameHit(t, label){
   const hay=(t.name+' '+t.raw).toLowerCase().replace(/[^a-z0-9]/g,'');
   return label.toLowerCase().replace(/&/g,'').split(/[^a-z0-9]+/)
     .filter(w=>w.length>=3 && !/^\d+$/.test(w) && !BANK_STOP.has(w))
-    .some(w=>hay.includes(w) || (BANK_SYN[w]||[]).some(s=>hay.includes(s)));
+    .some(w=>BANK_ALIAS[w]? BANK_ALIAS[w].some(s=>hay.includes(s))
+              : hay.includes(w) || (BANK_SYN[w]||[]).some(s=>hay.includes(s)));
 }
 // Planned lines near the bank date with the same direction of money, best first.
 function bankCands(t, claimed, win){
@@ -4913,7 +4921,11 @@ function bankTake(out){
   (out.reconciles||[]).forEach(r=>{ RECON[r.date]={actual:r.actual, note:r.note, source:'bank'}; });
   if((out.reconciles||[]).length){ OPPC={key:null}; render(); }
 }
-const bankReviews = () => BANK? BANK.open.filter(t=>t.status==='review') : [];
+/* Its suggestion is worked out again against today's plan: the one saved when it arrived can name a
+   line that has since been renamed, split or matched to something else. */
+const bankReviews = () => { if(!BANK) return []; const claimed=new Set(BANK.claimed);
+  return BANK.open.filter(t=>t.status==='review').map(t=>{ const c=bankDecide(t, claimed).cand;
+    return {...t, suggest: c? {key:c.e.key, label:adjBase(c.e.l)} : null}; }); };
 /* The badge on the check-mark: red with a count when something needs you; otherwise a green dot
    when the bank added or matched lines since this device last opened the sheet (per device). */
 const bankLatest = () => (BANK&&BANK.recent||[]).filter(t=>t.status!=='ignored').reduce((m,t)=>t.decidedAt>m?t.decidedAt:m, '');
