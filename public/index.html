@@ -1990,7 +1990,8 @@ function buildEvents(sale, price, rent, home){
   ['2026-09-10','2026-10-12','2026-11-10','2026-12-10'].forEach(d=>E(d,-59.10,'NY Life'));
   E('2026-09-14',-112.00,'Apple Cash');
   ['2026-09-14','2026-10-14','2026-11-14','2026-12-14'].forEach(d=>E(d,-21.65,'Claude subscription (Apple.com)'));
-  ['2026-09-15','2026-10-15','2026-11-16','2026-12-15'].forEach(d=>E(d,-0.99,'iCloud+ (Apple.com)'));
+  // Apple bills iCloud+ on the 5th (Oct 5, Nov 5); September and October keep their old days and edits.
+  ['2026-09-15','2026-10-15','2026-11-05','2026-12-05'].forEach(d=>E(d,-0.99,'iCloud+ (Apple.com)'));
   ['2026-08-18','2026-09-18','2026-10-19','2026-11-18','2026-12-18'].forEach(d=>E(d,-20.56,'Spotify'));
   monthly(2,'2027-01',TM()).forEach(d=>E(d,-20.00*inflAt(d),'AT&T Internet'));
   monthly(7,'2027-01',TM()).forEach(d=>E(d,-138.48*inflAt(d),'AT&T Wireless'));
@@ -1998,7 +1999,7 @@ function buildEvents(sale, price, rent, home){
   // the one recurring bill that must NOT be inflated. In real terms it gets cheaper every year.
   monthly(10,'2027-01',TM()).forEach(d=>E(d,-59.10,'NY Life (level premium)'));
   monthDays(14,'2027-01',TM()).forEach(d=>E(d,-21.65*inflAt(d),'Claude subscription (Apple.com)'));
-  monthDays(15,'2027-01',TM()).forEach(d=>E(d,-0.99*inflAt(d),'iCloud+ (Apple.com)'));
+  monthDays(5,'2027-01',TM()).forEach(d=>E(d,-0.99*inflAt(d),'iCloud+ (Apple.com)'));
   monthly(18,'2027-01',TM()).forEach(d=>E(d,-20.56*inflAt(d),'Spotify'));
   // Car insurance: $841 per 6-month term, first paid Sep 24 2026, then every Mar 24 / Sep 24.
   const CAR_INS=841.00;
@@ -4804,6 +4805,9 @@ function bankDecide(t, claimed){
   // The one line with that exact amount: within 3 days, or anywhere in the window when the bank is EARLY.
   const exact=c.filter(x=>x.diff<0.01);
   if(exact.length===1 && (exact[0].dd<=3 || t.date<exact[0].day)) return {action:'match', cand:exact[0]};
+  /* A subscription whose billing day moved comes up to two weeks early: same name, same cents. */
+  const far=bankCands(t, claimed, 14).filter(x=>x.name && x.diff<0.01 && t.date<x.day);
+  if(!exact.length && far.length===1) return {action:'match', cand:far[0]};
   /* On a day you reconciled yourself, your balance already holds it: unless its NAME looks like a
      planned line, it goes in as its own line on that day — a similar amount alone is no reason to ask. */
   const mine = RECON[t.date] && RECON[t.date].source!=='bank';
