@@ -1635,6 +1635,7 @@ const LEASE={
    last day) — the liability stays on the books instead. */
 const DEPOSIT_IN='2026-10-02';
 const RENT_PAYOUT_FROM='2026-11-01', RENT_PAYOUT_BIZ_DAYS=3;   // see rentPaid in buildEvents
+const RENT_NET_FROM='2026-11-01';   // rent due from here is paid out net of the manager's costs: one line
 function depositBackOn(sale, rent){
   if(!rent) return null;
   const end=rentSchedule(rent).end, out=(sale && lt(sale,end))? sale : end;
@@ -2227,13 +2228,20 @@ function buildEvents(sale, price, rent, home){
     if(!rentOK(r.d)) return;                 // sold — there is no house to collect rent on
     // Emitted cost-first so the newest-first table shows the rent above its costs on the day.
     // Only name the parts that are actually charged — "vacancy $0.00" on the move-in month is noise.
-    if(r.cost>0){
-      const parts=[];
-      if(r.vac>0)   parts.push(`vacancy ${fmt(r.vac)}`);
-      if(r.mgmt>0)  parts.push(`management ${fmt(r.mgmt)}`);
-      if(r.maint>0) parts.push(`maintenance ${fmt(r.maint)}`);
-      E(rentPaid(r), -r.cost, `Landlord costs (${parts.join(' + ')})`);
+    const parts=[];
+    if(r.vac>0)   parts.push(`vacancy ${fmt(r.vac)}`);
+    if(r.mgmt>0)  parts.push(`management ${fmt(r.mgmt)}`);
+    if(r.maint>0) parts.push(`maintenance ${fmt(r.maint)}`);
+    /* From November's rent the manager pays out ONE deposit: the rent less its 10% and whatever
+       expenses it paid, so it is one line here too and matches the bank in one go. Schedule E
+       still sees the gross rent and the costs separately (from rentRows). */
+    if(r.d>=RENT_NET_FROM){
+      const n = r.pro? 'move-in' : `${r.i+1} of ${rentDates.length}`;
+      E(rentPaid(r), +(r.amt-r.cost).toFixed(2), `Rent from the manager — Midland home (${n}: ${fmt(r.amt)}`
+        +(parts.length? ' less '+parts.join(' + ') : '')+')');
+      return;
     }
+    if(r.cost>0) E(rentPaid(r), -r.cost, `Landlord costs (${parts.join(' + ')})`);
     E(rentPaid(r), r.amt, r.pro
       ? `Rent — Midland home (move-in, ${Math.round(r.pro*monthLen(r.d))} of ${monthLen(r.d)} days)`
       : `Rent — Midland home (${r.i+1} of ${rentDates.length})`
