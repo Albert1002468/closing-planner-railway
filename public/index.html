@@ -1977,9 +1977,10 @@ function buildEvents(sale, price, rent, home){
   /* Phone and internet split on Oct 1, 2026: Apple Cash ($112, last paid Sep 14) is gone, the
      wireless plan is now billed by AT&T ($138.48 from Oct 7), and the old AT&T bill is internet
      only at $20 from Oct 2. September stays as it was paid (and keeps its labels, so anything
-     adjusted there stays attached). */
+     adjusted there stays attached). From November the internet bill is paid by credit card, so it
+     is inside the card payments, not a line of its own (Oct 2 stays, with your $0 edit). */
   E('2026-09-02',-80.65,'AT&T');
-  ['2026-10-02','2026-11-02','2026-12-02'].forEach(d=>E(d,-20.00,'AT&T Internet'));
+  E('2026-10-02',-20.00,'AT&T Internet');
   monthly(7,'2026-10','2026-12').forEach(d=>E(d,-138.48,'AT&T Wireless'));
   ['2026-09-01','2026-10-01'].forEach(d=>E(d,-50.00,'Credit-card autopays'));
   /* From November each card has its own line, so the bank's two autopays match one line each:
@@ -1993,7 +1994,6 @@ function buildEvents(sale, price, rent, home){
   // Apple bills iCloud+ on the 5th (Oct 5, Nov 5); September and October keep their old days and edits.
   ['2026-09-15','2026-10-15','2026-11-05','2026-12-05'].forEach(d=>E(d,-0.99,'iCloud+ (Apple.com)'));
   ['2026-08-18','2026-09-18','2026-10-19','2026-11-18','2026-12-18'].forEach(d=>E(d,-20.56,'Spotify'));
-  monthly(2,'2027-01',TM()).forEach(d=>E(d,-20.00*inflAt(d),'AT&T Internet'));
   monthly(7,'2027-01',TM()).forEach(d=>E(d,-138.48*inflAt(d),'AT&T Wireless'));
   // Level-premium life policy: the premium is fixed for the life of the contract, so this is
   // the one recurring bill that must NOT be inflated. In real terms it gets cheaper every year.
