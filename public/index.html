@@ -4797,7 +4797,10 @@ function bankCands(t, claimed, win){
 }
 function bankDecide(t, claimed){
   const r=BANK.rules[t.sig];
-  if(r==='*extra') return {action:'extra'};
+  /* "Always its own line" is about that payee's one-offs: a planned line with the same name and the
+     exact amount is still that line (an Apple subscription vs other Apple purchases). */
+  if(r==='*extra'){ const x=bankCands(t, claimed).find(x=>x.name && x.diff<0.01 && x.dd<=3);
+    return x? {action:'match', cand:x} : {action:'extra'}; }
   if(r==='*ignore') return {action:'ignore'};
   const c=bankCands(t, claimed), best=c[0];
   if(best && best.rule && best.ratio<=0.5) return {action:'match', cand:best};
@@ -4896,7 +4899,7 @@ function bankApply(out){
   (out.adjustments||[]).forEach(x=>{ ADJ[x.key]=x; });
   applyShifted(out);
   if(out.extras) BANKX=out.extras;
-  if(out.bank) BANK=out.bank;
+  if(out.bank){ BANK=out.bank; bankRollRefresh(); }   // a line just matched is no longer "waiting"
   OPPC={key:null}; render(); bankBadge();
   if(!$('recmodal').hidden){ fillAdj(); fillBank(); }
 }
