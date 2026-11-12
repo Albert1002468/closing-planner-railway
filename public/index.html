@@ -1128,7 +1128,7 @@
         <li><b>Midland home:</b> let from Sep 25, 2026 at $3,300 (lease to Sep 30, 2027); 10% management,
             half a month to place a tenant. From Nov 2026 the manager pays the rent out, less its fee,
             3 business days after the 1st (weekends and bank holidays skipped). The Jan 2027 house-tax bill resets the PennyMac escrow from
-            June 2027; PMI is assumed off from Nov 2026; losing the homestead is a 1.30× estimate.</li>
+            June 2027; PMI ($28.75) comes off from the Dec 1, 2026 payment (approved); losing the homestead is a 1.30× estimate.</li>
         <li><b>Selling:</b> the relocation company covers seller costs and half of any loss under $425k
             (max $25k) if it closes by Jul 20, 2027; after that seller costs are 7.5%. Leaving before the
             lease ends costs 2 months' rent (assumed — not in the lease).</li>
@@ -1596,7 +1596,7 @@ const midInsForYear = y => +(MID_INS*inflAt(y+'-06-01')).toFixed(2);
    insurance are not — you pay it rented or empty. */
 const HOA_ANNUAL = 500.00, HOA_MONTH = 1, HOA_DAY = 15;
 const MID_PMI        = 28.75;         // monthly PMI — removable, >20% equity already
-const MID_PMI_OFF    = '2026-11-01';  // first payment without it; needs a written request
+const MID_PMI_OFF    = '2026-12-01';  // first payment without it — PennyMac approved removal Nov 12, 2026
 const MID_LAND_TAX   = 567.84;        // 2025 land-only assessment
 // Statement balance was $1,135.33 on 2026-09-02, i.e. AFTER the Sept 1 draft posted, so the
 // walk starts one deposit earlier: 1135.33 - 158.07.
