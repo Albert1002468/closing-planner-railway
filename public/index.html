@@ -2008,8 +2008,8 @@ function buildEvents(sale, price, rent, home){
     .forEach(d=>E(d,-CAR_INS*inflAt(d),'Car insurance (6-mo renewal)')));
   // OG&E + ONG + OKC water/trash, seasonal estimates (gas peak in winter, AC peak in summer).
   // Only charged for months you actually own the place. Each month's total is split into the
-  // three bills by NH_UTIL_SPLIT (water/trash about flat, gas the winter peak, electric the summer
-  // one), so the total — and every rule above — is unchanged: one line per company.
+  // bills by NH_UTIL_SPLIT (gas the winter peak, electric the summer one). Water's share is no longer
+  // billed from here: OKC water has its own schedule from the real first bill (below).
   const NH_UTIL_DAYS=[25,22,22,26,24,22,26,23,22,25,22,22];
   const NH_UTIL_AMTS=[330,315,255,205,195,250,310,330,270,200,250,300];
   // Of each month's total (Jan…Dec): water & trash, and gas; electric is the rest.
@@ -2023,11 +2023,24 @@ function buildEvents(sale, price, rent, home){
     .forEach(([d,a])=>{
       if(!ownedFrom || d<ownedFrom) return;
       const m=+d.slice(5,7)-1, sp=NH_UTIL_SPLIT, k=a/NH_UTIL_AMTS[m];
+      // Water's old share stays out of electric; water itself now has its own schedule (below).
       const water=+(sp.water[m]*k).toFixed(2), gas=+(sp.gas[m]*k).toFixed(2), elec=+(a-water-gas).toFixed(2);
-      E(d,-water,'City of OKC water & trash (est.)');
       E(d,-elec,'OG&E electric (est.)');
       E(d,-gas,'Oklahoma Natural Gas (est.)');
     });
+  /* City of OKC water, sewer, trash & drainage (budget update, Nov 14 2026). Billed on the 14th and
+     auto-drafted on the due date, about the 30th (weekends to Monday). The first bill is one-off: 50
+     days (Sep 22 – Nov 10) of daily new-sod watering plus a $25 start-up fee. Then a seasonal
+     estimate: ~$65/mo fixed charges + ~4,000 gal indoor + odd-day irrigation Apr–Oct; sewer is set by
+     the Dec–Feb average (default 7,000 gal through the Mar 2027 bill). Dec 2026 – Nov 2027 as
+     projected; later years repeat it with inflation (OKC raises rates every November). */
+  const NH_WATER=[133,133,133,119,195,231,268,307,307,249,195,150];   // Jan…Dec
+  const waterDay = (y,m) => bumpWk(`${y}-${String(m+1).padStart(2,'0')}-${String(Math.min(30, monthLen(`${y}-${String(m+1).padStart(2,'0')}-01`))).padStart(2,'0')}`);
+  if(ownedFrom) E('2026-11-30',-790.06,'City of OKC water & trash (first bill: 50 days, new sod, $25 start-up)');
+  for(let y=2026; y<=YR(T1); y++) for(let m=(y===2026? 11 : 0); m<12; m++){
+    const d=waterDay(y,m); if(d>T1) break;
+    E(d, -+(NH_WATER[m]*inflAt(d)).toFixed(2), 'City of OKC water & trash (est.)');
+  }
   // New-home pest control: first service Nov 22 2026, then three more at 3-month intervals.
   [0,3,6,9].forEach(n=>E(addM('2026-11-22',n),-119.00,'New-home pest control'));
 
