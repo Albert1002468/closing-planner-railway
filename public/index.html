@@ -2029,13 +2029,15 @@ function buildEvents(sale, price, rent, home){
       E(d,-gas,'Oklahoma Natural Gas (est.)');
     });
   /* City of OKC water, sewer, trash & drainage (budget update, Nov 14 2026). Billed on the 14th and
-     auto-drafted on the due date, about the 30th (weekends to Monday). The first bill is one-off: 50
+     auto-drafted on the due date, about the 30th (a weekend draft is planned the Friday before, so
+     each month keeps its own bill). The first bill is one-off: 50
      days (Sep 22 – Nov 10) of daily new-sod watering plus a $25 start-up fee. Then a seasonal
      estimate: ~$65/mo fixed charges + ~4,000 gal indoor + odd-day irrigation Apr–Oct; sewer is set by
      the Dec–Feb average (default 7,000 gal through the Mar 2027 bill). Dec 2026 – Nov 2027 as
      projected; later years repeat it with inflation (OKC raises rates every November). */
+  const backWk = d => { const w=dd(d).getDay(); return w===6? addD(d,-1) : w===0? addD(d,-2) : d; };
   const NH_WATER=[133,133,133,119,195,231,268,307,307,249,195,150];   // Jan…Dec
-  const waterDay = (y,m) => bumpWk(`${y}-${String(m+1).padStart(2,'0')}-${String(Math.min(30, monthLen(`${y}-${String(m+1).padStart(2,'0')}-01`))).padStart(2,'0')}`);
+  const waterDay = (y,m) => backWk(`${y}-${String(m+1).padStart(2,'0')}-${String(Math.min(30, monthLen(`${y}-${String(m+1).padStart(2,'0')}-01`))).padStart(2,'0')}`);
   if(ownedFrom) E('2026-11-30',-790.06,'City of OKC water & trash (first bill: 50 days, new sod, $25 start-up)');
   for(let y=2026; y<=YR(T1); y++) for(let m=(y===2026? 11 : 0); m<12; m++){
     const d=waterDay(y,m); if(d>T1) break;
