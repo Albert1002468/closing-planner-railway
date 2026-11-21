@@ -254,7 +254,10 @@ function readAlert(msg, { localDate, localHour, allowUnsigned }) {
     const date = asOfDay(all, day) || (localHour(sent) < 12 ? addDay(day, -1) : day);
     return { kind: 'balance', bank: bank.name, accounts, date };
   }
-  const a = AMT.exec(msg.subject) || AMT_LABELED.exec(msg.text) || AMT_USD.exec(msg.text) || AMT.exec(msg.text);
+  /* "A recent card purchase was over $0.01": that figure is the alert's limit, not the purchase —
+     the amount is the body's "Amount: $31.92". */
+  const subj = msg.subject.replace(/\b(?:over|above|more than|greater than|exceed(?:s|ed|ing)?)\s+\$\s?[\d,]+(?:\.\d{2})?/gi, '');
+  const a = AMT.exec(subj) || AMT_LABELED.exec(msg.text) || AMT_USD.exec(msg.text) || AMT.exec(msg.text);
   if (!a || !/purchase|transaction|withdrawal|deposit|payment|transfer|debit|credit|charge|zelle|sent|received|paid|ach/i.test(all))
     return { kind: 'unknown', bank: bank.name, subject: msg.subject, date: day };
   const amt = Math.abs(money(a[1])), inbound = IN_WORDS.test(msg.subject) || (!/purchase|withdrawal|debit|charge|payment to|sent/i.test(msg.subject) && IN_WORDS.test(msg.text));
@@ -271,9 +274,12 @@ function readAlert(msg, { localDate, localHour, allowUnsigned }) {
      morning email lists it — a day or two later (`early`, see the twin rule in bank.js). */
   const early = inbound && /paid early|early pay day/i.test(all);
   return { kind: 'tx', bank: bank.name, last4: l4 ? l4[1] : '', type: typeOf(all),
-           amount: inbound ? amt : -amt, name: (who ? who[1] : msg.subject).trim().slice(0, 80), date: (when && dateIn(when[1])) || day,
+           amount: inbound ? amt : -amt, name: placeless((who ? who[1] : msg.subject).trim()).slice(0, 80), date: (when && dateIn(when[1])) || day,
            ...(early ? { early: true } : {}) };
 }
+// "CVS/PHARMACY #11092, OKLAHOMA CITY, OK, UNITED STATES" → "CVS/PHARMACY #11092" (city, state, country off).
+const placeless = n => n.replace(/\s*,\s*[^,]*,\s*[A-Z]{2}\s*,\s*(?:UNITED STATES|USA|US)\s*$/i, '')
+  .replace(/\s*,\s*(?:UNITED STATES|USA|US)\s*$/i, '').trim() || n;
 const addDay = (d, n) => { const t = new Date(d + 'T12:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 const msgId = (msg, uid) => 'em-' + crypto.createHash('sha1').update(String(msg.headers['message-id'] || uid)).digest('hex').slice(0, 20);
 

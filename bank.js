@@ -27,7 +27,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
   const DOC = 'bank-email-alerts';
   const EVERY = 15 * 60e3;          // inbox check
   const KEEP_DAYS = 150;            // transactions older than this are dropped
-  const READER = 5;                 // bump when email.js learns a new alert format: the last 10 days are read again
+  const READER = 6;                 // bump when email.js learns a new alert format: the last 10 days are read again
   const ROLL_HOUR = 20;             // from 8 PM (Chicago), a planned line the bank hasn't shown moves to tomorrow
   if (READY) console.log('[bank] reading alert emails sent to', env.ALERT_EMAIL);
 
@@ -72,6 +72,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
     && Math.abs(Date.parse(o.date) - Date.parse(d.date)) <= 864e5
     && !!o.sig && !!d.sig && d.sig.split(' ').includes(o.sig.split(' ')[0]);
   // The alert now says what posted. Matched to a planned line at the old amount: decided again.
+  function undrop(o) { if (o.dropped) { o.status = o.dropped; delete o.dropped; } }
   function takeTip(o, d) {
     Object.assign(o, { twin: d.id, tipFrom: o.tipFrom ?? o.amount, amount: r2(d.amount) });
     if (o.status === 'matched') Object.assign(o, { status: 'new', key: null, decidedAt: null });
@@ -135,13 +136,15 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
         const near = (o, x) => { const d = (Date.parse(x.date) - Date.parse(o.date)) / 864e5;
           return Math.abs(d) <= 1 || (o.early && x.src === 'digest' && d >= 0 && d <= 5) || (x.early && o.src === 'digest' && d <= 0 && d >= -5)
             // one you entered yourself (src 'manual', e.g. a deposit the bank counted but never itemised): its posting, up to 30 days on
-            || (o.src === 'manual' && d >= -1 && d <= 30); };
+            || (o.src === 'manual' && d >= -1 && d <= 30)
+            // a hold set aside as dropped (below) that posts after all, a few days late
+            || (o.dropped && x.src === 'digest' && d >= 0 && d <= 10); };
         // A re-charged hold (`recharged`, below) posts in a later summary: that line is it too (`posted`).
         const repost = o => o.recharged && t.src === 'digest' && (!o.posted || o.posted === t.id)
           && Math.abs(Date.parse(t.date) - Date.parse(o.recharged)) <= 864e5;
         const twin = Object.values(st.tx).find(o => o.src && o.src !== t.src && o.account === t.account && o.amount === r2(t.amount)
           && ((near(o, t) && (!o.twin || o.twin === t.id)) || repost(o)));
-        if (twin) { if (repost(twin)) twin.posted = t.id; else twin.twin = t.id; continue; }
+        if (twin) { if (repost(twin)) twin.posted = t.id; else twin.twin = t.id; undrop(twin); continue; }
         // A restaurant: the card alert told it before the tip, the summary tells it with it.
         const alert = t.src === 'digest' && Object.values(st.tx).find(o => tipped(o, { ...t, sig: sigOf(t.raw || t.name) }));
         if (alert) { takeTip(alert, t); continue; }
@@ -154,7 +157,7 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
           // …and morning emails came in between without ever listing it (so it truly never posted)
           && Object.values(st.balances).some(days => Object.keys(days).filter(d => d > addDay(o.date, 1) && d < t.date).length >= 2)
           && (Date.parse(t.date) - Date.parse(o.date)) / 864e5 >= 5 && (Date.parse(t.date) - Date.parse(o.date)) / 864e5 <= 30);
-        if (held) { held.twin = t.id; held.recharged = t.date; continue; }
+        if (held) { held.twin = t.id; held.recharged = t.date; undrop(held); continue; }
       }
       st.tx[t.id] = { ...(prev || {}), id: t.id, src: t.src, ...(t.early ? { early: true } : {}), account: t.account, date: t.date,
         amount: prev && prev.tipFrom != null ? prev.amount : r2(t.amount),          // read again: the tip stays
@@ -168,6 +171,26 @@ module.exports = function makeBank({ store, localNow, json, readBody, KEY_RE, pa
       if (!o) continue;
       if (d.status === 'matched' && o.status !== 'matched') Object.assign(o, { status: 'matched', key: d.key, label: d.label, decidedAt: d.decidedAt });
       takeTip(o, d); delete st.tx[d.id];
+    }
+    /* Repair: an alert read wrongly at first (the "$0.01" limit taken for the amount) and its summary line,
+       stored side by side — once read right they are the same purchase: the alert stands. */
+    for (const d of Object.values(st.tx)) {
+      if (d.src !== 'digest' || Object.values(st.tx).some(x => x.twin === d.id || x.posted === d.id)) continue;
+      const o = Object.values(st.tx).find(x => x.src === 'alert' && !x.twin && x.account === d.account && x.amount === d.amount
+        && Math.abs(Date.parse(x.date) - Date.parse(d.date)) <= 864e5);
+      if (!o) continue;
+      if (d.status === 'matched' && o.status !== 'matched') Object.assign(o, { status: 'matched', key: d.key, label: d.label, decidedAt: d.decidedAt });
+      o.twin = d.id; undrop(o); delete st.tx[d.id];
+    }
+    /* A card hold that never posts (a theatre's $5 pre-authorisation): three morning summaries from its
+       day on, none listing it, and the bank's balance never had it — so neither does the plan. Set
+       aside, not deleted: if it posts late, or is charged again, it comes back (`undrop`). */
+    const hasDigest = new Set(Object.values(st.tx).filter(x => x.src === 'digest').map(x => x.account));
+    const summaries = d => Math.max(0, ...Object.values(st.balances).map(days => Object.keys(days).filter(k => k >= d).length));
+    for (const o of Object.values(st.tx)) {
+      if (o.src !== 'alert' || o.twin || o.early || o.dropped || !hasDigest.has(o.account)) continue;
+      if (!['new', 'review', 'extra'].includes(o.status) || summaries(o.date) < 3) continue;
+      Object.assign(o, { dropped: o.status, status: 'ignored' });
     }
     if (f.unread.length) st.unread = [...f.unread.reverse(), ...st.unread].slice(0, 20);
     st.cursor = f.cursor; st.error = null;
