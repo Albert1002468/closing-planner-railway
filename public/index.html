@@ -796,19 +796,12 @@
   .appbar .abtn:hover{background:var(--fill)}
   .appbar .abtn svg{width:21px;height:21px}
   .bigtitle{font-size:32px;font-weight:700;letter-spacing:-.028em;line-height:1.1;margin:2px 0 18px}
-  /* A side rail: when the system keeps a wide strip down the right edge for the clock and status
-     icons (an unfolded phone), the bar's buttons move into that strip, stacked under the status
-     icons, so the page itself keeps the full width. `html.rail` is set by the probe script below. */
-  html.rail .appbar .acts{position:fixed;flex-direction:column;gap:10px;
-    top:calc(env(safe-area-inset-top,0px) + 112px);
-    right:max(4px,calc((env(safe-area-inset-right,0px) - 44px) / 2))}
-  html.rail .appbar .abtn{width:44px;height:44px;background:var(--surface-1);
-    border:1px solid var(--ring);box-shadow:var(--shadow)}
-  /* With its buttons in the rail the bar has nothing left to hold, so its row goes and the page
-     starts at the large title (which simply scrolls away; no compact title is needed). */
-  html.rail .appbar-in{height:0}
-  html.rail .appbar-bg,html.rail .appbar-title{display:none}
-  html.rail body{padding-top:calc(14px + env(safe-area-inset-top,0px))}
+  /* No status bar across the top (the Duo shows its clock in a strip BESIDE the app, outside the
+     page, and reports a top inset of 0): an empty 50px row above the title is pure waste, so the
+     large title moves up into the bar's row, left of the buttons. Scrolling still frosts the bar
+     and brings in the compact title. `html.notop` is set by the probe script below. */
+  html.notop body{padding-top:0}
+  html.notop .bigtitle{min-height:50px;display:flex;align-items:center;margin:0 96px 10px 0}
 
   /* ---- surfaces ---- */
   .card,.card.pos{background:none;border:0;box-shadow:none;padding:0;border-radius:0}
@@ -927,9 +920,11 @@
   /* ---- sheets ---- */
   /* ⚠️ A page-coloured frost, not a dark dim. iOS paints the status-bar strip itself and nothing
      on the page can dim or blur it, so a dark backdrop stopped in a hard line under the clock.
-     Frosting toward the page colour ends up the colour the strip already is. `:root` lifts this
+     Frosting toward the page colour ends up the colour the strip already is.
+     85% (not 62%) because the Duo's status strip beside the app is painted plain page colour by
+     iOS, and a thinner frost read as a different colour next to it; the softer sheet shadow too. `:root` lifts this
      over the older dark-mode dim. */
-  :root .modal{background:color-mix(in srgb,var(--page) 62%,transparent);
+  :root .modal{background:color-mix(in srgb,var(--page) 85%,transparent);
          -webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2)}
   .sheet{box-shadow:0 1px 0 var(--ring),0 24px 70px rgba(0,0,0,.22),0 4px 16px rgba(0,0,0,.08)}
   :root .spin{background:color-mix(in srgb,var(--page) 70%,transparent);
@@ -952,7 +947,7 @@
   @keyframes bootout{to{opacity:0;visibility:hidden}}
   .boot.gone{opacity:0;visibility:hidden;transition:opacity .25s,visibility 0s .25s}
   .spin p{color:var(--ink-2)}
-  .sheet{border:0;border-radius:24px;padding:22px;box-shadow:0 30px 90px rgba(0,0,0,.25);
+  .sheet{border:0;border-radius:24px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.13);
          animation:sheetin .22s cubic-bezier(.2,.8,.2,1)}
   @keyframes sheetin{from{transform:translateY(16px);opacity:0}}
   @media (prefers-reduced-motion: reduce){ .sheet{animation:none} }
@@ -3836,31 +3831,14 @@ document.getElementById('todaybar').addEventListener('click',e=>{
    on-screen rects, which iOS distorts during a rubber-band bounce and which left both titles
    half-faded. Tracking runs every frame from the first touch or scroll until the page has been
    still for a moment, so a missed final scroll event cannot strand it. */
-/* Side-rail probe: env() can't be read in a media query, so a hidden element takes the right
-   safe-area inset as its width; a strip of 56px or more (room for a 44px button) is a rail. */
+/* Top-inset probe: env() can't be read in a media query, so a hidden element takes the top safe-area
+   inset as its height. Under 20px there is no status bar above the page (see html.notop). */
 {
   const probe=document.createElement('div');
-  probe.style.cssText='position:fixed;visibility:hidden;pointer-events:none;top:0;height:0;'
-    +'width:env(safe-area-inset-right,0px);padding-left:env(safe-area-inset-left,0px);box-sizing:content-box';
+  probe.style.cssText='position:fixed;visibility:hidden;pointer-events:none;top:0;left:0;width:0;height:env(safe-area-inset-top,0px)';
   document.body.appendChild(probe);
-  // A phone held sideways has matching strips on BOTH sides (one holds the camera), so it is not
-  // a rail: only a right strip with nothing on the left is.
-  const railCheck=()=>{ const cs=getComputedStyle(probe);
-    document.documentElement.classList.toggle('rail', parseFloat(cs.width)>=56 && parseFloat(cs.paddingLeft)<20); };
-  railCheck(); window.addEventListener('resize',railCheck);
-  // TEMPORARY: report the real screen and insets once (see /api/diag in server.js).
-  setTimeout(()=>{ try{
-    const d=document.createElement('div');
-    d.style.cssText='position:fixed;visibility:hidden;top:0;left:0;width:0;height:0;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
-    document.body.appendChild(d); const c=getComputedStyle(d);
-    const r={iw:innerWidth,ih:innerHeight,cw:document.documentElement.clientWidth,dpr:devicePixelRatio,
-      vv:window.visualViewport?[visualViewport.width,visualViewport.height,visualViewport.scale]:null,
-      top:c.paddingTop,right:c.paddingRight,bottom:c.paddingBottom,left:c.paddingLeft,
-      rail:document.documentElement.classList.contains('rail'),standalone:!!navigator.standalone,
-      land:matchMedia('(orientation:landscape)').matches,scr:[screen.width,screen.height]};
-    d.remove();
-    fetch('/api/diag',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(r)});
-  }catch(e){} },1500);
+  const topCheck=()=>document.documentElement.classList.toggle('notop', probe.getBoundingClientRect().height<20);
+  topCheck(); window.addEventListener('resize',topCheck);
 }
 {
   const bar=document.getElementById('appbar'), big=document.getElementById('bigtitle');
@@ -3882,6 +3860,8 @@ document.getElementById('todaybar').addEventListener('click',e=>{
   const measure=()=>{                     // where the title sits relative to the bar at scroll 0
     h=Math.max(1,big.offsetHeight);
     start=big.getBoundingClientRect().top + window.scrollY - bar.offsetHeight;
+    // Title in the bar's own row (html.notop): it starts going under the bar on the first scroll.
+    if(document.documentElement.classList.contains('notop')) start=Math.max(0,start+bar.offsetHeight-50);
   };
   const sync=()=>{
     const under=Math.max(0, window.scrollY) - start;   // negative scroll is the bounce: treat as 0
@@ -3940,7 +3920,7 @@ function sheetDrag(modal, close){
     const f = 1 - Math.min(1, y/Math.max(1,sheet.offsetHeight));
     // The frost thins as the sheet is pulled away and thickens as it comes back: the veil AND the
     // blur both follow the finger (same values as the CSS at f = 1).
-    modal.style.background = y? `color-mix(in srgb,var(--page) ${(62*f).toFixed(1)}%,transparent)` : '';
+    modal.style.background = y? `color-mix(in srgb,var(--page) ${(85*f).toFixed(1)}%,transparent)` : '';
     const bf = y? `blur(${(14*f).toFixed(1)}px) saturate(${(1+.2*f).toFixed(3)})` : '';
     modal.style.backdropFilter = bf; modal.style.webkitBackdropFilter = bf;
   };
@@ -4553,7 +4533,12 @@ function fillRecent(){
     } else if(r.t==='adj'){
       const x=ADJ[r.k], diff=+(x.amount-x.projected).toFixed(2), moved=x.moveTo && x.moveTo!==x.date;
       const what=[moved? `moved from ${shortDate(x.date)}` : '', diff? `planned ${fmt(x.projected)}` : '', x.note? `“${x.note}”` : ''].filter(Boolean).join(' · ');
-      h+=row(`data-adj="${esc(r.k)}"`, who(r.bank), x.label, what || 'as planned', fmt(x.amount));
+      /* A line the bank only carried forward is not done: it says "waiting", as the day list does —
+         a green "bank" read as if the bank had already matched it. */
+      const rl=BANK&&BANK.rolled&&BANK.rolled[r.k], wait=rl && !rl.done;
+      h+=row(`data-adj="${esc(r.k)}"`, wait? '<span class="adjchip wt">waiting</span>' : who(r.bank), x.label,
+        wait? [moved? `moved from ${shortDate(x.date)} by the bank` : '', 'not at the bank yet'].filter(Boolean).join(' · ') : (what || 'as planned'),
+        fmt(x.amount));
     } else if(r.t==='extra'){
       h+=row(`data-day="${r.d}"`, who(true), r.x.name, 'Added — not in the plan', fmt(r.x.amount));
     } else {

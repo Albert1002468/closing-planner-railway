@@ -476,10 +476,6 @@ const server = http.createServer((req, res) => {
     });
   }
 
-  // TEMPORARY (2026-11-24): the page reports its screen size and safe-area insets once per load, so
-  // the unfolded-phone layout can be tuned to real figures. Logged only; remove once tuned.
-  if (url.pathname === '/api/diag' && req.method === 'POST')
-    return readBody(req, 2048, b => { console.log('[diag]', JSON.stringify(b)); json(res, 200, { ok: true }); });
   if (url.pathname === '/api/state' && req.method === 'GET') {
     const now = localNow();
     return json(res, 200, {
