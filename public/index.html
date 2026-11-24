@@ -3834,6 +3834,19 @@ document.getElementById('todaybar').addEventListener('click',e=>{
   const railCheck=()=>{ const cs=getComputedStyle(probe);
     document.documentElement.classList.toggle('rail', parseFloat(cs.width)>=56 && parseFloat(cs.paddingLeft)<20); };
   railCheck(); window.addEventListener('resize',railCheck);
+  // TEMPORARY: report the real screen and insets once (see /api/diag in server.js).
+  setTimeout(()=>{ try{
+    const d=document.createElement('div');
+    d.style.cssText='position:fixed;visibility:hidden;top:0;left:0;width:0;height:0;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+    document.body.appendChild(d); const c=getComputedStyle(d);
+    const r={iw:innerWidth,ih:innerHeight,cw:document.documentElement.clientWidth,dpr:devicePixelRatio,
+      vv:window.visualViewport?[visualViewport.width,visualViewport.height,visualViewport.scale]:null,
+      top:c.paddingTop,right:c.paddingRight,bottom:c.paddingBottom,left:c.paddingLeft,
+      rail:document.documentElement.classList.contains('rail'),standalone:!!navigator.standalone,
+      land:matchMedia('(orientation:landscape)').matches,scr:[screen.width,screen.height]};
+    d.remove();
+    fetch('/api/diag',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(r)});
+  }catch(e){} },1500);
 }
 {
   const bar=document.getElementById('appbar'), big=document.getElementById('bigtitle');
