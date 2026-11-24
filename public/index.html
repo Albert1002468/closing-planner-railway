@@ -1192,6 +1192,11 @@
     .card.pos>#chartpanel{grid-column:1;grid-row:2/span 2}
     .card.pos>.sidecol{grid-row:3/span 2}
   }
+  /* The day "Next" points at, flashed when it is tapped. */
+  @keyframes rowflash{0%,60%{background:color-mix(in srgb,var(--s1) 26%,transparent)}100%{background:transparent}}
+  #evtable tr.flash,#evtable tr.flash>td{animation:rowflash 2.2s ease-out}
+  .sidecol #evtable tr.flash>td{animation:none}
+  .sidecol #evtable tr.flash{border-radius:10px}
 </style>
 </head>
 <body>
@@ -3898,7 +3903,7 @@ function render(){
     d.ev.forEach(e=>{
       run=+(run+e.a).toFixed(2);
       const adjTip = e.adj? ` — projected ${fmt(e.proj)}${e.from? ' on '+nice(e.from) : ''}` : '';
-      rows.push({ym,d:d.d,a:e.a,h:`<tr${isToday?' class="today"':''}><td>${ds}${chip}</td><td class="trunc${isToday?' open':''}" title="${esc(e.l)}${adjTip}">${e.adj?`<span class="adjchip">${e.from?'moved':'adjusted'}</span>`:''}${esc(e.l)}</td><td class="n${e.a>0?' pos':''}">${fmt(e.a)}</td><td class="n">${fmt(run)}</td></tr>`});
+      rows.push({ym,d:d.d,a:e.a,h:`<tr data-d="${d.d}"${isToday?' class="today"':''}><td>${ds}${chip}</td><td class="trunc${isToday?' open':''}" title="${esc(e.l)}${adjTip}">${e.adj?`<span class="adjchip">${e.from?'moved':'adjusted'}</span>`:''}${esc(e.l)}</td><td class="n${e.a>0?' pos':''}">${fmt(e.a)}</td><td class="n">${fmt(run)}</td></tr>`});
     });
     if(d.rec && d.rec.delta!==0){
       const note = d.rec.note? ` — “${esc(d.rec.note)}”` : '';
@@ -4014,7 +4019,7 @@ function renderTodayBar(DATA){
     // The day's net, not its first line: what the balance actually does that day.
     const n=nx.ev.length, nxNet=+nx.ev.reduce((a,e)=>a+e.a,0).toFixed(2);
     const what = n===1? nx.ev[0].l : `${n} items · `+nx.ev.map(e=>adjBase(e.l)).join(', ');
-    h += `<button type="button" class="tbnext" data-ym="${nx.d.slice(0,7)}" title="Open in Transactions">`
+    h += `<button type="button" class="tbnext" data-ym="${nx.d.slice(0,7)}" data-d="${nx.d}" title="Show it in Transactions">`
       +`<b>Next · ${dd(nx.d).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</b>`
       +`<span title="${esc(what)}">${esc(what)}</span>${sgn(nxNet)}<i aria-hidden="true">›</i></button>`;
   }
@@ -4028,8 +4033,22 @@ document.getElementById('todaybar').addEventListener('click',e=>{
      whenever it had lines meant "Next · Oct 1" on Sep 30 opened September. A single-year chart
      follows the table into a new year (followPage), exactly as paging does. */
   TPAGE = b.dataset.ym; TPAGE_PINNED=true; followPage();
-  busy([tw, $chartP], render);
-  tw.scrollIntoView({behavior:'smooth',block:'start'});
+  /* Then bring that day's lines into view and flash them, so the tap visibly lands somewhere
+     (owner: "not sure what clicking Next is doing" — it only opened the month). In the wide
+     right column the list scrolls inside its own box; the page itself must not move. */
+  const day=b.dataset.d;
+  busy([tw, $chartP], ()=>{ render(); requestAnimationFrame(()=>{
+    const rows=[...tw.querySelectorAll(`tr[data-d="${day}"]`)];
+    const inCol=getComputedStyle(document.querySelector('.sidecol')).position==='absolute';
+    if(!inCol) tw.scrollIntoView({behavior:'smooth',block:'start'});
+    if(!rows.length) return;
+    const box=tw.querySelector('.secbody');
+    if(inCol && box){ const r=rows[0].getBoundingClientRect(), br=box.getBoundingClientRect();
+      box.scrollTo({top:box.scrollTop+r.top-br.top-box.clientHeight/3,behavior:'smooth'}); }
+    else setTimeout(()=>rows[0].scrollIntoView({behavior:'smooth',block:'center'}),350);
+    rows.forEach(x=>{ x.classList.remove('flash'); void x.offsetWidth; x.classList.add('flash'); });
+    setTimeout(()=>rows.forEach(x=>x.classList.remove('flash')),2200);
+  }); });
 });
 
 /* Reveal a cut-off description. A tap toggles it; a press-and-hold opens it (iOS shows no title
