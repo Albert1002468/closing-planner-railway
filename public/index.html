@@ -855,7 +855,7 @@
      today's card and the chart. */
   @media (min-width:700px){
     .card.pos{display:grid;align-items:start;column-gap:14px;
-      grid-template-columns:minmax(0,1.1fr) minmax(340px,1fr);grid-template-rows:auto auto auto 1fr auto}
+      grid-template-columns:minmax(0,1.45fr) minmax(320px,1fr);grid-template-rows:auto auto auto 1fr auto}
     .card.pos>*{grid-column:1/-1}
     .card.pos>.tilewrap{grid-row:1}
     .card.pos>#todaybar{grid-column:1;grid-row:2;margin:0 0 12px}
@@ -863,6 +863,25 @@
     .card.pos>.sidecol{grid-column:2;grid-row:2/span 3;min-width:0}
     .card.pos>.foot{grid-row:5}
     .sidecol>#tblwrap,.sidecol>#oppwrap{margin:0 0 12px}
+    /* In the column each transaction is two lines, like a bank app: the name across the width
+       (in full, wrapping if it must) with its amount, then the date and running balance under it.
+       Four table columns in this width had cut every name to a word or two. */
+    .sidecol #evtable,.sidecol #evtable tbody{display:block}
+    .sidecol #evtable thead{display:none}
+    .sidecol #evtable tr{display:grid;grid-template-columns:minmax(0,1fr) auto;
+      grid-template-areas:"item amt" "date bal";column-gap:12px;row-gap:1px;
+      padding:8px 2px;border-bottom:1px solid var(--grid)}
+    .sidecol #evtable tr:has(>td[colspan]){display:block;border:0;padding:6px 0}
+    .sidecol #evtable tr:has(>td[colspan])>td{display:block;width:100%}
+    .sidecol #evtable td{border:0;padding:0}
+    .sidecol #evtable td:nth-child(1){grid-area:date;font-size:12px;color:var(--muted)}
+    .sidecol #evtable td:nth-child(2){grid-area:item;max-width:none;width:auto;white-space:normal;
+      overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.35;font-size:14px}
+    .sidecol #evtable td:nth-child(3){grid-area:amt;font-size:14px;font-weight:500}
+    .sidecol #evtable td:nth-child(4){grid-area:bal;font-size:12px;color:var(--muted)}
+    .sidecol #evtable tr.today{box-shadow:inset 3px 0 0 var(--s1);padding-left:10px;
+      background:color-mix(in srgb,var(--s1) 9%,transparent)}
+    .sidecol #evtable tr.today td{background:none;box-shadow:none}
     /* Smaller figures, so five or so fit across instead of three and a half. */
     .tile,.tile.key,.tile:not(.key){flex-basis:158px;padding:9px 11px 8px;border-radius:14px}
     .tile .lab{font-size:11px;margin-bottom:2px}
@@ -3219,9 +3238,9 @@ function render(){
   const canPan = mobile && VIEW==='span';
   const W=mobile? (canPan? Math.max(300,Math.round(cw),nMonths*30) : Math.max(300,Math.round(cw)))
                 : 940,
-        // Wide screens (700px+, today's card above it) give up height on a short screen so the
-        // chart still ends on the first screen; never below 220. Phones keep 300.
-        H=!mobile? 380 : window.innerWidth>=700? Math.max(220,Math.min(300,window.innerHeight-400)) : 300;
+        // Wide screens (700px+) draw it taller — the screen's height less the figures and today's
+        // card above it, 260–380 (owner: "the graph appears too small"). Phones keep 300.
+        H=!mobile? 380 : window.innerWidth>=700? Math.max(260,Math.min(380,window.innerHeight-320)) : 300;
   // Desktop keeps scaling the fixed 940 viewBox to the container; only mobile pins real pixels.
   svg.style.width = mobile? W+'px' : '100%';
   /* touch-action, and why it differs by window:
