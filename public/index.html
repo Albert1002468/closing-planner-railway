@@ -4215,7 +4215,12 @@ function fitSide(){
   const share=Math.max(120,Math.floor((col.clientHeight-heads-gaps-2)/open.length));
   open.forEach(d=>{ const b=d.querySelector('.secbody'); if(b) b.style.maxHeight=share+'px'; });
 }
-['tblwrap','oppwrap'].forEach(id=>document.getElementById(id).addEventListener('toggle',()=>requestAnimationFrame(fitSide)));
+// One at a time: opening Transactions closes "Keep it or sell it?" and vice versa (owner, 2026-11-24).
+// Closing the comparison also puts the chart back on Cash, through its own toggle handler.
+[['tblwrap','oppwrap'],['oppwrap','tblwrap']].forEach(([id,other])=>{
+  const d=document.getElementById(id), o=document.getElementById(other);
+  d.addEventListener('toggle',()=>{ if(d.open && o.open) o.open=false; requestAnimationFrame(fitSide); });
+});
 window.addEventListener('resize',()=>requestAnimationFrame(fitSide));
 new ResizeObserver(()=>fitSide()).observe(document.querySelector('.sidecol'));
 // The panel compares net worth, so the chart follows it open and closed.
