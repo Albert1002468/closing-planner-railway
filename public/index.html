@@ -810,6 +810,20 @@
   .tblist{font-size:14px}
   .tblist li{padding:3px 0}
   .tbnext{font-size:13px;border-top:1px solid var(--grid);margin-top:8px;padding-top:9px}
+  /* Wide screens (an unfolded phone, a tablet, a laptop): today's card sits beside the chart
+     instead of above it, so the chart is on the first screen without scrolling. Everything
+     else keeps spanning the full width. Only while the card is shown, or its column would sit empty. */
+  @media (min-width:700px){
+    .card.pos:has(>#todaybar:not([hidden])){display:grid;align-items:start;column-gap:12px;
+      grid-template-columns:minmax(0,1fr) minmax(220px,min(300px,32%))}
+    .card.pos>*{grid-column:1/-1}
+    .card.pos:has(>#todaybar:not([hidden]))>#chartpanel{grid-column:1;grid-row:2}
+    .card.pos:has(>#todaybar:not([hidden]))>#todaybar{grid-column:2;grid-row:2}
+  }
+  /* A wide but short screen (unfolded, held sideways): a smaller title, so the chart fits too. */
+  @media (min-width:700px) and (max-height:620px){
+    .bigtitle{font-size:26px;margin-bottom:10px}
+  }
 
   /* ---- controls on the page ---- */
   .actionbar{margin:0 0 8px}
@@ -3148,7 +3162,9 @@ function render(){
   const canPan = mobile && VIEW==='span';
   const W=mobile? (canPan? Math.max(300,Math.round(cw),nMonths*30) : Math.max(300,Math.round(cw)))
                 : 940,
-        H=mobile?300:380;
+        // An unfolded phone held sideways is wide but short: the chart gives up height (not
+        // below 200) so the whole panel still fits on the first screen. Phones keep 300.
+        H=mobile?(window.innerWidth>=700? Math.max(200,Math.min(300,window.innerHeight-340)) : 300):380;
   // Desktop keeps scaling the fixed 940 viewBox to the container; only mobile pins real pixels.
   svg.style.width = mobile? W+'px' : '100%';
   /* touch-action, and why it differs by window:
