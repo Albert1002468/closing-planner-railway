@@ -407,6 +407,7 @@
   #stageform>.rechead,#stageform>.hint{order:0}
   #bankbox{order:1} .daystools{order:2} #adjlist{order:3} #daymsg{order:4} #adjpark{order:5}
   #bankfoot{order:6} #adjrecent{order:7} #signout{order:8}
+  .recempty{display:none}
   /* Scrollbars in the sheets: a thin rounded thumb in the app's own grey, no track or arrows,
      a little stronger under the pointer. Firefox/Chrome read scrollbar-color; Safari the
      ::-webkit-scrollbar rules (Chrome ignores those once scrollbar-color is set). */
@@ -424,14 +425,23 @@
   @media (min-width:760px){
     #recmodal .sheet{width:min(1240px,100%);height:calc(100vh - 28px);height:calc(100dvh - 28px);
                      overflow:hidden;display:flex;flex-direction:column}
-    #recmodal #stageform{flex:1;min-height:0;display:grid;grid-template-columns:minmax(280px,min(380px,38%)) minmax(0,1fr);
+    #recmodal #stageform{flex:1;min-height:0;display:grid;grid-template-columns:minmax(320px,48%) minmax(0,1fr);
                          grid-template-rows:auto auto minmax(0,1fr);column-gap:22px}
     #stageform>.rechead,#stageform>.hint{grid-column:1/-1}
     .recside,.recmain{display:block;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;grid-row:3;
                       padding:2px 10px 4px 4px;margin:-2px -10px 0 -4px;overscroll-behavior:contain;scrollbar-gutter:stable}
-    .recside{grid-column:1} .recmain{grid-column:2}
-    .recside #bankbox{margin-top:0}
-    .recmain .daystools{position:sticky;top:-2px;z-index:2;background:var(--surface-1);padding:2px 0 10px;margin:0}
+    /* Left: everything you look through — the bank, its settings, search, the days, history. */
+    .recside{grid-column:1;display:flex;flex-direction:column}
+    .recside>#bankbox{order:1;margin-top:0} .recside>#bankfoot{order:2;margin-bottom:12px}
+    .recside>.daystools{order:3} .recside>#adjlist{order:4} .recside>#daymsg{order:5}
+    .recside>#adjrecent{order:6} .recside>#signout{order:7}
+    .recside .daystools{position:sticky;top:-2px;z-index:2;background:var(--surface-1);padding:2px 0 10px;margin:0}
+    /* Right: the editor for what you tapped, always in the same place. */
+    .recmain{grid-column:2}
+    .recmain>#adjedit,.recmain>#adjmulti{margin:0;background:var(--fill);border-radius:16px;padding:16px}
+    .recempty{display:flex;align-items:center;justify-content:center;text-align:center;min-height:180px;
+      padding:20px;border:1px dashed var(--axis);border-radius:16px;color:var(--muted);font-size:14px}
+    .recempty[hidden]{display:none}
     .daycard .adjitem,.dayhead{font-size:14.5px}
   }
   /* The editor splits in two — what you type on the left, what it does (and Save) on the right —
@@ -1353,22 +1363,29 @@
             <button type="button" id="recdone" class="ghostbtn">Done</button>
           </div>
           <p class="hint" id="rechint"></p>
-          <!-- On a desktop: two columns, each scrolling on its own — the bank, settings and history on the
-               left, your days on the right. On a phone they are one column (bank, days, the rest). -->
-          <div class="recmain">
-          <!-- Your days, newest first: each day's balance (from the bank, by you, or projected) and its
-               lines, each marked with what the bank said. Tap a line or a balance to change it. -->
-          <div class="daystools">
-            <input type="search" id="adjq" class="adjq" placeholder="Search — e.g. paycheck, mortgage"
-                   autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
-                   aria-label="Search transactions">
-            <label class="jumpday" title="Go to a day"><span>Go to day</span>
-              <input type="date" id="adjjump" aria-label="Go to a day"></label>
-          </div>
-          <input type="hidden" id="adjdate">
+          <!-- Wide screens: two columns, each scrolling on its own — on the left the bank, its settings,
+               search and your days (the coming two weeks and the past week); on the right the editor for
+               whatever you tapped. On a phone they are one column, the editor opening under the line. -->
+          <div class="recside">
+            <!-- Bank sync (alert emails): what it did, and what needs you. Filled by fillBank. -->
+            <div class="bankbox" id="bankbox" hidden></div>
+            <div class="bankfoot" id="bankfoot"></div>
+            <div class="daystools">
+              <input type="search" id="adjq" class="adjq" placeholder="Search — e.g. paycheck, mortgage"
+                     autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
+                     aria-label="Search transactions">
+              <label class="jumpday" title="Go to a day"><span>Go to day</span>
+                <input type="date" id="adjjump" aria-label="Go to a day"></label>
+            </div>
+            <input type="hidden" id="adjdate">
 
-          <div class="adjlist" id="adjlist"></div>
-          <div class="recmsg ok daymsg" id="daymsg" role="status"></div>
+            <div class="adjlist" id="adjlist"></div>
+            <div class="recmsg ok daymsg" id="daymsg" role="status"></div>
+            <details class="histbox" id="adjrecent"><summary>History</summary><div class="adjlist hist" id="adjrecentlist"></div></details>
+            <button type="button" class="signout" id="signout">Sign out of this device</button>
+          </div>
+          <div class="recmain" id="recpane">
+            <div class="recempty" id="recempty">Tap a line, or a day's balance, to change it here.</div>
           <!-- The editor and select mode live here while unused; fillAdj moves them under the line
                (or the day) they are for. -->
           <div id="adjpark" hidden>
@@ -1419,13 +1436,6 @@
           </div>
           </div>
           </div>
-          <aside class="recside">
-            <!-- Bank sync (alert emails): what it did, and what needs you. Filled by fillBank. -->
-            <div class="bankbox" id="bankbox" hidden></div>
-            <div class="bankfoot" id="bankfoot"></div>
-            <details class="histbox" id="adjrecent"><summary>History</summary><div class="adjlist hist" id="adjrecentlist"></div></details>
-            <button type="button" class="signout" id="signout">Sign out of this device</button>
-          </aside>
         </div>
       </div>
     </div>
@@ -4375,7 +4385,12 @@ function searchHits(q){
 }
 /* The days: from ADJFWD days after the focus day (today, or the day you went to) back ADJBACK days,
    newest first. Each is a card — its balance and where that came from, then its lines. */
-let ADJFOCUS=null, ADJBACK=6, ADJFWD=1;
+let ADJFOCUS=null, ADJBACK=6, ADJFWD=14;
+/* Upcoming days start two weeks out (only days with lines show — see fillAdj), so what is coming is
+   in the list, not behind "Later days". ADJ_FWD0 is that default; anything else is a moved window. */
+const ADJ_FWD0=14;
+// Wide screens edit in the pane on the right; a phone opens the editor under the line.
+const recWide=()=>matchMedia('(min-width:760px)').matches;
 const ADJ_MORE=7;
 // What the bank said about a line: matched it, added it, or still waiting for it.
 function bankChip(e){
@@ -4433,12 +4448,16 @@ function fillAdj(){
       ? `<div class="grp">${total} match${total===1?'':'es'} · best first, then nearest today${total>near.length?` · top ${near.length}`:''}</div>`
         + near.map(h=>itemRow(h.e, h.d, true)).join('')
       : '<div class="none">Nothing matches.</div>';
-    $('adjedit').hidden=true; $('adjmulti').hidden=true;
+    $('adjedit').hidden=true; $('adjmulti').hidden=true; $('recempty').hidden=false;
   } else {
     const hi=addD(ADJFOCUS,ADJFWD) > T1? T1 : addD(ADJFOCUS,ADJFWD), lo=addD(ADJFOCUS,-ADJBACK) < T0? T0 : addD(ADJFOCUS,-ADJBACK);
-    const days=[]; for(let d=hi; d>=lo; d=addD(d,-1)) days.push(d);
+    // Past days all show (each has a balance to reconcile); upcoming ones only when something lands
+    // that day, plus tomorrow, so two weeks ahead is a handful of cards, not fourteen empty ones.
+    const tmrw=addD(today,1), days=[];
+    for(let d=hi; d>=lo; d=addD(d,-1))
+      if(d<=tmrw || d===ADJFOCUS || adjItems(d).some(e=>e.kind==='tx')) days.push(d);
     // Anything but the usual week around today offers the way back (at the bottom too, once it is long).
-    const home = ADJFOCUS===today && ADJBACK===6 && ADJFWD===1;
+    const home = ADJFOCUS===today && ADJBACK===6 && ADJFWD===ADJ_FWD0;
     const back = `<button type="button" class="daymore home" data-more="today">Back to today</button>`;
     const date=$('adjdate').value;
     if(ADJSEL && !(date>=lo && date<=hi && adjItems(date).some(e=>e.key===ADJSEL))) ADJSEL=null;
@@ -4452,9 +4471,13 @@ function fillAdj(){
       +(home || ADJBACK<=12? '' : back);
     // The editor opens under what you tapped; select mode under its day's lines.
     const sel=ADJSEL && adjItems(date).find(e=>e.key===ADJSEL);
-    if(sel){ const at=$('adjlist').querySelector(`[data-key="${CSS.escape(ADJSEL)}"]`); if(at) at.after($('adjedit')); }
+    const wide=recWide();
+    if(sel){ if(wide) $('recpane').append($('adjedit'));
+      else { const at=$('adjlist').querySelector(`[data-key="${CSS.escape(ADJSEL)}"]`); if(at) at.after($('adjedit')); } }
     fillEditor(sel);
-    if(MULTI){ const card=$('adjlist').querySelector(`[data-day="${MULTI.day}"]`); if(card) card.append($('adjmulti')); }
+    if(MULTI){ if(wide) $('recpane').append($('adjmulti'));
+      else { const card=$('adjlist').querySelector(`[data-day="${MULTI.day}"]`); if(card) card.append($('adjmulti')); } }
+    $('recempty').hidden = !!(sel || MULTI);
     fillMulti(MULTI? adjItems(MULTI.day).filter(e=>e.kind==='tx') : []);
   }
   fillRecent();
@@ -4606,7 +4629,7 @@ const applyShifted = out => (out.shifted||[]).forEach(x=>{ if(RECON[x.date]) REC
 // Make `date` the open day, keeping the list as it is when that day is in it (else: that day's week).
 function showDay(date){
   const f=ADJFOCUS||nowInfo().today;
-  if(!(date<=addD(f,ADJFWD) && date>=addD(f,-ADJBACK))){ ADJFOCUS=date; ADJBACK=6; ADJFWD=1; }
+  if(!(date<=addD(f,ADJFWD) && date>=addD(f,-ADJBACK))){ ADJFOCUS=date; ADJBACK=6; ADJFWD=ADJ_FWD0; }
   $('adjdate').value=date;
 }
 function openItem(date, key){
@@ -4617,7 +4640,7 @@ function openItem(date, key){
    into view and its border glows once, so the eye lands on it. */
 function arrive(date, key){
   const card=$('adjlist').querySelector(`.daycard[data-day="${date}"]`); if(!card) return;
-  const at = key && !$('adjedit').hidden? $('adjedit') : card;
+  const at = key && !$('adjedit').hidden && !recWide()? $('adjedit') : card;
   requestAnimationFrame(()=>{
     at.scrollIntoView({block: at===card? 'center' : 'nearest', behavior:'smooth'});
     card.classList.remove('arrive'); void card.offsetWidth; card.classList.add('arrive');
@@ -4628,7 +4651,7 @@ const clearDayMsg=()=>{ $('daymsg').textContent=''; };
 ['adjjump','adjq'].forEach(id=>$(id).addEventListener('input',clearDayMsg,true));
 // "Go to day": that day and the week before it.
 $('adjjump').addEventListener('change',e=>{ if(!e.target.value) return;
-  ADJFOCUS=e.target.value; ADJBACK=6; ADJFWD=1; ADJSEL=null; MULTI=null; $('adjq').value=''; $('adjmsg').textContent=''; fillAdj();
+  ADJFOCUS=e.target.value; ADJBACK=6; ADJFWD=ADJ_FWD0; ADJSEL=null; MULTI=null; $('adjq').value=''; $('adjmsg').textContent=''; fillAdj();
   arrive(ADJFOCUS); });
 $('adjjump').addEventListener('click',e=>{ try{ e.target.showPicker(); }catch(_){} });
 $('adjq').addEventListener('input',()=>{ ADJSEL=null; fillAdj(); });
@@ -4636,7 +4659,7 @@ $('adjq').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(
 $('adjlist').addEventListener('click',e=>{
   const m=e.target.closest('[data-more]');
   if(m){ const {today}=nowInfo(), k=m.dataset.more;
-    if(k==='back') ADJBACK+=ADJ_MORE; else if(k==='fwd') ADJFWD+=ADJ_MORE; else { ADJFOCUS=today; ADJBACK=6; ADJFWD=1; }
+    if(k==='back') ADJBACK+=ADJ_MORE; else if(k==='fwd') ADJFWD+=ADJ_MORE; else { ADJFOCUS=today; ADJBACK=6; ADJFWD=ADJ_FWD0; }
     fillAdj(); if(k==='today') arrive(today); return; }
   const t=e.target.closest('[data-tool]');
   if(t){ const date=t.dataset.date, txs=adjItems(date).filter(x=>x.kind==='tx');
@@ -4651,7 +4674,7 @@ $('adjlist').addEventListener('click',e=>{
   const same = ADJSEL===b.dataset.key;                        // tap again to close
   ADJSEL = same? null : b.dataset.key; $('adjdate').value=b.dataset.date;
   $('adjmsg').textContent=''; fillAdj();
-  if(ADJSEL) requestAnimationFrame(()=>$('adjedit').scrollIntoView({block:'nearest', behavior:'smooth'}));
+  if(ADJSEL && !recWide()) requestAnimationFrame(()=>$('adjedit').scrollIntoView({block:'nearest', behavior:'smooth'}));
 });
 /* ---- Select mode: move several of one day's lines to another day in one save ----
    Each keeps its current amount and note; only the day changes. Moving a line back to its own
@@ -4743,9 +4766,12 @@ $('adjamt').addEventListener('input',e=>{
 // straight onto today — no PIN.
 function openModal(){
   $('recmodal').hidden=false;
-  RECPAGE=0; ADJFOCUS=null; ADJBACK=6; ADJFWD=1; fillAdj(); fillBank(); bankBadge();   // opened: the green dot is seen
+  RECPAGE=0; ADJFOCUS=null; ADJBACK=6; ADJFWD=ADJ_FWD0; fillAdj(); fillBank(); bankBadge();   // opened: the green dot is seen
   // A desktop has the room: History starts open in its column. On a phone it stays tucked away.
   if(matchMedia('(min-width:760px)').matches) $('adjrecent').open=true;
+  // Wide: the list opens on today, with the coming days just above it (scroll up for more).
+  if(recWide()) requestAnimationFrame(()=>{ const c=$('adjlist').querySelector(`.daycard[data-day="${nowInfo().today}"]`);
+    if(c) c.scrollIntoView({block:'center'}); });
   document.body.style.overflow='hidden';
 }
 function closeModal(){
@@ -4755,6 +4781,8 @@ function closeModal(){
   $('adjmsg').textContent=''; $('adjmsg').className='recmsg';
 }
 $('recbtn').addEventListener('click',openModal);
+// Folding or unfolding while it is open: the editor moves between the pane and the list.
+matchMedia('(min-width:760px)').addEventListener('change',()=>{ if(!$('recmodal').hidden) fillAdj(); });
 sheetDrag($('recmodal'), closeModal);
 sheetDrag(document.getElementById('setmodal'), cancelSet);
 $('signout').addEventListener('click',async ()=>{
