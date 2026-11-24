@@ -3313,7 +3313,10 @@ let VH_STABLE={w:0,h:0}, CHART_H=0;
 const CHART_MIN=190;
 function fitChartH(svg){
   const w=window.innerWidth;
-  VH_STABLE = VH_STABLE.w===w? {w, h:Math.max(VH_STABLE.h, window.innerHeight)} : {w, h:window.innerHeight};
+  /* The window as it is NOW. (It used the tallest height seen, to ride out iOS shrinking the
+     window ~82pt while the page scrolled — but the page no longer scrolls, and iOS also reopens
+     the app in that shorter window, where the tallest-seen size cut the chart's bottom off.) */
+  VH_STABLE = {w, h:window.innerHeight};
   const panel=document.getElementById('chartpanel'), sh=svg.getBoundingClientRect().height;
   const overhead = sh>0? panel.getBoundingClientRect().height - sh : 110;
   const top = panel.getBoundingClientRect().top + window.scrollY;
@@ -3343,7 +3346,7 @@ function fitKeys(){
 function oneScreen(){
   fitKeys();
   const de=document.documentElement, wide=window.innerWidth>=700 && matchMedia('(pointer:coarse)').matches;
-  const h=Math.max(VH_STABLE.w===window.innerWidth? VH_STABLE.h : 0, window.innerHeight);
+  const h=window.innerHeight;
   const root=document.querySelector('.viz-root'), ph=root? Math.ceil(root.getBoundingClientRect().height) : de.scrollHeight;
   // Only when the chart can still move the right way (not already at its minimum/maximum).
   const need = wide && CHART_H>0 && ((ph>h+2 && CHART_H>CHART_MIN) || (ph<h-2 && CHART_H<560));
@@ -3356,6 +3359,10 @@ function oneScreen(){
 if(window.ResizeObserver){ const ro=new ResizeObserver(()=>requestAnimationFrame(oneScreen));
   [document.body, document.querySelector('.viz-root')].filter(Boolean).forEach(el=>ro.observe(el)); }
 window.addEventListener('resize',()=>{ REFITS=0; requestAnimationFrame(oneScreen); });
+// Coming back to the app: iOS may hand it a different-height window without a resize we see in time.
+const refitNow=()=>{ REFITS=0; setTimeout(()=>{ pinVH(); render(); },60); setTimeout(oneScreen,400); };
+window.addEventListener('pageshow',refitNow);
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refitNow(); });
 
 /* Captured before anything can touch the form, so "default" means the values the document
    shipped with — not whatever happens to be on screen when the reader hits reset. */
