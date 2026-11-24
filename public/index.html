@@ -784,6 +784,19 @@
   .appbar .abtn:hover{background:var(--fill)}
   .appbar .abtn svg{width:21px;height:21px}
   .bigtitle{font-size:32px;font-weight:700;letter-spacing:-.028em;line-height:1.1;margin:2px 0 18px}
+  /* A side rail: when the system keeps a wide strip down the right edge for the clock and status
+     icons (an unfolded phone), the bar's buttons move into that strip, stacked under the status
+     icons, so the page itself keeps the full width. `html.rail` is set by the probe script below. */
+  html.rail .appbar .acts{position:fixed;flex-direction:column;gap:10px;
+    top:calc(env(safe-area-inset-top,0px) + 112px);
+    right:max(4px,calc((env(safe-area-inset-right,0px) - 44px) / 2))}
+  html.rail .appbar .abtn{width:44px;height:44px;background:var(--surface-1);
+    border:1px solid var(--ring);box-shadow:var(--shadow)}
+  /* With its buttons in the rail the bar has nothing left to hold, so its row goes and the page
+     starts at the large title (which simply scrolls away; no compact title is needed). */
+  html.rail .appbar-in{height:0}
+  html.rail .appbar-bg,html.rail .appbar-title{display:none}
+  html.rail body{padding-top:calc(14px + env(safe-area-inset-top,0px))}
 
   /* ---- surfaces ---- */
   .card,.card.pos{background:none;border:0;box-shadow:none;padding:0;border-radius:0}
@@ -3801,6 +3814,19 @@ document.getElementById('todaybar').addEventListener('click',e=>{
    on-screen rects, which iOS distorts during a rubber-band bounce and which left both titles
    half-faded. Tracking runs every frame from the first touch or scroll until the page has been
    still for a moment, so a missed final scroll event cannot strand it. */
+/* Side-rail probe: env() can't be read in a media query, so a hidden element takes the right
+   safe-area inset as its width; a strip of 56px or more (room for a 44px button) is a rail. */
+{
+  const probe=document.createElement('div');
+  probe.style.cssText='position:fixed;visibility:hidden;pointer-events:none;top:0;height:0;'
+    +'width:env(safe-area-inset-right,0px);padding-left:env(safe-area-inset-left,0px);box-sizing:content-box';
+  document.body.appendChild(probe);
+  // A phone held sideways has matching strips on BOTH sides (one holds the camera), so it is not
+  // a rail: only a right strip with nothing on the left is.
+  const railCheck=()=>{ const cs=getComputedStyle(probe);
+    document.documentElement.classList.toggle('rail', parseFloat(cs.width)>=56 && parseFloat(cs.paddingLeft)<20); };
+  railCheck(); window.addEventListener('resize',railCheck);
+}
 {
   const bar=document.getElementById('appbar'), big=document.getElementById('bigtitle');
   const bgEl=bar.querySelector('.appbar-bg'), title=bar.querySelector('.appbar-title');
