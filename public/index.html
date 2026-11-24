@@ -1146,6 +1146,15 @@
   #setdirty:hover{text-decoration:underline}
   #setdirty{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
   @media (max-width:640px){ #setdirty .lg{display:none} }
+
+  /* ⚠️ iOS zooms the page when a focused field's text is under 16px. The rule above only covered
+     phones up to 759px wide, so on the UNFOLDED phone (867px) every 15px settings field zoomed
+     the screen on tap (owner: "the screen changes sizes", "the zooming is still occurring").
+     Any touch screen, any width; !important beats the later 15px design rules. */
+  @media (pointer:coarse){
+    input:not([type=range]):not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px!important}
+    .moneyfld span{font-size:16px}
+  }
 </style>
 </head>
 <body>
