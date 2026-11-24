@@ -424,7 +424,7 @@
   @media (min-width:760px){
     #recmodal .sheet{width:min(1240px,100%);height:calc(100vh - 28px);height:calc(100dvh - 28px);
                      overflow:hidden;display:flex;flex-direction:column}
-    #recmodal #stageform{flex:1;min-height:0;display:grid;grid-template-columns:minmax(320px,380px) minmax(0,1fr);
+    #recmodal #stageform{flex:1;min-height:0;display:grid;grid-template-columns:minmax(280px,min(380px,38%)) minmax(0,1fr);
                          grid-template-rows:auto auto minmax(0,1fr);column-gap:22px}
     #stageform>.rechead,#stageform>.hint{grid-column:1/-1}
     .recside,.recmain{display:block;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;grid-row:3;
@@ -433,7 +433,11 @@
     .recside #bankbox{margin-top:0}
     .recmain .daystools{position:sticky;top:-2px;z-index:2;background:var(--surface-1);padding:2px 0 10px;margin:0}
     .daycard .adjitem,.dayhead{font-size:14.5px}
-    /* The editor: what you type on the left, what it does (and Save) on the right. */
+  }
+  /* The editor splits in two — what you type on the left, what it does (and Save) on the right —
+     only when the day column is wide enough for both halves. Narrower (an unfolded phone) it
+     stays one column like the phone's, where each half had wrapped dates and cut-off notes. */
+  @media (min-width:1100px){
     .daycard #adjedit:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:18px;align-items:start}
     #adjedit>.adjwhat,#adjedit>#adjmany{grid-column:1/-1}
     #adjedit>.fld{grid-column:1}
@@ -831,30 +835,40 @@
   .tblist{font-size:14px}
   .tblist li{padding:3px 0}
   .tbnext{font-size:13px;border-top:1px solid var(--grid);margin-top:8px;padding-top:9px}
-  /* Wide screens (an unfolded phone, a tablet, a laptop): today's card sits beside the chart
-     instead of above it, so the chart is on the first screen without scrolling. Everything
-     else keeps spanning the full width. Only while the card is shown, or its column would sit empty. */
+  /* Wide screens (an unfolded phone, a tablet, a laptop): a side column beside the chart holds
+     today's card, then Transactions and "Keep it or sell it?" as closed rows, so the chart and
+     everything you can open are on the first screen. A section that is OPENED needs the full
+     width for its table, so it drops below the chart (and the page scrolls to it).
+     Row 5 is 1fr: it soaks up the chart's extra height, so the side column stays packed at the
+     top instead of spreading out. Only while today's card is shown, or the column would be bare. */
   @media (min-width:700px){
     .card.pos:has(>#todaybar:not([hidden])){display:grid;align-items:start;column-gap:12px;
-      grid-template-columns:minmax(0,1fr) minmax(220px,min(300px,32%))}
+      grid-template-columns:minmax(0,1fr) minmax(230px,min(300px,32%));
+      grid-template-rows:auto auto auto auto 1fr}
     .card.pos>*{grid-column:1/-1}
-    .card.pos:has(>#todaybar:not([hidden]))>#chartpanel{grid-column:1;grid-row:2}
-    .card.pos:has(>#todaybar:not([hidden]))>#todaybar{grid-column:2;grid-row:2}
+    .card.pos:has(>#todaybar:not([hidden]))>#chartpanel{grid-column:1;grid-row:2/span 4}
+    .card.pos:has(>#todaybar:not([hidden]))>#todaybar{grid-column:2;grid-row:2;margin:0 0 12px}
+    .card.pos:has(>#todaybar:not([hidden]))>#tblwrap:not([open]){grid-column:2;grid-row:3;margin:0 0 12px}
+    .card.pos:has(>#todaybar:not([hidden]))>#oppwrap:not([open]){grid-column:2;grid-row:4;margin:0 0 12px}
+    .card.pos:has(>#todaybar:not([hidden]))>#tblwrap[open]{grid-row:6}
+    .card.pos:has(>#todaybar:not([hidden]))>#oppwrap[open]{grid-row:7}
+    .card.pos:has(>#todaybar:not([hidden]))>.foot{grid-row:8}
+    /* A closed row in the side column: the count/verdict on a second line under the name. */
+    .card.pos:has(>#todaybar:not([hidden]))>details:not([open])>.secsum{flex-wrap:wrap;row-gap:2px}
   }
-  /* Wider still (an unfolded phone is ~1090pt): the side column under today's card was empty,
-     so the figures move there as a two-across grid — every card on screen, no swiping — and
-     the chart moves up to the top of the page beside them. */
+  /* Wider still: the figures join the side column too, as a two-across grid under today's card
+     (every card on screen, no swiping), and the chart moves up to the top of the page. */
   @media (min-width:960px){
-    .card.pos:has(>#todaybar:not([hidden])){grid-template-columns:minmax(0,1fr) 300px}
-    .card.pos:has(>#todaybar:not([hidden]))>#chartpanel{grid-row:1/span 2}
+    .card.pos:has(>#todaybar:not([hidden])){grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto auto auto auto 1fr}
+    .card.pos:has(>#todaybar:not([hidden]))>#chartpanel{grid-row:1/span 5}
     .card.pos:has(>#todaybar:not([hidden]))>#todaybar{grid-row:1}
     .card.pos:has(>#todaybar:not([hidden]))>.tilewrap{grid-column:2;grid-row:2}
+    .card.pos:has(>#todaybar:not([hidden]))>#tblwrap:not([open]){grid-row:3}
+    .card.pos:has(>#todaybar:not([hidden]))>#oppwrap:not([open]){grid-row:4}
     .card.pos:has(>#todaybar:not([hidden])) .tiles{flex-wrap:wrap;overflow:visible;gap:8px}
     .card.pos:has(>#todaybar:not([hidden])) .tile{flex:1 1 calc(50% - 4px);min-width:0;padding:10px 12px 9px}
     .card.pos:has(>#todaybar:not([hidden])) .tile .val{font-size:18px}
-    .card.pos:has(>#todaybar:not([hidden])) .tilewrap::before,
-    .card.pos:has(>#todaybar:not([hidden])) .tilewrap::after,
-    .card.pos:has(>#todaybar:not([hidden])) .tnav{display:none!important}
+    .card.pos:has(>#todaybar:not([hidden])) .tilewrap::before,.card.pos:has(>#todaybar:not([hidden])) .tilewrap::after,.card.pos:has(>#todaybar:not([hidden])) .tnav{display:none!important}
   }
   /* A wide but short screen (unfolded, held sideways): a smaller title, so the chart fits too. */
   @media (min-width:700px) and (max-height:620px){
@@ -4134,6 +4148,13 @@ document.getElementById('projkey').addEventListener('click',()=>{
   busy([$chartP], render);
 });
 document.getElementById('cmnw').addEventListener('click',()=>setChartMode('nw'));
+/* Wide layout: a closed section sits beside the chart and, once opened, drops below it for the
+   width its table needs — so follow it there rather than leave the reader looking at a gap. */
+['tblwrap','oppwrap'].forEach(id=>{ const d=document.getElementById(id);
+  d.addEventListener('toggle',()=>{
+    if(d.open && getComputedStyle(d.parentNode).display==='grid')
+      requestAnimationFrame(()=>d.scrollIntoView({behavior:'smooth',block:'start'}));
+  }); });
 // The panel compares net worth, so the chart follows it open and closed.
 document.getElementById('oppwrap').addEventListener('toggle',()=>{
   const o=document.getElementById('oppwrap');
