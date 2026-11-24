@@ -476,6 +476,9 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  // TEMPORARY (2026-11-24): the page reports where the top bar sits once scrolled (thick-header bug). Remove once fixed.
+  if (url.pathname === '/api/diag' && req.method === 'POST')
+    return readBody(req, 4096, b => { console.log('[diag]', JSON.stringify(b)); json(res, 200, { ok: true }); });
   if (url.pathname === '/api/state' && req.method === 'GET') {
     const now = localNow();
     return json(res, 200, {
