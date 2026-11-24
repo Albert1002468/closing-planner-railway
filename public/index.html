@@ -821,7 +821,27 @@
      large title moves up into the bar's row. Scrolling still frosts the bar
      and brings in the compact title. `html.notop` is set by the probe script below. */
   html.notop body{padding-top:0}
+  /* The bar too: once scrolled it sat ~70pt down under an empty band (owner: "the top part shows
+     really thick"), so with no status bar above the page it hugs the top edge and is slimmer. */
+  html.notop .appbar{padding-top:0}
+  html.notop .appbar-in{height:44px}
   html.notop .bigtitle{min-height:50px;display:flex;align-items:center;margin:0 0 10px}
+
+  /* A touch screen too wide for the bottom sheet (unfolded) still gets the grabber: its title row
+     drags down to close, like the phone's. */
+  @media (min-width:641px) and (pointer:coarse){
+    .grab{display:block;width:36px;height:5px;border-radius:3px;background:var(--fill-2);
+          margin:-12px auto 8px;padding:8px 30px;background-clip:content-box;touch-action:none;cursor:grab}
+  }
+  /* Wide reconcile sheet: Done sits at the bottom-right, where the thumb is (the top corner of an
+     unfolded screen is out of reach), as a pill over the editor pane's lower edge. */
+  @media (min-width:760px){
+    #recmodal .sheet{position:relative}
+    #recmodal #recdone{position:absolute;right:22px;bottom:18px;z-index:5;height:46px;padding:0 24px;
+      border-radius:23px;background:var(--ink);color:var(--page);font-size:15px;font-weight:600;border:0;
+      box-shadow:0 6px 18px rgba(0,0,0,.18)}
+    #recmodal .recmain{padding-bottom:80px}
+  }
 
   /* ---- surfaces ---- */
   .card,.card.pos{background:none;border:0;box-shadow:none;padding:0;border-radius:0}
@@ -860,7 +880,13 @@
     .card.pos>.tilewrap{grid-row:1}
     .card.pos>#todaybar{grid-column:1;grid-row:2;margin:0 0 12px}
     .card.pos>#chartpanel{grid-column:1;grid-row:3}
-    .card.pos>.sidecol{grid-column:2;grid-row:2/span 3;min-width:0}
+    /* Absolutely placed in its grid area, it takes the height of today's card + the chart instead
+       of stretching the page: an opened Transactions list scrolls inside it (it ran to the bottom of
+       the page, beside nothing). */
+    .card.pos{position:relative}
+    .card.pos>.sidecol{grid-column:2;grid-row:2/span 3;min-width:0;position:absolute;inset:0;
+      overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;
+      border-radius:18px}
     .card.pos>.foot{grid-row:5}
     .sidecol>#tblwrap,.sidecol>#oppwrap{margin:0 0 12px}
     /* In the column each transaction is two lines, like a bank app: the name across the width
@@ -3235,7 +3261,8 @@ function render(){
   const nMonths=Math.max(1, VD.filter(d=>d.d.slice(8)==='01').length);
   // Only the multi-year window is ever allowed to overflow. A single year is pinned to the
   // container, so it never scrolls and the scrub gesture is never ambiguous.
-  const canPan = mobile && VIEW==='span';
+  // Only a phone (under 700px) scrolls the multi-year chart sideways; wider screens fit it all.
+  const canPan = mobile && VIEW==='span' && window.innerWidth<700;
   const W=mobile? (canPan? Math.max(300,Math.round(cw),nMonths*30) : Math.max(300,Math.round(cw)))
                 : 940,
         // Wide screens (700px+) draw it taller — the screen's height less the figures and today's
@@ -3864,8 +3891,9 @@ document.getElementById('todaybar').addEventListener('click',e=>{
   const probe=document.createElement('div');
   probe.style.cssText='position:fixed;visibility:hidden;pointer-events:none;top:0;left:0;width:0;height:env(safe-area-inset-top,0px)';
   document.body.appendChild(probe);
+  /* Decided at load and on rotation only: scrolling must never flip it (and re-pad the page). */
   const topCheck=()=>document.documentElement.classList.toggle('notop', probe.getBoundingClientRect().height<20);
-  topCheck(); window.addEventListener('resize',topCheck);
+  topCheck(); window.addEventListener('orientationchange',()=>setTimeout(topCheck,300));
 }
 {
   const bar=document.getElementById('appbar'), big=document.getElementById('bigtitle');
@@ -3953,8 +3981,12 @@ function sheetDrag(modal, close){
   };
   sheet.addEventListener('touchstart',e=>{
     y0=null;
-    if(!phone() || e.touches.length!==1 || e.target.closest('input[type=range],select')) return;
+    if(e.touches.length!==1 || e.target.closest('input[type=range],select')) return;
+    if(!phone() && e.target.closest('input,button,a')) return;   // wide: Done and friends stay taps
     const nearTop = e.touches[0].clientY - sheet.getBoundingClientRect().top < 64;
+    // A wide (unfolded) sheet is a centred dialog whose columns scroll on their own: it drags
+    // down from its title row only. A phone's bottom sheet drags from anywhere at its top.
+    if(!phone() && !nearTop) return;
     if(!nearTop && sheet.scrollTop>0) return;
     y0=lastY=e.touches[0].clientY; lastT=performance.now(); dy=0; vel=0; on=false;
   },{passive:true});
