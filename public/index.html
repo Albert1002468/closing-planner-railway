@@ -419,8 +419,9 @@
   .sheet:hover::-webkit-scrollbar-thumb,.recside:hover::-webkit-scrollbar-thumb,.recmain:hover::-webkit-scrollbar-thumb{background-color:var(--muted)}
   .sheet::-webkit-scrollbar-button,.recside::-webkit-scrollbar-button,.recmain::-webkit-scrollbar-button,
   .sheet::-webkit-scrollbar-corner,.recside::-webkit-scrollbar-corner,.recmain::-webkit-scrollbar-corner{display:none;background:transparent}
-  /* Desktop: nearly the whole window, two columns that scroll on their own. */
-  @media (min-width:900px){
+  /* Wide screens (desktop, an unfolded phone): nearly the whole window, two columns that scroll
+     on their own. 760px, like the settings sheet — at 900 an unfolded phone got the narrow box. */
+  @media (min-width:760px){
     #recmodal .sheet{width:min(1240px,100%);height:calc(100vh - 28px);height:calc(100dvh - 28px);
                      overflow:hidden;display:flex;flex-direction:column}
     #recmodal #stageform{flex:1;min-height:0;display:grid;grid-template-columns:minmax(320px,380px) minmax(0,1fr);
@@ -590,7 +591,9 @@
             padding-right:max(20px,env(safe-area-inset-right,0px));
             padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
   .modal{padding-top:max(14px,env(safe-area-inset-top,0px));
-         padding-bottom:max(14px,env(safe-area-inset-bottom,0px))}
+         padding-bottom:max(14px,env(safe-area-inset-bottom,0px));
+         padding-left:max(14px,env(safe-area-inset-left,0px));
+         padding-right:max(14px,env(safe-area-inset-right,0px))}
   .card{border-radius:16px;padding:20px 22px;box-shadow:var(--shadow)}
   .tile{position:relative;overflow:hidden;border-radius:12px;padding:11px 13px 10px;
         transition:border-color .15s,transform .15s}
@@ -752,6 +755,11 @@
     }
   }
   html,body{background:var(--page)}
+  /* ⚠️ iOS "text autosizing": on a sideways (landscape) screen — which is how an unfolded phone
+     reports itself — Safari enlarges long runs of text on its own, so notes and headings in a sheet
+     ballooned past the buttons beside them. 100% keeps every size the one written here; pinch-zoom
+     is unaffected. */
+  html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   body{font-family:var(--font);color:var(--ink);-webkit-font-smoothing:antialiased;
        font-feature-settings:"cv11","ss03"}
   body::before{background:var(--page)}
@@ -4727,7 +4735,7 @@ function openModal(){
   $('recmodal').hidden=false;
   RECPAGE=0; ADJFOCUS=null; ADJBACK=6; ADJFWD=1; fillAdj(); fillBank(); bankBadge();   // opened: the green dot is seen
   // A desktop has the room: History starts open in its column. On a phone it stays tucked away.
-  if(matchMedia('(min-width:900px)').matches) $('adjrecent').open=true;
+  if(matchMedia('(min-width:760px)').matches) $('adjrecent').open=true;
   document.body.style.overflow='hidden';
 }
 function closeModal(){
