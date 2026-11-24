@@ -1168,6 +1168,10 @@
   /* Wide screens fit on one screen (see fitChartH); the floating buttons sit beside the chart
      over the right column, so the page no longer needs 140px of room under it for them. */
   @media (min-width:700px){ .viz-root{padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))!important} }
+  /* When the page fits (see fitChartH) it does not scroll at all on a wide touch screen: a page
+     a few points too tall still let a drag move it, and the drag made iOS shrink the window and
+     slide everything up under the top edge (owner: "it's still scrolling"). */
+  html.onescreen,html.onescreen body{overflow:hidden;overscroll-behavior:none;height:100%}
 </style>
 </head>
 <body>
@@ -3275,6 +3279,15 @@ function fitChartH(svg){
   const below = Math.max(0, document.documentElement.scrollHeight - (panel.getBoundingClientRect().bottom + window.scrollY));
   return Math.round(Math.max(240, Math.min(560, VH_STABLE.h - top - overhead - below)));
 }
+
+function oneScreen(){
+  const de=document.documentElement, wide=window.innerWidth>=700 && matchMedia('(pointer:coarse)').matches;
+  const h=Math.max(VH_STABLE.w===window.innerWidth? VH_STABLE.h : 0, window.innerHeight);
+  const fits = wide && de.scrollHeight <= h + 1;
+  if(fits!==de.classList.contains('onescreen')){ de.classList.toggle('onescreen',fits); if(fits) window.scrollTo(0,0); }
+}
+if(window.ResizeObserver) new ResizeObserver(()=>requestAnimationFrame(oneScreen)).observe(document.body);
+window.addEventListener('resize',()=>requestAnimationFrame(oneScreen));
 
 /* Captured before anything can touch the form, so "default" means the values the document
    shipped with — not whatever happens to be on screen when the reader hits reset. */
