@@ -302,8 +302,11 @@
          width:min(440px,100%);max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);}
   /* The scenario sheet carries ~20 fields. One column is fine on a phone and absurd on a
      desktop, so it widens and splits into two there; group containers span both columns. */
-  @media (min-width:760px){
-    #setmodal .sheet{width:min(840px,100%)}
+  @media (min-width:760px){ #setmodal .sheet{width:min(840px,100%)} }
+  /* Two columns only when the FORM pane is wide enough — on the unfolded phone the pane sits
+     beside the section list and is ~500px, where two columns squeezed every label onto 3 lines. */
+  #setmodal .controls{container-type:inline-size}
+  @container (min-width:600px){
     .grpbody,#rentfields{
       display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 26px;align-items:start}
     /* Anything that must not be squeezed into half a row says so with .wide. */
@@ -1098,6 +1101,46 @@
     .setfoot{bottom:calc(-22px - env(safe-area-inset-bottom,0px));
              margin-bottom:calc(-22px - env(safe-area-inset-bottom,0px))}
   }
+
+  /* ---- Settings, wide (unfolded phone, desktop): laid out like reconcile — sections listed on the
+     left with what each is set to, the form scrolling on the right, and a footer bar the SAME size
+     as reconcile's (70px: 12 + 44 + 14). ⚠️ The phone footer adds env(safe-area-inset-bottom)
+     because it is a bottom sheet touching the screen edge; this sheet is an inset card, so that
+     34pt only made its footer taller than reconcile's (owner: "Close/Apply/Reset is larger"). */
+  .setnav,.setnavh{display:none}
+  @media (min-width:760px){
+    #setmodal .sheet{display:grid;padding:0;overflow:hidden;
+      grid-template-columns:minmax(220px,30%) minmax(0,1fr);
+      grid-template-rows:auto auto auto minmax(0,1fr) auto}
+    #setmodal .grab{grid-column:1/-1;grid-row:1;margin:8px auto 0}
+    #setmodal h3{grid-column:1/-1;grid-row:2;margin:0;padding:18px 24px 14px;border-bottom:1px solid var(--grid)}
+    #setmodal .setnav{display:flex;flex-direction:column;gap:4px;grid-column:1;grid-row:3;padding:12px 10px 8px 14px}
+    .setnav button{position:relative;display:block;width:100%;text-align:left;background:transparent;border:0;
+      border-radius:12px;padding:10px 26px 10px 12px;color:var(--ink);font:inherit;cursor:pointer}
+    .setnav button:hover{background:color-mix(in srgb,var(--fill) 60%,transparent)}
+    .setnav button.on{background:var(--fill)}
+    .setnav b{display:block;font-size:14px;font-weight:600;letter-spacing:-.005em}
+    .setnav span{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .setnav i{position:absolute;right:11px;top:15px;width:7px;height:7px;border-radius:50%;
+      background:var(--s4);display:none}
+    .setnav button.ch i{display:block}
+    #setmodal .setfoot{display:contents}
+    #setmodal .setmsgs{grid-column:1;grid-row:4;overflow-y:auto;padding:6px 18px 14px 26px;align-self:start;max-height:100%;box-sizing:border-box}
+    #setmodal .setmsgs p{font-size:12.5px;margin-bottom:8px}
+    #setmodal .controls{grid-column:2;grid-row:3/span 2;overflow-y:auto;overscroll-behavior:contain;
+      margin:0;padding:18px 24px 40px 14px;gap:30px;border-left:1px solid var(--grid)}
+    #setmodal .grp{scroll-margin-top:14px}
+    #setmodal .setacts{grid-column:1/-1;grid-row:5;padding:12px 22px 14px;border-top:1px solid var(--grid);
+      background:var(--surface-1)}
+  }
+  /* "Undo changes" is the unapplied-changes badge made tappable: it puts the form back to what is
+     applied without closing the sheet (Close does the same AND closes). */
+  #setdirty{border:0;background:transparent;font:inherit;font-size:13px;padding:6px 4px;cursor:pointer;
+    color:var(--s4);font-weight:600}
+  #setdirty:hover{text-decoration:underline}
+  #setdirty{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  @media (max-width:640px){ #setdirty .lg{display:none} }
 </style>
 </head>
 <body>
@@ -1289,9 +1332,15 @@
   <div class="modal" id="setmodal" hidden role="dialog" aria-modal="true" aria-labelledby="settitle">
     <div class="sheet">
       <h3 id="settitle">Home sale scenario</h3>
+      <nav class="setnav" id="setnav" aria-label="Sections">
+        <button type="button" data-sec="sg-hz"><b>How far to project</b><span id="sn-hz"></span><i title="unapplied changes"></i></button>
+        <button type="button" data-sec="sg-sale"><b>Selling the home</b><span id="sn-sale"></span><i title="unapplied changes"></i></button>
+        <button type="button" data-sec="sg-rent"><b>Renting it out</b><span id="sn-rent"></span><i title="unapplied changes"></i></button>
+        <button type="button" data-sec="sg-rates"><b>Rates &amp; assumptions</b><span id="sn-rates"></span><i title="unapplied changes"></i></button>
+      </nav>
       <div class="controls">
 
-        <section class="grp">
+        <section class="grp" id="sg-hz">
           <h4 class="grph">How far to project</h4>
           <div class="grpbody">
             <div class="ctl wide">
@@ -1306,7 +1355,7 @@
           </div>
         </section>
 
-        <section class="grp">
+        <section class="grp" id="sg-sale">
           <h4 class="grph">Selling the Midland home</h4>
           <div class="grpbody">
             <div class="ctl wide">
@@ -1354,7 +1403,7 @@
           </div>
         </section>
 
-        <section class="grp">
+        <section class="grp" id="sg-rent">
           <h4 class="grph">Renting it out</h4>
           <div class="grpbody">
             <div id="rentfields">
@@ -1376,7 +1425,7 @@
           </div>
         </section>
 
-        <section class="grp">
+        <section class="grp" id="sg-rates">
           <h4 class="grph">Rates &amp; assumptions</h4>
           <div class="grpbody">
             <div class="ctl">
@@ -1415,7 +1464,8 @@
         <button id="setdone" class="actbtn ghost" title="Close without applying" aria-label="Close without applying">Close</button>
         <button id="setreset" class="actbtn ghost" title="Reset every setting to its default"
                 aria-label="Reset to defaults">Reset</button>
-        <span class="dirtybadge" id="setdirty">unapplied changes</span>
+        <button type="button" class="dirtybadge" id="setdirty" title="Put the form back to what is applied"
+                aria-label="Undo unapplied changes">&#x21BA; Undo<span class="lg"> changes</span></button>
         </div>
       </div>
     </div>
@@ -4304,15 +4354,37 @@ document.getElementById('vwprev').addEventListener('click',()=>
   setViewUI(VIEWS[VIEWS.indexOf(VIEW==='span'?HORIZON:VIEW)-1]));
 document.getElementById('vwnext').addEventListener('click',()=>
   setViewUI(VIEWS[VIEWS.indexOf(VIEW==='span'?HORIZON:VIEW)+1]));
+/* Applied settings are remembered on this device. They used to live only in the page, so every
+   reload, or iOS evicting the home-screen app, quietly put the scenario back to its defaults.
+   Only fields the page still ships are restored, so a renamed field falls back to its default. */
+const SCEN_KEY='scenario.v1';
+function saveScenario(){
+  const vals={};
+  document.querySelectorAll('#setmodal input').forEach(el=>{
+    if(el.id in FORM_DEFAULTS) vals[el.id]= el.type==='checkbox'? el.checked : el.value; });
+  try{ localStorage.setItem(SCEN_KEY, JSON.stringify({vals, mode:SALE_MODE, hz:HORIZON})); }catch(e){}
+}
+(function loadScenario(){
+  let k=null; try{ k=JSON.parse(localStorage.getItem(SCEN_KEY)||'null'); }catch(e){}
+  if(!k || !k.vals) return;
+  Object.entries(k.vals).forEach(([id,v])=>{
+    const el=document.getElementById(id); if(!el || !(id in FORM_DEFAULTS)) return;
+    if(el.type==='checkbox') el.checked=!!v; else el.value=String(v);
+  });
+  if(['never','auto','pick'].includes(k.mode)) SALE_MODE=k.mode;
+  if(k.hz) setHorizon(k.hz);
+  document.getElementById('pricefields').hidden = !document.getElementById('priceover').checked;
+})();
 setView(VIEW);
 /* The sheet BATCHES its edits. A full render walks up to 11,000 days, rebuilds two comparison
    scenarios and bisects for the break-even, so doing that on every keystroke made typing in the
    sheet feel stuck. Edits now only mark the form dirty; the recompute happens once on apply,
    behind a spinner. Closing the sheet applies too, so a pending edit can never be lost. */
 const $set=document.getElementById('setmodal');
+const $setC=$set.querySelector('.controls');
 const $spin=document.getElementById('spinner');
 let DIRTY=false;
-const showDirty=()=>document.getElementById('setdirty').classList.toggle('on',DIRTY);
+const showDirty=()=>{ document.getElementById('setdirty').classList.toggle('on',DIRTY); updNav(); };
 function markDirty(){ DIRTY=true; showDirty(); }
 /* Two frames, not one: the first lets the spinner into the DOM, the second guarantees it has
    actually PAINTED before the blocking work starts. With a single rAF the browser can coalesce
@@ -4321,7 +4393,7 @@ function applyChanges(close){
   if(!DIRTY){ if(close) closeSet(); return; }
   busy(null, ()=>{
     try{ render(); }
-    finally{ DIRTY=false; showDirty(); SHEET_SNAP=snapSheet(); if(close) closeSet(); }
+    finally{ DIRTY=false; SHEET_SNAP=snapSheet(); showDirty(); saveScenario(); if(close) closeSet(); }
   });
 }
 /* Close means CANCEL. The sheet is snapshotted when it opens (and again after every apply);
@@ -4345,13 +4417,49 @@ function revertSheet(){
   document.getElementById('oppsm').textContent=k.opp;
   DIRTY=false; showDirty();
 }
-const openSet =()=>{SHEET_SNAP=snapSheet(); $set.hidden=false; document.body.style.overflow='hidden'; showDirty();};
+const openSet =()=>{SHEET_SNAP=snapSheet(); $set.hidden=false; document.body.style.overflow='hidden'; showDirty();
+  $setC.scrollTop=0; spySet();};
 const closeSet=()=>{$set.hidden=true;  document.body.style.overflow='';};
 const cancelSet=()=>{ revertSheet(); closeSet(); };
 document.getElementById('setbtn').addEventListener('click',openSet);
 document.getElementById('setapply').addEventListener('click',()=>applyChanges(true));
 document.getElementById('setreset').addEventListener('click',resetForm);
 document.getElementById('setdone').addEventListener('click',cancelSet);
+document.getElementById('setdirty').addEventListener('click',revertSheet);
+/* The section list (wide screens): each row says what its section is set to right now, carries
+   a dot while that section has unapplied edits, and jumps the form to it. */
+function updNav(){
+  const v=id=>document.getElementById(id).value, put=(id,t)=>{document.getElementById(id).textContent=t;};
+  try{
+    put('sn-hz', `${HORIZONS[HORIZON].label} · to ${nice(T1)}`);
+    put('sn-sale', (SALE_MODE==='never'? 'Keep renting' : SALE_MODE==='auto'? 'When the tenant leaves'
+      : 'Sell '+nice(v('saledate')))+` · $${v('midvalue')}`);
+    put('sn-rent', `Rent +${v('rentescal')}%/yr · $${v('rentmaint')} upkeep`);
+    put('sn-rates', `${v('inflpct')}% inflation · $${v('liqfloor')} floor`);
+  }catch(e){}
+  const k=SHEET_SNAP;
+  document.querySelectorAll('#setnav button').forEach(b=>{
+    const sec=document.getElementById(b.dataset.sec);
+    let ch=!!k && DIRTY && k.vals.some(([el,val])=>sec.contains(el) && (el.type==='checkbox'? el.checked : el.value)!==val);
+    if(k && DIRTY && b.dataset.sec==='sg-hz' && HORIZON!==k.hz) ch=true;
+    if(k && DIRTY && b.dataset.sec==='sg-sale' && SALE_MODE!==k.mode) ch=true;
+    b.classList.toggle('ch',ch);
+  });
+}
+// Edits update the summaries after their own handlers have run.
+['input','change','click'].forEach(t=>$set.addEventListener(t,()=>requestAnimationFrame(updNav)));
+function spySet(){
+  const top=$setC.getBoundingClientRect().top+40, secs=[...$setC.querySelectorAll('.grp')];
+  let on=secs[0];
+  secs.forEach(x=>{ if(x.getBoundingClientRect().top<=top) on=x; });
+  if($setC.scrollTop>0 && $setC.scrollTop+$setC.clientHeight>=$setC.scrollHeight-2) on=secs[secs.length-1];
+  document.querySelectorAll('#setnav button').forEach(b=>b.classList.toggle('on',b.dataset.sec===on.id));
+}
+$setC.addEventListener('scroll',spySet,{passive:true});
+document.querySelectorAll('#setnav button').forEach(b=>b.addEventListener('click',()=>{
+  const sec=document.getElementById(b.dataset.sec);
+  $setC.scrollTo({top:sec.getBoundingClientRect().top-$setC.getBoundingClientRect().top+$setC.scrollTop-14,behavior:'smooth'});
+}));
 $set.addEventListener('mousedown',e=>{ if(e.target===$set) cancelSet(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$set.hidden) cancelSet(); });
 // Paging the table into another year moves a single-year chart with it.
