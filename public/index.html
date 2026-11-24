@@ -1172,6 +1172,13 @@
      a few points too tall still let a drag move it, and the drag made iOS shrink the window and
      slide everything up under the top edge (owner: "it's still scrolling"). */
   html.onescreen,html.onescreen body{overflow:hidden;overscroll-behavior:none;height:100%}
+  /* Wide touch screens: the legend stays ONE line (scrolls sideways if it must) — wrapping the
+     "plan" key onto a second line cost the chart ~25pt of a screen it has to fit on. */
+  @media (min-width:700px) and (pointer:coarse){
+    #keyrow{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
+    #keyrow::-webkit-scrollbar{display:none}
+    #keyrow>*{flex:none}
+  }
 </style>
 </head>
 <body>
@@ -3268,7 +3275,8 @@ function fillOppPanel(rent, home, rates){
    ending at the bottom of the screen, so the whole page is one screen. The height used is the
    TALLEST seen at this width: iOS briefly shrinks the window ~82pt while scrolling, and sizing
    to that would make the chart jump. */
-let VH_STABLE={w:0,h:0};
+let VH_STABLE={w:0,h:0}, CHART_H=0;
+const CHART_MIN=190;
 function fitChartH(svg){
   const w=window.innerWidth;
   VH_STABLE = VH_STABLE.w===w? {w, h:Math.max(VH_STABLE.h, window.innerHeight)} : {w, h:window.innerHeight};
@@ -3276,18 +3284,33 @@ function fitChartH(svg){
   const overhead = sh>0? panel.getBoundingClientRect().height - sh : 110;
   const top = panel.getBoundingClientRect().top + window.scrollY;
   // Everything under the panel (its margin, the page's bottom padding and safe area), measured.
-  const below = Math.max(0, document.documentElement.scrollHeight - (panel.getBoundingClientRect().bottom + window.scrollY));
-  return Math.round(Math.max(240, Math.min(560, VH_STABLE.h - top - overhead - below)));
+  // (From the content's own box: the document's scrollHeight never reports less than the screen.)
+  const root=document.querySelector('.viz-root');
+  const below = Math.max(0, (root? root.getBoundingClientRect().bottom : document.documentElement.scrollHeight - window.scrollY) - panel.getBoundingClientRect().bottom);
+  CHART_H = Math.round(Math.max(CHART_MIN, Math.min(560, VH_STABLE.h - top - overhead - below)));
+  return CHART_H;
 }
 
+/* ⚠️ The chart is sized from what is above and below it AT RENDER TIME, but the Today card and
+   the legend can change height afterwards (the day's items arrive from the server; the legend
+   wraps a "plan" line). Whenever the page's height stops matching the screen, re-render so the
+   chart re-fits — capped, so a page that cannot fit (chart already at its minimum) stops trying. */
+let REFITS=0, refitT=0;
 function oneScreen(){
   const de=document.documentElement, wide=window.innerWidth>=700 && matchMedia('(pointer:coarse)').matches;
   const h=Math.max(VH_STABLE.w===window.innerWidth? VH_STABLE.h : 0, window.innerHeight);
-  const fits = wide && de.scrollHeight <= h + 1;
+  const root=document.querySelector('.viz-root'), ph=root? Math.ceil(root.getBoundingClientRect().height) : de.scrollHeight;
+  // Only when the chart can still move the right way (not already at its minimum/maximum).
+  const need = wide && CHART_H>0 && ((ph>h+2 && CHART_H>CHART_MIN) || (ph<h-2 && CHART_H<560));
+  if(need && REFITS<4){ REFITS++; clearTimeout(refitT); refitT=setTimeout(render,80); }
+  else if(!need) REFITS=0;
+  const fits = wide && ph <= h + 1;
   if(fits!==de.classList.contains('onescreen')){ de.classList.toggle('onescreen',fits); if(fits) window.scrollTo(0,0); }
 }
-if(window.ResizeObserver) new ResizeObserver(()=>requestAnimationFrame(oneScreen)).observe(document.body);
-window.addEventListener('resize',()=>requestAnimationFrame(oneScreen));
+// Watch the content, not <body>: once locked, body is pinned to the screen height and never resizes.
+if(window.ResizeObserver){ const ro=new ResizeObserver(()=>requestAnimationFrame(oneScreen));
+  [document.body, document.querySelector('.viz-root')].filter(Boolean).forEach(el=>ro.observe(el)); }
+window.addEventListener('resize',()=>{ REFITS=0; requestAnimationFrame(oneScreen); });
 
 /* Captured before anything can touch the form, so "default" means the values the document
    shipped with — not whatever happens to be on screen when the reader hits reset. */
