@@ -837,10 +837,21 @@
      unfolded screen is out of reach), as a pill over the editor pane's lower edge. */
   @media (min-width:760px){
     #recmodal .sheet{position:relative}
-    #recmodal #recdone{position:absolute;right:22px;bottom:18px;z-index:5;height:46px;padding:0 24px;
-      border-radius:23px;background:var(--ink);color:var(--page);font-size:15px;font-weight:600;border:0;
-      box-shadow:0 6px 18px rgba(0,0,0,.18)}
-    #recmodal .recmain{padding-bottom:80px}
+    /* A footer bar like the settings sheet's: a hairline, then Done at the right, styled as its Close. */
+    #recmodal #stageform{padding-bottom:58px}
+    #recmodal .sheet::after{content:'';position:absolute;left:0;right:0;bottom:70px;border-top:1px solid var(--grid)}
+    #recmodal #recdone{position:absolute;right:22px;bottom:14px;z-index:5;height:44px;padding:0 22px;
+      border-radius:12px;background:var(--fill);color:var(--ink);font-size:15px;font-weight:500;border:0}
+  }
+
+  /* Wide screens: both popups are ONE size — a card inset from every edge, so the page still shows
+     around it — instead of reconcile filling the screen and settings sizing to its content (owner:
+     "the popups look different… too big"). A thinner frost lets that page read through. */
+  @media (min-width:760px){
+    #recmodal .sheet,#setmodal .sheet{width:min(940px,calc(100vw - 96px));
+      height:min(760px,calc(100dvh - 88px));max-height:none;border-radius:22px}
+    :root .modal{background:color-mix(in srgb,var(--page) 55%,transparent);
+      -webkit-backdrop-filter:blur(6px) saturate(1.1);backdrop-filter:blur(6px) saturate(1.1)}
   }
 
   /* ---- surfaces ---- */
@@ -884,9 +895,12 @@
        of stretching the page: an opened Transactions list scrolls inside it (it ran to the bottom of
        the page, beside nothing). */
     .card.pos{position:relative}
-    .card.pos>.sidecol{grid-column:2;grid-row:2/span 3;min-width:0;position:absolute;inset:0;
-      overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;
-      border-radius:18px}
+    .card.pos>.sidecol{grid-column:2;grid-row:2/span 3;min-width:0;position:absolute;inset:0 0 12px 0;
+      overflow:hidden;border-radius:18px}
+    /* fitSide() caps each open section's body to its share of the column, so both headers stay on
+       screen and each list scrolls inside its own box. */
+    .sidecol>details[open]>.secbody{overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+    .sidecol>#oppwrap{margin-bottom:0}
     .card.pos>.foot{grid-row:5}
     .sidecol>#tblwrap,.sidecol>#oppwrap{margin:0 0 12px}
     /* In the column each transaction is two lines, like a bank app: the name across the width
@@ -4187,6 +4201,23 @@ document.getElementById('projkey').addEventListener('click',()=>{
   busy([$chartP], render);
 });
 document.getElementById('cmnw').addEventListener('click',()=>setChartMode('nw'));
+/* Wide layout: the side column is a fixed height (today's card + the chart). Each open section gets
+   an equal share of what its headers leave, and scrolls inside it — Transactions open no longer
+   pushes "Keep it or sell it?" out of reach. Phones: no caps. */
+function fitSide(){
+  const col=document.querySelector('.sidecol'); if(!col) return;
+  const ds=[...col.children].filter(d=>d.tagName==='DETAILS');
+  ds.forEach(d=>{ const b=d.querySelector('.secbody'); if(b) b.style.maxHeight=''; });
+  if(getComputedStyle(col).position!=='absolute') return;
+  const open=ds.filter(d=>d.open); if(!open.length) return;
+  const gaps=ds.reduce((a,d)=>a+(parseFloat(getComputedStyle(d).marginBottom)||0),0);
+  const heads=ds.reduce((a,d)=>a+d.querySelector('summary').offsetHeight,0);
+  const share=Math.max(120,Math.floor((col.clientHeight-heads-gaps-2)/open.length));
+  open.forEach(d=>{ const b=d.querySelector('.secbody'); if(b) b.style.maxHeight=share+'px'; });
+}
+['tblwrap','oppwrap'].forEach(id=>document.getElementById(id).addEventListener('toggle',()=>requestAnimationFrame(fitSide)));
+window.addEventListener('resize',()=>requestAnimationFrame(fitSide));
+new ResizeObserver(()=>fitSide()).observe(document.querySelector('.sidecol'));
 // The panel compares net worth, so the chart follows it open and closed.
 document.getElementById('oppwrap').addEventListener('toggle',()=>{
   const o=document.getElementById('oppwrap');
