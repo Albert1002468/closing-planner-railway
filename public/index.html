@@ -1174,11 +1174,15 @@
   html.onescreen,html.onescreen body{overflow:hidden;overscroll-behavior:none;height:100%}
   /* Wide touch screens: the legend stays ONE line (scrolls sideways if it must) — wrapping the
      "plan" key onto a second line cost the chart ~25pt of a screen it has to fit on. */
-  @media (min-width:700px) and (pointer:coarse){
-    #keyrow{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
-    #keyrow::-webkit-scrollbar{display:none}
-    #keyrow>*{flex:none}
-  }
+  /* (It used to scroll sideways on one line to save height; that hid "plan" off the end and
+     made the legend slide under a finger. It wraps instead, and the chart re-fits around it.) */
+  #keyrow{align-items:center;row-gap:8px}
+  /* "plan" is the one thing in the legend you can tap: first in the row, a proper 32px chip with
+     an on/off mark, rather than a small pill at the end. */
+  #projkey{order:-1;min-height:32px;margin:0;padding:4px 12px 4px 10px;gap:0;font-size:12.5px}
+  #projkey::before{content:'';width:14px;height:14px;border-radius:50%;border:1.5px solid var(--axis);
+    margin-right:7px;box-sizing:border-box;flex:none}
+  #projkey.on::before{border:0;background:var(--s2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3.5 7.2l2.3 2.3 4.7-4.9' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/14px no-repeat}
   /* Wide: today's card heads the RIGHT column (above Transactions), and the chart takes the whole
      left side from the tiles down (owner: "make the today container a lot smaller or a different
      approach" to give the graph more size). Rows: 2 = today's card, 3 = the rest; the chart spans
@@ -1279,7 +1283,7 @@
       <span><span class="sw" style="background:var(--ink-2);width:3px;border-radius:1px"></span>today</span>
       <span class="cashonly"><span class="sw" style="background:var(--s7);height:3px;border-radius:0"></span>buying power</span>
       <!-- Tap to draw the projection without reconciles beside the reconciled balance. -->
-      <button type="button" class="keybtn" id="projkey" aria-pressed="false" hidden><span class="sw projsw"></span>plan</button>
+      <button type="button" class="keybtn" id="projkey" aria-pressed="false" hidden title="Draw the plan (the projection before reconciles)"><span class="sw projsw"></span>plan</button>
       <span id="keyoppwrap" hidden><span class="sw" style="background:var(--s8);height:3px;border-radius:0"></span><span id="keyopp">sell at lease end</span></span>
     </div>
     </section>
