@@ -1205,6 +1205,13 @@
   #evtable tr.flash,#evtable tr.flash>td{animation:rowflash 2.2s ease-out}
   .sidecol #evtable tr.flash>td{animation:none}
   .sidecol #evtable tr.flash{border-radius:10px}
+  /* Wide screens: the legend fits on ONE line — smaller text and gaps, and if a long key (an
+     opened comparison, "plan") still wraps it, fitKeys() steps the size down until it doesn't. */
+  @media (min-width:700px){
+    #keyrow{font-size:var(--keyfs,11px);gap:4px 10px}
+    #keyrow #projkey{font-size:inherit;min-height:28px;padding:3px 10px 3px 8px}
+    #keyrow #projkey::before{width:13px;height:13px;margin-right:6px;background-size:13px}
+  }
 </style>
 </head>
 <body>
@@ -3323,7 +3330,18 @@ function fitChartH(svg){
    wraps a "plan" line). Whenever the page's height stops matching the screen, re-render so the
    chart re-fits — capped, so a page that cannot fit (chart already at its minimum) stops trying. */
 let REFITS=0, refitT=0;
+function fitKeys(){
+  const k=document.getElementById('keyrow'); if(!k) return;
+  k.style.removeProperty('--keyfs');
+  if(window.innerWidth<700) return;
+  const vis=[...k.children].filter(c=>c.offsetParent!==null);
+  // One line = every key's middle sits at the same height (the "plan" chip is taller than the rest).
+  const mid=c=>c.offsetTop+c.offsetHeight/2;
+  const oneLine=()=>vis.every(c=>Math.abs(mid(c)-mid(vis[0]))<6);
+  for(let fs=11; fs>=9 && !oneLine(); fs-=0.5) k.style.setProperty('--keyfs',fs-0.5+'px');
+}
 function oneScreen(){
+  fitKeys();
   const de=document.documentElement, wide=window.innerWidth>=700 && matchMedia('(pointer:coarse)').matches;
   const h=Math.max(VH_STABLE.w===window.innerWidth? VH_STABLE.h : 0, window.innerHeight);
   const root=document.querySelector('.viz-root'), ph=root? Math.ceil(root.getBoundingClientRect().height) : de.scrollHeight;
