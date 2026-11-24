@@ -859,7 +859,7 @@
      "the popups look different… too big"). A thinner frost lets that page read through. */
   @media (min-width:760px){
     #recmodal .sheet,#setmodal .sheet{width:min(940px,calc(100vw - 96px));
-      height:min(760px,calc(100dvh - 88px));max-height:none;border-radius:22px}
+      height:min(760px,calc(var(--vh0,100dvh) - 88px));max-height:none;border-radius:22px}
     :root .modal{background:color-mix(in srgb,var(--page) 55%,transparent);
       -webkit-backdrop-filter:blur(6px) saturate(1.1);backdrop-filter:blur(6px) saturate(1.1)}
   }
@@ -1124,7 +1124,12 @@
       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .setnav i{position:absolute;right:11px;top:15px;width:7px;height:7px;border-radius:50%;
       background:var(--s4);display:none}
-    .setnav button.ch i{display:block}
+    .setnav button.df i{display:block;background:var(--s1)}
+    .setnav button.ch i{display:block;background:var(--s4)}
+    .setlegend{display:flex;flex-direction:column;gap:5px;margin:10px 0 0;padding:0 12px;font-size:12px;color:var(--muted)}
+    .setlegend span{display:flex;align-items:center;gap:7px}
+    .setnav .setlegend i{display:block;position:static;width:7px;height:7px;border-radius:50%;flex:none}
+    .setlegend .d{background:var(--s1)} .setlegend .u{background:var(--s4)}
     #setmodal .setfoot{display:contents}
     #setmodal .setmsgs{grid-column:1;grid-row:4;overflow-y:auto;padding:6px 18px 14px 26px;align-self:start;max-height:100%;box-sizing:border-box}
     #setmodal .setmsgs p{font-size:12.5px;margin-bottom:8px}
@@ -1333,15 +1338,16 @@
     <div class="sheet">
       <h3 id="settitle">Home sale scenario</h3>
       <nav class="setnav" id="setnav" aria-label="Sections">
-        <button type="button" data-sec="sg-hz"><b>How far to project</b><span id="sn-hz"></span><i title="unapplied changes"></i></button>
-        <button type="button" data-sec="sg-sale"><b>Selling the home</b><span id="sn-sale"></span><i title="unapplied changes"></i></button>
-        <button type="button" data-sec="sg-rent"><b>Renting it out</b><span id="sn-rent"></span><i title="unapplied changes"></i></button>
-        <button type="button" data-sec="sg-rates"><b>Rates &amp; assumptions</b><span id="sn-rates"></span><i title="unapplied changes"></i></button>
+        <button type="button" data-sec="sg-hz"><b>Projection period</b><span id="sn-hz"></span><i></i></button>
+        <button type="button" data-sec="sg-sale"><b>Property sale</b><span id="sn-sale"></span><i></i></button>
+        <button type="button" data-sec="sg-rent"><b>Rental income</b><span id="sn-rent"></span><i></i></button>
+        <button type="button" data-sec="sg-rates"><b>Rates &amp; assumptions</b><span id="sn-rates"></span><i></i></button>
+        <p class="setlegend"><span><i class="d"></i>Changed from default</span><span><i class="u"></i>Not applied yet</span></p>
       </nav>
       <div class="controls">
 
         <section class="grp" id="sg-hz">
-          <h4 class="grph">How far to project</h4>
+          <h4 class="grph">Projection period</h4>
           <div class="grpbody">
             <div class="ctl wide">
               <label id="horizlab">Projection horizon</label>
@@ -1356,7 +1362,7 @@
         </section>
 
         <section class="grp" id="sg-sale">
-          <h4 class="grph">Selling the Midland home</h4>
+          <h4 class="grph">Property sale &mdash; Midland home</h4>
           <div class="grpbody">
             <div class="ctl wide">
               <label id="salemodelab">When to sell</label>
@@ -1404,7 +1410,7 @@
         </section>
 
         <section class="grp" id="sg-rent">
-          <h4 class="grph">Renting it out</h4>
+          <h4 class="grph">Rental income</h4>
           <div class="grpbody">
             <div id="rentfields">
               <div class="contract wide" id="contractcard"></div>
@@ -4358,6 +4364,29 @@ document.getElementById('vwnext').addEventListener('click',()=>
    reload, or iOS evicting the home-screen app, quietly put the scenario back to its defaults.
    Only fields the page still ships are restored, so a renamed field falls back to its default. */
 const SCEN_KEY='scenario.v1';
+/* The popups' height is pinned to the window height measured while NO field has focus. With
+   100dvh, the iPhone's keyboard opening on a field resized the sheet mid-edit (owner: "when I
+   make a change the screen changes sizes"). */
+function pinVH(){
+  const a=document.activeElement;
+  if(a && a.matches('input,textarea,select,[contenteditable]')) return;
+  document.documentElement.style.setProperty('--vh0', window.innerHeight+'px');
+}
+pinVH();
+window.addEventListener('resize',pinVH);
+window.addEventListener('orientationchange',()=>setTimeout(pinVH,300));
+/* iOS scrolls the window to bring a focused field into view and does not always scroll it back,
+   which left the popup shifted up with its title cut off. Put it back once editing ends. */
+let SET_Y=0;
+document.addEventListener('focusout',e=>{
+  if(!e.target.closest || !e.target.closest('.modal')) return;
+  setTimeout(()=>{
+    const a=document.activeElement;
+    if(a && a.closest && a.closest('.modal') && a.matches('input,textarea,select')) return;
+    if(Math.abs(window.scrollY-SET_Y)>1) window.scrollTo(0,SET_Y);
+    pinVH();
+  },250);
+});
 function saveScenario(){
   const vals={};
   document.querySelectorAll('#setmodal input').forEach(el=>{
@@ -4417,7 +4446,7 @@ function revertSheet(){
   document.getElementById('oppsm').textContent=k.opp;
   DIRTY=false; showDirty();
 }
-const openSet =()=>{SHEET_SNAP=snapSheet(); $set.hidden=false; document.body.style.overflow='hidden'; showDirty();
+const openSet =()=>{SET_Y=window.scrollY; pinVH(); SHEET_SNAP=snapSheet(); $set.hidden=false; document.body.style.overflow='hidden'; showDirty();
   $setC.scrollTop=0; spySet();};
 const closeSet=()=>{$set.hidden=true;  document.body.style.overflow='';};
 const cancelSet=()=>{ revertSheet(); closeSet(); };
@@ -4444,7 +4473,22 @@ function updNav(){
     if(k && DIRTY && b.dataset.sec==='sg-hz' && HORIZON!==k.hz) ch=true;
     if(k && DIRTY && b.dataset.sec==='sg-sale' && SALE_MODE!==k.mode) ch=true;
     b.classList.toggle('ch',ch);
+    b.classList.toggle('df',offDefault(b.dataset.sec));
+    b.title = ch? 'Not applied yet' : b.classList.contains('df')? 'Changed from default' : '';
   });
+}
+/* Differs from the shipped defaults (what Reset restores). Compares numbers, not strings, so
+   "25,000" vs "25000" or "3" vs "3.0" is not a change; the sale date only counts when a date is
+   actually chosen (the form blanks it while the mode is "keep renting"). */
+const SEC_FIELDS={'sg-hz':[], 'sg-sale':['midvalue','priceover','price'],
+  'sg-rent':['rentescal','rentmaint'], 'sg-rates':['inflpct','apprec','cashapy','opproi','liqfloor']};
+function offDefault(sec){
+  const num=x=>{ const n=parseFloat(String(x).replace(/[^0-9.-]/g,'')); return isNaN(n)? String(x) : n; };
+  const diff=id=>{ const el=document.getElementById(id); if(!el) return false;
+    return el.type==='checkbox'? el.checked!==FORM_DEFAULTS[id] : num(el.value)!==num(FORM_DEFAULTS[id]); };
+  if(sec==='sg-hz') return HORIZON!==DEFAULT_HORIZON;
+  if(sec==='sg-sale' && SALE_MODE!=='never') return true;
+  return (SEC_FIELDS[sec]||[]).filter(id=>id!=='price' || document.getElementById('priceover').checked).some(diff);
 }
 // Edits update the summaries after their own handlers have run.
 ['input','change','click'].forEach(t=>$set.addEventListener(t,()=>requestAnimationFrame(updNav)));
@@ -4967,6 +5011,7 @@ $('adjamt').addEventListener('input',e=>{
 // Signing in to the site is the authorisation now (passkey, see login.html), so the sheet opens
 // straight onto today — no PIN.
 function openModal(){
+  SET_Y=window.scrollY; pinVH();
   $('recmodal').hidden=false;
   RECPAGE=0; ADJFOCUS=null; ADJBACK=6; ADJFWD=ADJ_FWD0; fillAdj(); fillBank(); bankBadge();   // opened: the green dot is seen
   // Wide: the list opens on today, with the coming days just above it (scroll up for more).
