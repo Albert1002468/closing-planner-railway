@@ -432,9 +432,11 @@
                       padding:2px 10px 4px 4px;margin:-2px -10px 0 -4px;overscroll-behavior:contain;scrollbar-gutter:stable}
     /* Left: everything you look through — the bank, its settings, search, the days, history. */
     .recside{grid-column:1;display:flex;flex-direction:column}
-    .recside>#bankbox{order:1;margin-top:0} .recside>#bankfoot{order:2;margin-bottom:12px}
-    .recside>.daystools{order:3} .recside>#adjlist{order:4} .recside>#daymsg{order:5}
-    .recside>#adjrecent{order:6} .recside>#signout{order:7}
+    /* History sits with the bank's settings, closed — the days below already show every line. */
+    .recside>#bankbox{order:1;margin-top:0} .recside>#bankfoot{order:2}
+    .recside>#adjrecent{order:3;margin:10px 0 12px}
+    .recside>.daystools{order:4} .recside>#adjlist{order:5} .recside>#daymsg{order:6}
+    .recside>#signout{order:7}
     .recside .daystools{position:sticky;top:-2px;z-index:2;background:var(--surface-1);padding:2px 0 10px;margin:0}
     /* Right: the editor for what you tapped, always in the same place. */
     .recmain{grid-column:2}
@@ -4854,8 +4856,6 @@ $('adjamt').addEventListener('input',e=>{
 function openModal(){
   $('recmodal').hidden=false;
   RECPAGE=0; ADJFOCUS=null; ADJBACK=6; ADJFWD=ADJ_FWD0; fillAdj(); fillBank(); bankBadge();   // opened: the green dot is seen
-  // A desktop has the room: History starts open in its column. On a phone it stays tucked away.
-  if(matchMedia('(min-width:760px)').matches) $('adjrecent').open=true;
   // Wide: the list opens on today, with the coming days just above it (scroll up for more).
   if(recWide()) requestAnimationFrame(()=>{ const c=$('adjlist').querySelector(`.daycard[data-day="${nowInfo().today}"]`);
     if(c) c.scrollIntoView({block:'center'}); });
