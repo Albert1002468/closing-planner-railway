@@ -820,6 +820,21 @@
     .card.pos:has(>#todaybar:not([hidden]))>#chartpanel{grid-column:1;grid-row:2}
     .card.pos:has(>#todaybar:not([hidden]))>#todaybar{grid-column:2;grid-row:2}
   }
+  /* Wider still (an unfolded phone is ~1090pt): the side column under today's card was empty,
+     so the figures move there as a two-across grid — every card on screen, no swiping — and
+     the chart moves up to the top of the page beside them. */
+  @media (min-width:960px){
+    .card.pos:has(>#todaybar:not([hidden])){grid-template-columns:minmax(0,1fr) 300px}
+    .card.pos:has(>#todaybar:not([hidden]))>#chartpanel{grid-row:1/span 2}
+    .card.pos:has(>#todaybar:not([hidden]))>#todaybar{grid-row:1}
+    .card.pos:has(>#todaybar:not([hidden]))>.tilewrap{grid-column:2;grid-row:2}
+    .card.pos:has(>#todaybar:not([hidden])) .tiles{flex-wrap:wrap;overflow:visible;gap:8px}
+    .card.pos:has(>#todaybar:not([hidden])) .tile{flex:1 1 calc(50% - 4px);min-width:0;padding:10px 12px 9px}
+    .card.pos:has(>#todaybar:not([hidden])) .tile .val{font-size:18px}
+    .card.pos:has(>#todaybar:not([hidden])) .tilewrap::before,
+    .card.pos:has(>#todaybar:not([hidden])) .tilewrap::after,
+    .card.pos:has(>#todaybar:not([hidden])) .tnav{display:none!important}
+  }
   /* A wide but short screen (unfolded, held sideways): a smaller title, so the chart fits too. */
   @media (min-width:700px) and (max-height:620px){
     .bigtitle{font-size:26px;margin-bottom:10px}
@@ -3155,16 +3170,20 @@ function render(){
 
   const svg=document.getElementById('tl');
   while(svg.firstChild) svg.removeChild(svg.firstChild);
-  const cw=svg.parentNode.clientWidth||940, mobile=cw<640;
+  // Real-pixel drawing (readable labels) up to 760px: a chart beside the side column on an
+  // unfolded phone is ~630–760px and the scaled desktop viewBox shrank its labels to ~7px.
+  const cw=svg.parentNode.clientWidth||940, mobile=cw<760;
   const nMonths=Math.max(1, VD.filter(d=>d.d.slice(8)==='01').length);
   // Only the multi-year window is ever allowed to overflow. A single year is pinned to the
   // container, so it never scrolls and the scrub gesture is never ambiguous.
   const canPan = mobile && VIEW==='span';
   const W=mobile? (canPan? Math.max(300,Math.round(cw),nMonths*30) : Math.max(300,Math.round(cw)))
                 : 940,
-        // An unfolded phone held sideways is wide but short: the chart gives up height (not
-        // below 200) so the whole panel still fits on the first screen. Phones keep 300.
-        H=mobile?(window.innerWidth>=700? Math.max(200,Math.min(300,window.innerHeight-340)) : 300):380;
+        // Wide screens size the chart to the screen's height: 700–959px (today's card beside it,
+        // cards above) gives up height so the panel fits; from 960px (cards beside it too) it
+        // grows to match that column. Phones keep 300.
+        H=!mobile? 380 : window.innerWidth>=960? Math.max(300,Math.min(440,window.innerHeight-330))
+          : window.innerWidth>=700? Math.max(200,Math.min(300,window.innerHeight-340)) : 300;
   // Desktop keeps scaling the fixed 940 viewBox to the container; only mobile pins real pixels.
   svg.style.width = mobile? W+'px' : '100%';
   /* touch-action, and why it differs by window:
