@@ -827,6 +827,11 @@
      really thick"), so with no status bar above the page it hugs the top edge and is slimmer. */
   html.notop .appbar{padding-top:0}
   html.notop .appbar-in{height:44px}
+  /* …and no frosted bar at all once scrolled. Measured on the Duo (2026-11-24): at times iOS shrinks
+     the app's window by ~82pt and draws its own band (with a window handle) above it — the app
+     can't touch that band, but its own 44pt bar under it made the top twice as thick. The large
+     title simply scrolls away; the buttons float bottom-right and are unaffected. */
+  html.notop .appbar-bg,html.notop .appbar-title{display:none}
   html.notop .bigtitle{min-height:50px;display:flex;align-items:center;margin:0 0 10px}
 
   /* A touch screen too wide for the bottom sheet (unfolded) still gets the grabber: its title row
@@ -3901,22 +3906,6 @@ document.getElementById('todaybar').addEventListener('click',e=>{
    on-screen rects, which iOS distorts during a rubber-band bounce and which left both titles
    half-faded. Tracking runs every frame from the first touch or scroll until the page has been
    still for a moment, so a missed final scroll event cannot strand it. */
-/* TEMPORARY: once scrolled past 250px, report where the top bar actually sits (see /api/diag). */
-{
-  let sent=0;
-  const report=()=>{ if(sent>=2 || window.scrollY<250) return; sent++;
-    try{ const bar=document.getElementById('appbar'), d=document.createElement('div');
-      d.style.cssText='position:fixed;visibility:hidden;top:0;left:0;width:0;height:env(safe-area-inset-top,0px)';
-      document.body.appendChild(d); const t=d.getBoundingClientRect().height; d.remove();
-      const vv=window.visualViewport;
-      const r={n:sent,sy:Math.round(scrollY),barTop:bar.getBoundingClientRect().top,barH:bar.offsetHeight,
-        barPad:getComputedStyle(bar).paddingTop,insetTop:t,iw:innerWidth,ih:innerHeight,
-        vv:vv?[vv.offsetTop,vv.pageTop,vv.height,vv.width]:null,notop:document.documentElement.classList.contains('notop'),
-        docH:document.documentElement.clientHeight,bodyPad:getComputedStyle(document.body).paddingTop};
-      fetch('/api/diag',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(r)});
-    }catch(e){} };
-  window.addEventListener('scroll',()=>{ clearTimeout(report.t); report.t=setTimeout(report,600); },{passive:true});
-}
 /* Top-inset probe: env() can't be read in a media query, so a hidden element takes the top safe-area
    inset as its height. Under 20px there is no status bar above the page (see html.notop). */
 {
