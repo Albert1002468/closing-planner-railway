@@ -1155,6 +1155,19 @@
     input:not([type=range]):not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px!important}
     .moneyfld span{font-size:16px}
   }
+
+  /* The page's reference notes moved here from under the chart, so the main screen fits one
+     screen on the unfolded phone (owner: "get everything to show up in one page"). */
+  .setnotes{font-size:13px;line-height:1.55;color:var(--ink-2)}
+  .setnotes ul{margin:0;padding-left:18px}
+  .setnotes li{margin:0 0 8px}
+  .setnotes b{color:var(--ink);font-weight:600}
+  /* Screens with no status bar across the top (the Duo) have a curved corner right where the
+     title sat; step it down and in so it reads clear of the curve. */
+  html.notop .bigtitle{padding:10px 0 0 14px;min-height:44px;margin:0 0 8px}
+  /* Wide screens fit on one screen (see fitChartH); the floating buttons sit beside the chart
+     over the right column, so the page no longer needs 140px of room under it for them. */
+  @media (min-width:700px){ .viz-root{padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))!important} }
 </style>
 </head>
 <body>
@@ -1308,34 +1321,6 @@
     </details>
     </div>
 
-    <details class="foot"><summary>Assumptions &amp; sources</summary>
-      <ul>
-        <li><b>Starting point:</b> $99,026.57 available on Aug 14, 2026. A reconciled day resets the
-            projection to the actual balance; only days after today are forecast.</li>
-        <li><b>Pay:</b> biweekly paychecks (5 OT hours), +3%/yr from 2028. Year-end payroll change: full cheque Thu Dec 24, a short
-            one Thu Dec 31 (Dec 20–25, estimated at half), none Jan 8, then every other Friday from Jan 15. The March bonus ($30,000 gross) grows with
-            your pay from 2029 and is netted at 65.6% of gross; each year's taxes settle the following April 15.</li>
-        <li><b>OKC home:</b> closed Sep 18, 2026 — 22% down at 5.99%. Its escrow was set against the lot,
-            so the first full-house tax ($6,000/yr assumed) lands Dec 2027 and resets the payment.</li>
-        <li><b>Midland home:</b> let from Sep 25, 2026 at $3,300 (lease to Sep 30, 2027); 10% management,
-            half a month to place a tenant. From Nov 2026 the manager pays the rent out, less its fee,
-            3 business days after the 1st (weekends and bank holidays skipped). The Jan 2027 house-tax bill resets the PennyMac escrow from
-            June 2027; PMI ($28.75) comes off from the Dec 1, 2026 payment (approved); losing the homestead is a 1.30× estimate.</li>
-        <li><b>Selling:</b> the relocation company covers seller costs and half of any loss under $425k
-            (max $25k) if it closes by Jul 20, 2027; after that seller costs are 7.5%. Leaving before the
-            lease ends costs 2 months' rent (assumed — not in the lease).</li>
-        <li><b>Tax:</b> rental income at 28.75%; depreciation recapture at 29.75% (25% federal + 4.75%
-            Oklahoma); rental losses are suspended and released at a sale.</li>
-        <li><b>Car:</b> 6.74% simple interest; paid off two months after a sale, otherwise amortised.
-            <b>Vivint:</b> $57.77/mo, paused Oct 2026–Sep 2027, final payment Jun 20, 2031.</li>
-        <li><b>Growth:</b> from 2028 costs inflate at your inflation rate — home insurance on both houses
-            included (not loan payments or the level-premium life policy); the Midland value grows at your appreciation rate, OKC at 3%.</li>
-        <li><b>Net worth:</b> cash + OKC equity (after 7% selling costs) + Midland equity (after 7.5%) −
-            car loan − property tax accrued beyond escrow − tax a sale would trigger.</li>
-        <li><b>Estimates, not statements:</b> utilities, the $6,000 OKC tax, the non-homestead Midland
-            tax and the lease-break fee.</li>
-      </ul>
-    </details>
   </div>
 
   <div class="spin" id="spinner" hidden role="status" aria-live="polite">
@@ -1351,6 +1336,7 @@
         <button type="button" data-sec="sg-sale"><b>Property sale</b><span id="sn-sale"></span><i></i></button>
         <button type="button" data-sec="sg-rent"><b>Rental income</b><span id="sn-rent"></span><i></i></button>
         <button type="button" data-sec="sg-rates"><b>Rates &amp; assumptions</b><span id="sn-rates"></span><i></i></button>
+        <button type="button" data-sec="sg-notes"><b>Assumptions &amp; sources</b><span>How the projection is built</span><i></i></button>
         <p class="setlegend"><span><i class="d"></i>Changed from default</span><span><i class="u"></i>Not applied yet</span></p>
       </nav>
       <div class="controls">
@@ -1468,6 +1454,39 @@
               <span class="rends" id="liqsm">&nbsp;</span>
             </div>
             <p class="grpnote wide" id="oppsm">&nbsp;</p>
+          </div>
+        </section>
+
+
+        <section class="grp" id="sg-notes">
+          <h4 class="grph">Assumptions &amp; sources</h4>
+          <div class="setnotes">
+      <ul>
+        <li><b>Starting point:</b> $99,026.57 available on Aug 14, 2026. A reconciled day resets the
+            projection to the actual balance; only days after today are forecast.</li>
+        <li><b>Pay:</b> biweekly paychecks (5 OT hours), +3%/yr from 2028. Year-end payroll change: full cheque Thu Dec 24, a short
+            one Thu Dec 31 (Dec 20–25, estimated at half), none Jan 8, then every other Friday from Jan 15. The March bonus ($30,000 gross) grows with
+            your pay from 2029 and is netted at 65.6% of gross; each year's taxes settle the following April 15.</li>
+        <li><b>OKC home:</b> closed Sep 18, 2026 — 22% down at 5.99%. Its escrow was set against the lot,
+            so the first full-house tax ($6,000/yr assumed) lands Dec 2027 and resets the payment.</li>
+        <li><b>Midland home:</b> let from Sep 25, 2026 at $3,300 (lease to Sep 30, 2027); 10% management,
+            half a month to place a tenant. From Nov 2026 the manager pays the rent out, less its fee,
+            3 business days after the 1st (weekends and bank holidays skipped). The Jan 2027 house-tax bill resets the PennyMac escrow from
+            June 2027; PMI ($28.75) comes off from the Dec 1, 2026 payment (approved); losing the homestead is a 1.30× estimate.</li>
+        <li><b>Selling:</b> the relocation company covers seller costs and half of any loss under $425k
+            (max $25k) if it closes by Jul 20, 2027; after that seller costs are 7.5%. Leaving before the
+            lease ends costs 2 months' rent (assumed — not in the lease).</li>
+        <li><b>Tax:</b> rental income at 28.75%; depreciation recapture at 29.75% (25% federal + 4.75%
+            Oklahoma); rental losses are suspended and released at a sale.</li>
+        <li><b>Car:</b> 6.74% simple interest; paid off two months after a sale, otherwise amortised.
+            <b>Vivint:</b> $57.77/mo, paused Oct 2026–Sep 2027, final payment Jun 20, 2031.</li>
+        <li><b>Growth:</b> from 2028 costs inflate at your inflation rate — home insurance on both houses
+            included (not loan payments or the level-premium life policy); the Midland value grows at your appreciation rate, OKC at 3%.</li>
+        <li><b>Net worth:</b> cash + OKC equity (after 7% selling costs) + Midland equity (after 7.5%) −
+            car loan − property tax accrued beyond escrow − tax a sale would trigger.</li>
+        <li><b>Estimates, not statements:</b> utilities, the $6,000 OKC tax, the non-homestead Midland
+            tax and the lease-break fee.</li>
+      </ul>
           </div>
         </section>
 
@@ -3241,6 +3260,22 @@ function fillOppPanel(rent, home, rates){
     +`${(MID_APPREC*100).toFixed(1)}%/yr — and each exit above uses its own date's price.`;
 }
 
+/* Wide touch screens (unfolded phone): the chart is as tall as it can be with its panel still
+   ending at the bottom of the screen, so the whole page is one screen. The height used is the
+   TALLEST seen at this width: iOS briefly shrinks the window ~82pt while scrolling, and sizing
+   to that would make the chart jump. */
+let VH_STABLE={w:0,h:0};
+function fitChartH(svg){
+  const w=window.innerWidth;
+  VH_STABLE = VH_STABLE.w===w? {w, h:Math.max(VH_STABLE.h, window.innerHeight)} : {w, h:window.innerHeight};
+  const panel=document.getElementById('chartpanel'), sh=svg.getBoundingClientRect().height;
+  const overhead = sh>0? panel.getBoundingClientRect().height - sh : 110;
+  const top = panel.getBoundingClientRect().top + window.scrollY;
+  // Everything under the panel (its margin, the page's bottom padding and safe area), measured.
+  const below = Math.max(0, document.documentElement.scrollHeight - (panel.getBoundingClientRect().bottom + window.scrollY));
+  return Math.round(Math.max(240, Math.min(560, VH_STABLE.h - top - overhead - below)));
+}
+
 /* Captured before anything can touch the form, so "default" means the values the document
    shipped with — not whatever happens to be on screen when the reader hits reset. */
 const FORM_DEFAULTS=(()=>{ const m={};
@@ -3353,7 +3388,7 @@ function render(){
                 : 940,
         // Wide screens (700px+) draw it taller — the screen's height less the figures and today's
         // card above it, 260–380 (owner: "the graph appears too small"). Phones keep 300.
-        H=!mobile? 380 : window.innerWidth>=700? Math.max(260,Math.min(380,window.innerHeight-320)) : 300;
+        H=!mobile? 380 : window.innerWidth>=700? fitChartH(svg) : 300;
   // Desktop keeps scaling the fixed 940 viewBox to the container; only mobile pins real pixels.
   svg.style.width = mobile? W+'px' : '100%';
   /* touch-action, and why it differs by window:
