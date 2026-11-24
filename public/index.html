@@ -1179,6 +1179,15 @@
     #keyrow::-webkit-scrollbar{display:none}
     #keyrow>*{flex:none}
   }
+  /* Wide: today's card heads the RIGHT column (above Transactions), and the chart takes the whole
+     left side from the tiles down (owner: "make the today container a lot smaller or a different
+     approach" to give the graph more size). Rows: 2 = today's card, 3 = the rest; the chart spans
+     both, the lists sit under the card. A busy day's list scrolls inside the card. */
+  @media (min-width:700px){
+    .card.pos>#todaybar{grid-column:2;grid-row:2;margin:0 0 12px;max-height:38vh;overflow-y:auto;overscroll-behavior:contain}
+    .card.pos>#chartpanel{grid-column:1;grid-row:2/span 2}
+    .card.pos>.sidecol{grid-row:3/span 2}
+  }
 </style>
 </head>
 <body>
