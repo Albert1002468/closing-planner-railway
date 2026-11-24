@@ -1183,14 +1183,22 @@
   #projkey::before{content:'';width:14px;height:14px;border-radius:50%;border:1.5px solid var(--axis);
     margin-right:7px;box-sizing:border-box;flex:none}
   #projkey.on::before{border:0;background:var(--s2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3.5 7.2l2.3 2.3 4.7-4.9' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/14px no-repeat}
-  /* Wide: today's card heads the RIGHT column (above Transactions), and the chart takes the whole
-     left side from the tiles down (owner: "make the today container a lot smaller or a different
-     approach" to give the graph more size). Rows: 2 = today's card, 3 = the rest; the chart spans
-     both, the lists sit under the card. A busy day's list scrolls inside the card. */
+  /* Wide: no Today card at all — its two facts live in the tiles (the Today tile adds the day's
+     net; a "Next" tile names the next day anything posts), and both tiles jump to that day in
+     Transactions. The chart takes the whole left side, the lists the whole right (owner: the card
+     on the right "is making the other containers difficult to view"). */
+  .tile.wideonly,.wideonly{display:none}
   @media (min-width:700px){
-    .card.pos>#todaybar{grid-column:2;grid-row:2;margin:0 0 12px;max-height:38vh;overflow-y:auto;overscroll-behavior:contain}
+    .card.pos>#todaybar{display:none!important}
     .card.pos>#chartpanel{grid-column:1;grid-row:2/span 2}
-    .card.pos>.sidecol{grid-row:3/span 2}
+    .card.pos>.sidecol{grid-row:2/span 3}
+    .tile.wideonly{display:block}
+    .tile.wideonly[hidden]{display:none}
+    span.wideonly{display:inline}
+    .tile.jump{cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .tile.jump:active{transform:scale(.98)}
+    .tile.jump .lab::after{content:' ›';color:var(--s1);font-weight:600}
+    .tile .val .tbpos{color:var(--goodtext)}
   }
   /* The day "Next" points at, flashed when it is tapped. */
   @keyframes rowflash{0%,60%{background:color-mix(in srgb,var(--s1) 26%,transparent)}100%{background:transparent}}
@@ -1235,7 +1243,8 @@
   <div class="card pos">
     <div class="tilewrap">
       <div class="tiles" id="tiles">
-        <div class="tile key"><div class="lab">Today</div><div class="val" id="t_today">—</div><div class="sm trunc" id="t_todayd"></div></div>
+        <div class="tile key" id="t_todaytile"><div class="lab">Today</div><div class="val" id="t_today">—</div><div class="sm trunc"><span id="t_todayd"></span><span class="wideonly" id="t_todaynet"></span></div></div>
+        <div class="tile key wideonly jump" id="t_nexttile" hidden><div class="lab" id="t_nextlab">Next</div><div class="val" id="t_next">—</div><div class="sm trunc" id="t_nextd"></div></div>
         <div class="tile key"><div class="lab">Net worth</div><div class="val" id="t_nw">—</div><div class="sm trunc" id="t_nwd"></div></div>
         <div class="tile key"><div class="lab" id="t_endlab">Ending balance</div><div class="val" id="t_end">—</div><div class="sm trunc" id="t_endd"></div></div>
         <div class="tile"><div class="lab">Buying power</div><div class="val" id="t_real">—</div><div class="sm trunc" id="t_reald"></div></div>
@@ -4024,9 +4033,28 @@ function renderTodayBar(DATA){
       +`<span title="${esc(what)}">${esc(what)}</span>${sgn(nxNet)}<i aria-hidden="true">›</i></button>`;
   }
   bar.innerHTML=h; bar.hidden=false;
+  // The same two facts, for the tiles on wide screens.
+  const tt=document.getElementById('t_todaytile'), nt=document.getElementById('t_nexttile');
+  document.getElementById('t_todaynet').textContent = items.length? ` · ${net>0?'+':''}${fmt(net)}` : '';
+  tt.classList.toggle('jump', true); tt.dataset.d=TODAY_ISO;
+  if(nx){
+    const nxNet=+nx.ev.reduce((a,e)=>a+e.a,0).toFixed(2), n=nx.ev.length;
+    document.getElementById('t_nextlab').textContent='Next · '+dd(nx.d).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    document.getElementById('t_next').innerHTML=sgn(nxNet);
+    document.getElementById('t_nextd').textContent = n===1? nx.ev[0].l : `${n} items · `+nx.ev.map(e=>adjBase(e.l)).join(', ');
+    nt.dataset.d=nx.d; nt.hidden=false;
+  } else nt.hidden=true;
 }
 document.getElementById('todaybar').addEventListener('click',e=>{
-  const b=e.target.closest('.tbnext'); if(!b) return;
+  const b=e.target.closest('.tbnext'); if(b) jumpToDay(b.dataset.d);
+});
+document.getElementById('tiles').addEventListener('click',e=>{
+  const t=e.target.closest('.tile.jump'); if(!t || !t.dataset.d) return;
+  if(document.getElementById('tiles').classList.contains('dragging')) return;
+  jumpToDay(t.dataset.d);
+});
+function jumpToDay(day){
+  const b={dataset:{ym:day.slice(0,7), d:day}};
   const tw=document.getElementById('tblwrap');
   tw.open=true;
   /* ⚠️ The month the NEXT item lands in — that is what the line names. Preferring today's month
@@ -4036,20 +4064,21 @@ document.getElementById('todaybar').addEventListener('click',e=>{
   /* Then bring that day's lines into view and flash them, so the tap visibly lands somewhere
      (owner: "not sure what clicking Next is doing" — it only opened the month). In the wide
      right column the list scrolls inside its own box; the page itself must not move. */
-  const day=b.dataset.d;
   busy([tw, $chartP], ()=>{ render(); requestAnimationFrame(()=>{
     const rows=[...tw.querySelectorAll(`tr[data-d="${day}"]`)];
     const inCol=getComputedStyle(document.querySelector('.sidecol')).position==='absolute';
     if(!inCol) tw.scrollIntoView({behavior:'smooth',block:'start'});
     if(!rows.length) return;
     const box=tw.querySelector('.secbody');
-    if(inCol && box){ const r=rows[0].getBoundingClientRect(), br=box.getBoundingClientRect();
-      box.scrollTo({top:box.scrollTop+r.top-br.top-box.clientHeight/3,behavior:'smooth'}); }
+    if(inCol && box){
+      const put=()=>{ const r=rows[0].getBoundingClientRect(), br=box.getBoundingClientRect();
+        box.scrollTop = Math.max(0, box.scrollTop+r.top-br.top-box.clientHeight/3); };
+      put(); setTimeout(put,150); }   // again, in case a flick's momentum was still running
     else setTimeout(()=>rows[0].scrollIntoView({behavior:'smooth',block:'center'}),350);
     rows.forEach(x=>{ x.classList.remove('flash'); void x.offsetWidth; x.classList.add('flash'); });
     setTimeout(()=>rows.forEach(x=>x.classList.remove('flash')),2200);
   }); });
-});
+}
 
 /* Reveal a cut-off description. A tap toggles it; a press-and-hold opens it (iOS shows no title
    tooltip, and a hold would otherwise just start a text selection). */
