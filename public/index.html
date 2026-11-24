@@ -790,18 +790,28 @@
              padding:0 max(calc(var(--gut) - 8px),env(safe-area-inset-right,0px))}
   .appbar-title{position:absolute;left:50%;font-size:16px;font-weight:600;letter-spacing:-.01em;
                 pointer-events:none;opacity:0;visibility:hidden;transform:translate(-50%,7px)}
-  .appbar .acts{display:flex;gap:2px}
-  .appbar .abtn{width:40px;height:40px;border-radius:50%;padding:0;border:0;
-    background:transparent;color:var(--ink);box-shadow:none}
-  .appbar .abtn:hover{background:var(--fill)}
-  .appbar .abtn svg{width:21px;height:21px}
+  /* The two actions float in the bottom-right corner, where a thumb reaches them on a phone and on
+     an unfolded one — the top of the screen is the hardest place to reach (owner, 2026-11-24).
+     Settings above, Reconcile (the everyday one) nearest the thumb. Sheets (z 60) cover them. */
+  .appbar .acts{position:fixed;z-index:55;display:flex;flex-direction:column;gap:12px;
+    right:max(16px,calc(env(safe-area-inset-right,0px) + 12px));
+    bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+  .appbar .abtn{width:54px;height:54px;border-radius:50%;padding:0;border:1px solid var(--ring);
+    background:color-mix(in srgb,var(--surface-1) 88%,transparent);color:var(--ink);
+    -webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
+    box-shadow:0 6px 20px rgba(0,0,0,.16),0 1px 3px rgba(0,0,0,.08)}
+  .appbar .abtn:hover{background:var(--surface-1)}
+  .appbar .abtn:active{transform:scale(.94)}
+  .appbar .abtn svg{width:23px;height:23px}
+  /* Room under the last section so the floating buttons never sit on top of it. */
+  .viz-root{padding-bottom:calc(140px + env(safe-area-inset-bottom,0px))!important}
   .bigtitle{font-size:32px;font-weight:700;letter-spacing:-.028em;line-height:1.1;margin:2px 0 18px}
   /* No status bar across the top (the Duo shows its clock in a strip BESIDE the app, outside the
      page, and reports a top inset of 0): an empty 50px row above the title is pure waste, so the
-     large title moves up into the bar's row, left of the buttons. Scrolling still frosts the bar
+     large title moves up into the bar's row. Scrolling still frosts the bar
      and brings in the compact title. `html.notop` is set by the probe script below. */
   html.notop body{padding-top:0}
-  html.notop .bigtitle{min-height:50px;display:flex;align-items:center;margin:0 96px 10px 0}
+  html.notop .bigtitle{min-height:50px;display:flex;align-items:center;margin:0 0 10px}
 
   /* ---- surfaces ---- */
   .card,.card.pos{background:none;border:0;box-shadow:none;padding:0;border-radius:0}
