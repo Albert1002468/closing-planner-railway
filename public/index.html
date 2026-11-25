@@ -1813,6 +1813,10 @@ const inflAt = d => Math.pow(1+INFL_PCT, Math.max(0, YR(d)-2027));
 const payAt  = d => +(PAY5*Math.pow(1+RAISE_PCT, Math.max(0, YR(d)-2027))).toFixed(2);
 const PAY10=3830.28, PAY5=3557.15;
 const MTG_BAL_AFTER_AUG = 336756.31;        // stated principal after Aug payment
+/* PennyMac's own figure after the Nov 1, 2026 payment (owner's screenshot, Nov 25). Amortising
+   the Aug figure came out $631.93 high — one month of principal behind — so the schedule snaps
+   to the statement here and amortises on from it. */
+const MTG_BAL_AFTER_NOV = 334245.45, MTG_STMT_DUE='2026-11-01';
 const MTG_RATE = 0.05375, MI = MTG_RATE/12, MTG_PI = 2131.90, MTG_PMT = 2318.72;
 const AF_PAYOFF_DATE='2026-08-20', AF_PAYOFF_AMT=1436.90;  // AutoFortiva settled in full, no further drafts
 /* ⚠️ The negotiated $8.58 is over: the rate is back to $57.77/mo, the tenants are NOT taking
@@ -2055,6 +2059,7 @@ function buildMortgageSchedule(){
     let prin = MTG_PI-int, pmt = MTG_PMT;
     if(prin>=bal){ prin=bal; pmt=+(bal+int+(MTG_PMT-MTG_PI)).toFixed(2); }   // short final payment
     bal = +(bal-prin).toFixed(2);
+    if(due===MTG_STMT_DUE){ prin=+(prin+bal-MTG_BAL_AFTER_NOV).toFixed(2); bal=MTG_BAL_AFTER_NOV; }
     rows.push({draft:bumpWk(due), due, int:+int.toFixed(2), prin:+prin.toFixed(2), pmt, balAfter:bal});
   }
   return rows;
