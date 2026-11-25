@@ -408,8 +408,10 @@
   #recmodal #stageform{display:flex;flex-direction:column}
   .recmain,.recside{display:contents}
   #stageform>.rechead,#stageform>.hint{order:0}
-  #bankbox{order:1} .daystools{order:2} #adjlist{order:3} #daymsg{order:4} #adjpark{order:5}
-  #bankfoot{order:6} #adjrecent{order:7} #signout{order:8}
+  /* Same order as the unfolded left column: the bank and its settings, History (closed), then
+     search and the days. */
+  #bankbox{order:1} #bankfoot{order:2} #adjrecent{order:3;margin:10px 0 12px} .daystools{order:4}
+  #adjlist{order:5} #daymsg{order:6} #adjpark{order:7} #signout{order:8}
   .recempty{display:none}
   /* Scrollbars in the sheets: a thin rounded thumb in the app's own grey, no track or arrows,
      a little stronger under the pointer. Firefox/Chrome read scrollbar-color; Safari the
@@ -1187,18 +1189,17 @@
      net; a "Next" tile names the next day anything posts), and both tiles jump to that day in
      Transactions. The chart takes the whole left side, the lists the whole right (owner: the card
      on the right "is making the other containers difficult to view"). */
-  .tile.wideonly,.wideonly{display:none}
+  /* Every size now (owner: the unfolded design should carry back to the other screens): the
+     Today card is replaced by the Today and Next tiles everywhere, the phone included. */
+  .card.pos>#todaybar{display:none!important}
+  .tile.wideonly[hidden]{display:none}
+  .tile.jump{cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .tile.jump:active{transform:scale(.98)}
+  .tile.jump .lab::after{content:' ›';color:var(--s1);font-weight:600}
+  .tile .val .tbpos{color:var(--goodtext)}
   @media (min-width:700px){
-    .card.pos>#todaybar{display:none!important}
     .card.pos>#chartpanel{grid-column:1;grid-row:2/span 2}
     .card.pos>.sidecol{grid-row:2/span 3}
-    .tile.wideonly{display:block}
-    .tile.wideonly[hidden]{display:none}
-    span.wideonly{display:inline}
-    .tile.jump{cursor:pointer;-webkit-tap-highlight-color:transparent}
-    .tile.jump:active{transform:scale(.98)}
-    .tile.jump .lab::after{content:' ›';color:var(--s1);font-weight:600}
-    .tile .val .tbpos{color:var(--goodtext)}
   }
   /* The day "Next" points at, flashed when it is tapped. */
   @keyframes rowflash{0%,60%{background:color-mix(in srgb,var(--s1) 26%,transparent)}100%{background:transparent}}
@@ -1255,6 +1256,19 @@
     #setmodal .setlegend i{display:block;position:static;width:6px;height:6px;border-radius:50%}
     #setmodal .setlegend .d{background:var(--s1)} #setmodal .setlegend .u{background:var(--s4)}
     #setmodal .grp{scroll-margin-top:70px}
+  }
+  /* Reconcile's Done lives in a footer at every size. Wide: absolutely placed on the sheet (see
+     #recmodal #recdone above), so the wrapper steps aside. Phone: a sticky bar at the bottom of the
+     sheet, the same as the settings sheet's footer. */
+  .recfoot{display:contents}
+  @media (max-width:759px){
+    #recmodal .recfoot{display:flex;justify-content:flex-end;order:99;position:sticky;z-index:5;
+      bottom:calc(-22px - env(safe-area-inset-bottom,0px));
+      margin:14px -22px calc(-22px - env(safe-area-inset-bottom,0px));
+      padding:12px 22px calc(16px + env(safe-area-inset-bottom,0px));
+      background:var(--surface-1);border-top:1px solid var(--grid)}
+    #recmodal #recdone{height:44px;padding:0 22px;border-radius:12px;background:var(--fill);color:var(--ink);
+      font-size:15px;font-weight:500;border:0}
   }
 </style>
 </head>
@@ -1599,7 +1613,6 @@
         <div id="stageform">
           <div class="rechead">
             <h3 id="recformtitle">Adjust &amp; reconcile</h3>
-            <button type="button" id="recdone" class="ghostbtn">Done</button>
           </div>
           <p class="hint" id="rechint"></p>
           <!-- Wide screens: two columns, each scrolling on its own — on the left the bank, its settings,
@@ -1675,6 +1688,8 @@
           </div>
           </div>
           </div>
+          <!-- Done, bottom-right where the thumb is, at every size (it started on the unfolded phone). -->
+          <div class="recfoot"><button type="button" id="recdone" class="ghostbtn">Done</button></div>
         </div>
       </div>
     </div>
@@ -3380,6 +3395,7 @@ let REFITS=0, refitT=0;
 function fitKeys(){
   const k=document.getElementById('keyrow'); if(!k) return;
   k.style.removeProperty('--keyfs');
+  // Phone: its legend needs ~400pt of a ~316pt row, so it wraps at a readable size instead.
   if(window.innerWidth<700) return;
   const vis=[...k.children].filter(c=>c.offsetParent!==null);
   // One line = every key's middle sits at the same height (the "plan" chip is taller than the rest).
@@ -5239,8 +5255,13 @@ function openModal(){
   $('recmodal').hidden=false;
   RECPAGE=0; ADJFOCUS=null; ADJBACK=6; ADJFWD=ADJ_FWD0; fillAdj(); fillBank(); bankBadge();   // opened: the green dot is seen
   // Wide: the list opens on today, with the coming days just above it (scroll up for more).
-  if(recWide()) requestAnimationFrame(()=>{ const c=$('adjlist').querySelector(`.daycard[data-day="${nowInfo().today}"]`);
-    if(c) c.scrollIntoView({block:'center'}); });
+  // The list opens on today, with the coming days just above it (scroll up for more) — wide, and
+  // now the phone too, where the whole sheet scrolls (the bank and History are a flick up).
+  requestAnimationFrame(()=>{ const c=$('adjlist').querySelector(`.daycard[data-day="${nowInfo().today}"]`);
+    if(!c) return;
+    if(recWide()) c.scrollIntoView({block:'center'});
+    else { const sh=$('recsheet'), r=c.getBoundingClientRect(), b=sh.getBoundingClientRect();
+      sh.scrollTop += r.top - b.top - 90; } });
   document.body.style.overflow='hidden';
 }
 function closeModal(){
