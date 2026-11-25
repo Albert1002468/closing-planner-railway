@@ -2625,6 +2625,14 @@ function buildEvents(sale, price, rent, home){
   //      landlord costs in, this runs a paper LOSS at these rents. Losses are not carried: passive
   //      losses are suspended above ~$150k MAGI, so only profitable years are taxed here. ----
   let rentIncTax=0, suspendedLoss=0;
+  /* Dated rent money, so the Rent tile can total just the window on screen (owner: "why is it
+     showing me until 2030 when my screen is 2026"). Gross on the day it is due, each cost on
+     its own day; vacancy is rent never collected, so it counts as a cost here as in the total. */
+  const rentLedger=[];
+  rentRows.forEach(r=>{ if(rentOK(r.d)) rentLedger.push({d:r.d, gross:r.amt, cost:r.cost, tax:0}); });
+  if(leaseFee>0 && leaseFeeDate && rentOK(leaseFeeDate)) rentLedger.push({d:leaseFeeDate, gross:0, cost:leaseFee, tax:0});
+  turnovers.forEach(t=>{ if(rentOK(t.d)) rentLedger.push({d:t.d, gross:0, cost:t.lost, tax:0}); });
+  if(breakFee>0) rentLedger.push({d:breakDate, gross:0, cost:breakFee, tax:0});
   const suspendedByYear={};   // netWorth releases only the losses suspended by its as-of date
   if(rent && rentDates.length){
     const yrs={};
@@ -2653,6 +2661,7 @@ function buildEvents(sale, price, rent, home){
       if(net>0){
         const t=+(net*rent.taxRate/100).toFixed(2);
         rentIncTax+=t;
+        rentLedger.push({d:`${y}-12-31`, gross:0, cost:0, tax:t});   // the year it is earned in
         addTax(+y, `rental income (${fmt(net)} net)`, t);
       } else {
         // Above ~$150k MAGI the $25k special allowance is fully phased out, so a rental loss
@@ -2743,7 +2752,7 @@ function buildEvents(sale, price, rent, home){
           buyDate, recapDep, recapTax, cgTax,
           carNaturalDate:carNatural.d, carOwedAtEnd, rentIncTax:+rentIncTax.toFixed(2),
           suspendedLoss:+suspendedLoss.toFixed(2), suspendedByYear,
-          rentCostTotal};
+          rentCostTotal, rentLedger};
 }
 
 /* Interest on the balance, in TWO TIERS. Cash up to `floor` is operating money — it covers the
@@ -3511,7 +3520,7 @@ function render(){
   const {series:DATA,payoff,proceeds,loss,carPayoff,carPayoffDate,
          sellerCost,reloOK,rentTotal,buyDate,
          recapDep,recapTax,cgTax,carNaturalDate,carOwedAtEnd,
-         rentIncTax,rentCostTotal,suspendedByYear}=buildSeries(sale,price,rent,home,RATES);
+         rentIncTax,rentCostTotal,suspendedByYear,rentLedger}=buildSeries(sale,price,rent,home,RATES);
   // the chart draws only the selected window; the tiles and the running balance stay whole-series
   const VD = VIEW==='span'? DATA : DATA.filter(d=>d.d.slice(0,4)===VIEW);
   // The last day in the window. Three tiles and netWorth all measure as of this date, so it is
@@ -3909,7 +3918,12 @@ function render(){
 
   /* ⚠️ From TODAY on, not from the start of the series. Measured over the whole series these
      two were pinned to the September 2026 closing-wire dip — history, not a warning. */
-  const AHEAD = DATA.filter(d=>!lt(d.d,TODAY_ISO)); const FWD = AHEAD.length? AHEAD : DATA;
+  /* From today to the END OF THE WINDOW on screen: on "2026" that is the rest of 2026, on the
+     whole span it is the horizon; a future year is that year alone. A past year (nothing ahead
+     in it) shows the whole year. */
+  const aFrom = VD.length && lt(TODAY_ISO, VD[0].d)? VD[0].d : TODAY_ISO;   // a future year starts on Jan 1
+  const AHEAD = DATA.filter(d=>!lt(d.d,aFrom) && !lt(endDay.d,d.d));
+  const FWD = AHEAD.length? AHEAD : (VD.length? VD : DATA);
   const mnD=FWD.reduce((a,d)=>d.b<a.b?d:a,FWD[0]);
   const set=(id,txt,cls)=>{const el=document.getElementById(id);el.textContent=txt;el.className='val'+(cls?' '+cls:'');
     delete el.dataset.full; el.removeAttribute('title');};   // a fresh figure; fitTiles re-fits it
@@ -3945,11 +3959,13 @@ function render(){
     dd(tdD.d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
   // Three outcomes: settled early by a sale, settled inside the window but too late to show,
   // or never settled here — in which case say what is still owed at the end of the horizon.
-  const carSettled = carPayoffDate && carPayoffDate<=T1 && carPayoff>0;
-  set('t_car', carSettled? fmt(carPayoff) : fmt(carOwedAtEnd), 'neg');
+  // As of the end of the window on screen, like Ending balance.
+  const carSettled = carPayoffDate && carPayoffDate<=endDay.d && carPayoff>0;
+  const carOwed = carPayoffOn(endDay.d, true);
+  set('t_car', carSettled? fmt(carPayoff) : fmt(carOwed), carOwed>0||carSettled?'neg':'');
   document.getElementById('t_card').textContent = carSettled
     ? `paid off ${nice(carPayoffDate)}`
-    : `owed ${nice(T1)} · clears ${nice(carNaturalDate)}`;
+    : carOwed>0? `owed ${nice(endDay.d)} · clears ${nice(carNaturalDate)}` : `cleared ${nice(carNaturalDate)}`;
   // Ending balance follows the WINDOW, not the whole series — on "2027" this is Dec 31 2027.
   set('t_end', fmt(endDay.b), endDay.b<0?'neg':'posv');
   document.getElementById('t_endd').textContent =
@@ -3971,12 +3987,18 @@ function render(){
       ? `selling wins by ${fmt0(-OPPBE.gap)}`
       : `to beat keeping it · you assume ${(OPP_ROI*100).toFixed(1)}%`;
   document.getElementById('oppsm').textContent = oppSmText(OPP_ROI, keepEnd, oppEnd);
-  const rentNetCash = rent? +(rentTotal - rentCostTotal - rentIncTax).toFixed(2) : 0;
-  set('t_rent', rent? fmt(rentNetCash):'—', rent?'posv':'');
-  document.getElementById('t_rentd').textContent = rent
-    ? `${fmt0(rentTotal)} gross − ${fmt0(rentCostTotal)} costs`
-      + (rentIncTax? ` − ${fmt0(rentIncTax)} tax` : '')
-    : 'not renting';
+  // The window on screen only: on "2026" the 2026 rent, on the whole span all of it.
+  const wFrom = VIEW==='span'? '0000' : VIEW+'-01-01';
+  const inW = (rentLedger||[]).filter(x=>!lt(x.d,wFrom) && !lt(endDay.d,x.d));
+  const wSum = k => +inW.reduce((a,x)=>a+x[k],0).toFixed(2);
+  const rG=wSum('gross'), rC=wSum('cost'), rT=wSum('tax');
+  const rentNetCash = +(rG-rC-rT).toFixed(2);
+  const rentAny = rent && inW.length;
+  set('t_rent', rentAny? fmt(rentNetCash):'—', rentAny?'posv':'');
+  document.getElementById('t_rentd').textContent = rentAny
+    ? `${VIEW==='span'?'':VIEW+': '}${fmt0(rG)} gross − ${fmt0(rC)} manager`
+      + (rT? ` − ${fmt0(rT)} tax` : '') + ' · before the mortgage'
+    : rent? `no rent in ${VIEW}` : 'not renting';
   set('t_recap', recapTax? fmt(-recapTax) : (rent?'$0.00':'—'), recapTax?'neg':'');
   // Zero recapture has two very different causes: no sale yet, or a sale whose gain is too
   // small to recapture against. Saying "no sale" when a sale is set was simply wrong.
