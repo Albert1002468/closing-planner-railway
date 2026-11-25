@@ -2955,18 +2955,22 @@ function netWorth(res, sale, rent, home, asOf){
 
   // 1. the OKC house, only once it is actually owned
   const buyDate = CLOSING_DATE;
-  let okc=0;
+  let okc=0, okcPre=0;
   if(buyDate && buyDate<=asOf){
     const first = buyDate===CLOSING_DATE? '2026-11-01' : addM(buyDate.slice(0,8)+'01',2);
     const bal = loanBalAfter(nhLoan(), NH_RATE, nhPI(), paymentsThrough(first, asOf));
-    okc = NH_PRICE*Math.pow(1+OKC_APPREC, yrsBetween(buyDate,asOf))*(1-OKC_SELL_COST) - bal;
+    const v = NH_PRICE*Math.pow(1+OKC_APPREC, yrsBetween(buyDate,asOf));
+    okc = v*(1-OKC_SELL_COST) - bal;
+    okcPre = v - bal;            // equity before selling costs, for the tile's brackets
   }
 
   // 2. the Midland house, while it is still yours
-  let mid=0, midTaxOwed=0, deferred=0;
+  let mid=0, midPre=0, midTaxOwed=0, deferred=0;
   if(!soldByNow){
     const val = priceOn(asOf);
-    mid = val*(1-SELLER_COST_PCT) - payoffOn(asOf, true);
+    const owed = payoffOn(asOf, true);
+    mid = val*(1-SELLER_COST_PCT) - owed;
+    midPre = val - owed;
     // The escrow has been saving toward the bill that is due next January, so only the gap is
     // a liability. Balance as of this date, not at the end of the model.
     const seen=midEscrowSeen(asOf);
@@ -3012,6 +3016,7 @@ function netWorth(res, sale, rent, home, asOf){
   const deposit = depositHeld(sale, rent, asOf);      // the tenants' money, sitting in cash
   return {nw:+(cash + okc + mid - car - midTaxOwed - deferred - deposit).toFixed(2),
           cash, okc:+okc.toFixed(2), mid:+mid.toFixed(2), car:+car.toFixed(2), deposit,
+          okcPre:+okcPre.toFixed(2), midPre:+midPre.toFixed(2),
           midTaxOwed:+midTaxOwed.toFixed(2), deferred:+deferred.toFixed(2)};
 }
 
@@ -3947,9 +3952,10 @@ function render(){
                       sale, rent, home, endDay.d);
   set('t_nw', fmt(NW.nw), NW.nw<0?'neg':'posv');
   document.getElementById('t_nwd').textContent =
-    `cash ${fmt0(NW.cash)}${NW.okc?' · OKC '+fmt0(NW.okc):''}`
-    +`${NW.mid?' · Midland '+fmt0(NW.mid):''}${NW.car?' − car '+fmt0(NW.car):''}`
-    +`${NW.deferred?' − tax '+fmt0(NW.deferred):''}`;
+    // Homes after selling costs (what a sale would leave), equity before them in brackets.
+    `cash ${fmt0(NW.cash)}${NW.okc?` · OKC ${fmt0(NW.okc)} (${fmt0(NW.okcPre)} before selling)`:''}`
+    +`${NW.mid?` · Midland ${fmt0(NW.mid)} (${fmt0(NW.midPre)} before selling)`:''}${NW.car?' − car '+fmt0(NW.car):''}`
+    +`${NW.deferred>0?' − tax '+fmt0(NW.deferred) : NW.deferred<0?' + tax credit '+fmt0(-NW.deferred):''}`;
   document.getElementById('t_lowd').textContent = nice(mnD.d);
   // today's balance — the series starts 8/14, so clamp to the ends when today falls outside it
   const tdi = DATA.findIndex(d=>d.d===TODAY_ISO);
@@ -3992,12 +3998,18 @@ function render(){
   const inW = (rentLedger||[]).filter(x=>!lt(x.d,wFrom) && !lt(endDay.d,x.d));
   const wSum = k => +inW.reduce((a,x)=>a+x[k],0).toFixed(2);
   const rG=wSum('gross'), rC=wSum('cost'), rT=wSum('tax');
-  const rentNetCash = +(rG-rC-rT).toFixed(2);
+  /* Less the WHOLE PennyMac draft (P&I, the $200 extra, escrow) for every month the house is let
+     in the window — owner: "rent after the entire PennyMac payment". */
+  const mEsc=midEscrowPlan().plan;
+  const rM=+(rent? mortgageSchedule().filter(r=>!lt(r.draft,rent.start) && !lt(r.draft,wFrom)
+        && !lt(endDay.d,r.draft) && (!sale || lt(r.draft,sale)))
+      .reduce((a,r)=>a+(mEsc[r.draft]||0),0) : 0).toFixed(2);
+  const rentNetCash = +(rG-rC-rT-rM).toFixed(2);
   const rentAny = rent && inW.length;
-  set('t_rent', rentAny? fmt(rentNetCash):'—', rentAny?'posv':'');
+  set('t_rent', rentAny? fmt(rentNetCash):'—', !rentAny?'' : rentNetCash<0?'neg':'posv');
   document.getElementById('t_rentd').textContent = rentAny
     ? `${VIEW==='span'?'':VIEW+': '}${fmt0(rG)} gross − ${fmt0(rC)} manager`
-      + (rT? ` − ${fmt0(rT)} tax` : '') + ' · before the mortgage'
+      + ` − ${fmt0(rM)} PennyMac` + (rT? ` − ${fmt0(rT)} tax` : '')
     : rent? `no rent in ${VIEW}` : 'not renting';
   set('t_recap', recapTax? fmt(-recapTax) : (rent?'$0.00':'—'), recapTax?'neg':'');
   // Zero recapture has two very different causes: no sale yet, or a sale whose gain is too
