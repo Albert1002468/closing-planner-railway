@@ -1282,6 +1282,14 @@
     overscroll-behavior-y:contain;box-sizing:border-box;padding-top:calc(50px + env(safe-area-inset-top,0px))}
   html.notop #scroller{padding-top:0}
   html.onescreen #scroller{overflow:hidden}
+  /* The tile bubble (full text of a tile's small line). */
+  #tilebub{position:fixed;z-index:60;max-width:min(300px,calc(100vw - 16px));box-sizing:border-box;
+    padding:9px 12px;border-radius:10px;background:var(--surface-1);border:1px solid var(--ring);
+    box-shadow:var(--shadow),0 4px 14px rgba(0,0,0,.12);font-size:13px;line-height:1.35;color:var(--ink)}
+  #tilebub[hidden]{display:none}
+  #tilebub b{display:block;font-size:10.5px;font-weight:600;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.05em;margin-bottom:2px}
+  .tile{-webkit-touch-callout:none}
 </style>
 </head>
 <body>
@@ -4189,16 +4197,58 @@ function jumpToDay(day){
   let holdT=null, held=false;
   const clear=()=>{ clearTimeout(holdT); holdT=null; };
   document.addEventListener('pointerdown',e=>{
-    const t=e.target.closest('.trunc'); if(!t) return;
+    const t=e.target.closest('.trunc'); if(!t || t.closest('.tile')) return;
     held=false; clear();
     holdT=setTimeout(()=>{ t.classList.add('open'); held=true; },420);
   },{passive:true});
   ['pointerup','pointercancel','scroll'].forEach(ev=>document.addEventListener(ev,clear,{passive:true,capture:true}));
   document.addEventListener('click',e=>{
-    const t=e.target.closest('.trunc'); if(!t || t.closest('[data-pick]')) return;
+    const t=e.target.closest('.trunc'); if(!t || t.closest('[data-pick]') || t.closest('.tile')) return;
     if(held){ held=false; return; }          // the hold already opened it
     t.classList.toggle('open');
   });
+}
+
+/* A tile's cut-off small line opens in a bubble under the tile, not by wrapping (that would grow
+   the strip and re-fit the chart). Tap the small line, or press and hold anywhere on a tile; tap
+   anywhere else to close. On the Today/Next tiles the rest of the tile still jumps to the day. */
+{
+  const $tiles=document.getElementById('tiles');
+  const bub=document.createElement('div'); bub.id='tilebub'; bub.hidden=true; document.body.appendChild(bub);
+  let holdT=null, held=false, at=null;
+  const cut=sm=> sm && sm.scrollWidth>sm.clientWidth+1;
+  const hide=()=>{ bub.hidden=true; at=null; };
+  function show(tile){
+    const sm=tile.querySelector('.sm'); if(!sm || !sm.textContent.trim()) return;
+    if(at===tile){ hide(); return; }
+    bub.innerHTML=`<b></b><span></span>`;
+    bub.firstChild.textContent=tile.querySelector('.lab').textContent;
+    bub.lastChild.textContent=sm.textContent.replace(/^\s*·\s*/,'').trim();
+    bub.hidden=false; at=tile;
+    const r=tile.getBoundingClientRect(), w=bub.offsetWidth, h=bub.offsetHeight;
+    const x=Math.min(Math.max(8,r.left), innerWidth-w-8);
+    const y=r.bottom+6+h>innerHeight-8 ? r.top-6-h : r.bottom+6;
+    bub.style.left=x+'px'; bub.style.top=y+'px';
+  }
+  $tiles.addEventListener('pointerdown',e=>{
+    const t=e.target.closest('.tile'); if(!t) return;
+    held=false; clearTimeout(holdT);
+    holdT=setTimeout(()=>{ held=true; show(t); },420);
+  },{passive:true});
+  ['pointerup','pointercancel'].forEach(ev=>$tiles.addEventListener(ev,()=>clearTimeout(holdT),{passive:true}));
+  $tiles.addEventListener('scroll',()=>{ clearTimeout(holdT); hide(); },{passive:true});
+  // Capture, so it runs before the Today/Next jump.
+  $tiles.addEventListener('click',e=>{
+    const t=e.target.closest('.tile'); if(!t) return;
+    if(held){ held=false; e.stopPropagation(); return; }
+    const sm=e.target.closest('.sm');
+    if(sm && cut(sm)){ e.stopPropagation(); show(t); }
+  },true);
+  document.addEventListener('pointerdown',e=>{
+    if(!bub.hidden && !e.target.closest('#tilebub') && e.target.closest('.tile')!==at) hide();
+  },{passive:true,capture:true});
+  addEventListener('resize',hide);
+  document.getElementById('scroller').addEventListener('scroll',hide,{passive:true});
 }
 
 /* The app bar follows the scroll. Progress comes from window.scrollY alone, measured against
