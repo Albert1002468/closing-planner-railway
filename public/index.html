@@ -1891,8 +1891,12 @@ const DEPREC_YEARS=27.5;
    are statutory (25% federal §1250 + 4.75% OK, and the combined marginal rate on rental
    income). ⚠️ BREAK_MONTHS is the one ASSUMPTION in here: the lease names no landlord-side
    termination figure, so two months is a placeholder pending the manager. */
-const DEPREC_BASIS=373210, RECAP_RATE=29.75, RENT_TAX_RATE=28.75;
-const MGMT_PCT=10, LEASE_FEE_PCT=50, BREAK_MONTHS=2, VACANCY_MONTHS=0;
+const DEPREC_BASIS=373210, RECAP_RATE=29.75, RENT_TAX_RATE=26.75;   // married filing jointly: 22% federal + 4.75% OK
+const MGMT_PCT=10, LEASE_FEE_PCT=50, BREAK_MONTHS=2, VACANCY_MONTHS=1;
+/* Turnover (owner, Nov 2026: "a 1 month vacancy after the first 12 month lease is up"): the
+   month after the signed lease ends sits empty, then a new tenant is placed (another leasing
+   fee) and stays TENANT_STAY_MO before the next turnover — ~2 years is typical. */
+const TENANT_STAY_MO=24;
 const MAINT_DEFAULT=0;
 // Rental profit is ordinary income. 24% federal + 4.75% Oklahoma for a single filer at this
 // income; drop to 26.75% if you file jointly and land in the 22% bracket.
@@ -2556,11 +2560,17 @@ function buildEvents(sale, price, rent, home){
      $3,025 over a 12-month lease that cannot have a vacant day. Vacancy happens at TURNOVER, so
      it is emitted as a lump at each renewal boundary instead (see `turnovers` below). Rows keep
      a `vac` field, now always 0, so every downstream consumer is unchanged. */
+  /* Vacant months: the month after the signed lease ends, then one every TENANT_STAY_MO + 1
+     months (a stay, then the gap). The rent is never collected, so no management fee on it. */
+  const vacantYM=new Set();
+  if(rent && rent.vacancyMo>0) for(let m=addM(LEASE.end.slice(0,8)+'01',1); !lt(rent.end,m); m=addM(m,TENANT_STAY_MO+1))
+    vacantYM.add(m.slice(0,7));
   const mkRow = (d,i,amt) => {
-    const coll = amt;
+    const vac = vacantYM.has(d.slice(0,7)) ? amt : 0;
+    const coll = +(amt-vac).toFixed(2);
     const mgmt = +(coll*rent.mgmtPct/100).toFixed(2);
     const maint= +(maintPerYear(rent,d)/12*(amt/rent.amt)).toFixed(2);
-    return {d, i, amt, vac:0, coll, mgmt, maint, cost:+(mgmt+maint).toFixed(2)};
+    return {d, i, amt, vac, coll, mgmt, maint, cost:+(mgmt+maint+vac).toFixed(2)};
   };
   const rentRows = rentDates.map((d,i)=>{
     return mkRow(d, i, +(rent.amt*Math.pow(1+rent.escal/100, Math.floor(i/12))).toFixed(2));
@@ -2617,16 +2627,17 @@ function buildEvents(sale, price, rent, home){
       +(rent.months===0? '(cancelled before move-in)'
                        : `(out ${nice(rentEnd)}, contract ran to ${nice(LEASE.end)})`));
   }
+  /* A new tenant after each vacant month: the manager's leasing fee again, half of that
+     month's rent, with the first rent from them. (The vacancy itself is in the rent rows.) */
   const turnovers=[];
-  if(rent) for(let k=1; k*12 < rent.months; k++){
-    const d=addM(rent.start, k*12);
-    const amt=+(rent.amt*Math.pow(1+rent.escal/100,k)).toFixed(2);
-    const lost=+(amt*rent.vacancyMo).toFixed(2);
-    if(lost>0) turnovers.push({d, lost, amt});
-  }
-  turnovers.forEach(t=>{ if(rentOK(t.d)) E(bumpWk(t.d), -t.lost,
-    `Turnover vacancy — ${rent.vacancyMo} mo empty at ${fmt(t.amt)}`); });
-  const turnoverTotal = +turnovers.reduce((a,t)=>a+t.lost,0).toFixed(2);
+  if(rent) rentRows.forEach((r,k)=>{
+    const prev=rentRows[k-1];
+    if(prev && prev.vac>0 && !r.vac && rentOK(r.d)){
+      const fee=+(r.amt*(rent.leasePct||0)/100).toFixed(2);
+      if(fee>0){ turnovers.push({d:r.d, fee}); E(bumpWk(r.d), -fee, `Leasing fee — new tenant, ${rent.leasePct}% of one month's rent`); }
+    }
+  });
+  const turnoverTotal = +turnovers.reduce((a,t)=>a+t.fee,0).toFixed(2);
   const rentGross = +rentRows.reduce((a,r)=>a+r.amt,0).toFixed(2);
   const rentCostTotal = +(rentRows.reduce((a,r)=>a+r.cost,0) + leaseFee + turnoverTotal + breakFee).toFixed(2);
   /* ⚠️ The manager pays the rent out, less its 10% fee, 3 BUSINESS days after the 1st (Nov 2026
@@ -2645,6 +2656,11 @@ function buildEvents(sale, price, rent, home){
     /* From November's rent the manager pays out ONE deposit: the rent less its 10% and whatever
        expenses it paid, so it is one line here too and matches the bank in one go. Schedule E
        still sees the gross rent and the costs separately (from rentRows). */
+    if(r.vac>0 && r.d>=RENT_NET_FROM){
+      E(rentPaid(r), -(+(r.cost-r.vac).toFixed(2)), `Midland home vacant — between tenants (no rent: ${fmt(r.vac)} missed`
+        +(r.maint>0? `; maintenance ${fmt(r.maint)}` : '')+')');
+      return;
+    }
     if(r.d>=RENT_NET_FROM){
       const n = r.pro? 'move-in' : `${r.i+1} of ${rentDates.length}`;
       E(rentPaid(r), +(r.amt-r.cost).toFixed(2), `Rent from the manager — Midland home (${n}: ${fmt(r.amt)}`
@@ -2667,9 +2683,9 @@ function buildEvents(sale, price, rent, home){
      showing me until 2030 when my screen is 2026"). Gross on the day it is due, each cost on
      its own day; vacancy is rent never collected, so it counts as a cost here as in the total. */
   const rentLedger=[];
-  rentRows.forEach(r=>{ if(rentOK(r.d)) rentLedger.push({d:r.d, gross:r.amt, cost:r.cost, tax:0}); });
+  rentRows.forEach(r=>{ if(rentOK(r.d)) rentLedger.push({d:r.d, gross:r.amt, cost:+(r.cost-r.vac).toFixed(2), vac:r.vac, tax:0}); });
   if(leaseFee>0 && leaseFeeDate && rentOK(leaseFeeDate)) rentLedger.push({d:leaseFeeDate, gross:0, cost:leaseFee, tax:0});
-  turnovers.forEach(t=>{ if(rentOK(t.d)) rentLedger.push({d:t.d, gross:0, cost:t.lost, tax:0}); });
+  turnovers.forEach(t=>rentLedger.push({d:t.d, gross:0, cost:t.fee, tax:0}));
   if(breakFee>0) rentLedger.push({d:breakDate, gross:0, cost:breakFee, tax:0});
   const suspendedByYear={};   // netWorth releases only the losses suspended by its as-of date
   if(rent && rentDates.length){
@@ -2681,7 +2697,7 @@ function buildEvents(sale, price, rent, home){
     // HOA dues are deductible for the years the house is actually let.
     hoaDates.forEach(d=>{ if(rented(d)) add(YR(d),'maint',+(HOA_ANNUAL*inflAt(d)).toFixed(2)); });
     // Vacancy is uncollected rent, never a deduction — it reduces the income of its own year.
-    turnovers.forEach(t=>add(YR(t.d),'rent',-t.lost));
+    turnovers.forEach(t=>add(YR(t.d),'mgmt',t.fee));   // the re-let leasing fee is deductible
     rentRows.forEach(r=>{
       if(sale && !lt(r.d,sale)) return;          // sold: no rent, no Schedule E line
       const y=YR(r.d);
@@ -4035,17 +4051,17 @@ function render(){
   const wFrom = VIEW==='span'? '0000' : VIEW+'-01-01';
   const inW = (rentLedger||[]).filter(x=>!lt(x.d,wFrom) && !lt(endDay.d,x.d));
   const wSum = k => +inW.reduce((a,x)=>a+x[k],0).toFixed(2);
-  const rG=wSum('gross'), rC=wSum('cost'), rT=wSum('tax');
+  const rG=wSum('gross'), rC=wSum('cost'), rT=wSum('tax'), rV=+inW.reduce((a,x)=>a+(x.vac||0),0).toFixed(2);
   /* Less the WHOLE PennyMac draft (P&I, the $200 extra, escrow) for every month the house is let
      in the window — owner: "rent after the entire PennyMac payment". */
   const rM=+(rent? mortgageSchedule().filter(r=>!lt(r.draft,rent.start) && !lt(r.draft,wFrom)
         && !lt(endDay.d,r.draft) && (!sale || lt(r.draft,sale)))
       .reduce((a,r)=>a+midDraft(r),0) : 0).toFixed(2);
-  const rentNetCash = +(rG-rC-rT-rM).toFixed(2);
+  const rentNetCash = +(rG-rV-rC-rT-rM).toFixed(2);
   const rentAny = rent && inW.length;
   set('t_rent', rentAny? fmt(rentNetCash):'—', !rentAny?'' : rentNetCash<0?'neg':'posv');
   document.getElementById('t_rentd').textContent = rentAny
-    ? `${VIEW==='span'?'':VIEW+': '}${fmt0(rG)} gross − ${fmt0(rC)} manager`
+    ? `${VIEW==='span'?'':VIEW+': '}${fmt0(rG)} gross` + (rV? ` − ${fmt0(rV)} vacancy` : '') + ` − ${fmt0(rC)} manager`
       + ` − ${fmt0(rM)} PennyMac` + (rT? ` − ${fmt0(rT)} tax` : '')
     : rent? `no rent in ${VIEW}` : 'not renting';
   set('t_recap', recapTax? fmt(-recapTax) : (rent?'$0.00':'—'), recapTax?'neg':'');
