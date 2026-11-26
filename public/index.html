@@ -2340,8 +2340,17 @@ function buildEvents(sale, price, rent, home){
   E('2026-09-19',750.00,'Airbnb refund — pet deposit');
   {
     const NHE=nhEscrowPlan();
-    nhDates().forEach(d=>{
+    /* The 360th payment (Oct 2056) is only what is left: 359 rounded-up payments leave a little
+       less than a full one, so it is $2,472.92 of P&I, not $2,475.42. */
+    const nd=nhDates();
+    nd.forEach((d,k)=>{
       const pl=NHE.notes[d];
+      if(k===NH_TERM_PMTS-1){
+        const left=+(loanBalAfter(nhLoan(), NH_RATE, nhPI(), k)*(1+NH_RATE/12)).toFixed(2);
+        E(d,-(+(left+pl.esc).toFixed(2)), `NEW home mortgage — FINAL payment, loan paid off (P&I ${fmt(left)} + escrow ${fmt(pl.esc)}`
+          +`${pl.short? ', incl. shortage '+fmt(pl.short):''})`);
+        return;
+      }
       E(d,-NHE.plan[d], `NEW home mortgage (P&I ${fmt(nhPI())} + escrow ${fmt(pl.esc)}`
         +`${pl.short? ', incl. shortage '+fmt(pl.short):''})`);
     });
