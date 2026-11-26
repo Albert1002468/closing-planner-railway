@@ -1853,8 +1853,13 @@ const NH_LOT_TAX = 135.00;            // the unimproved-lot assessment actually 
 const NH_TAX_ESC_MO = 50.00;          // the lender's minimum monthly tax collection
 const NH_TAX_FULL = 6000.00;          // assumed reassessed annual tax
 const NH_ESC_START = 625.49;          // 425.49 insurance + 200.00 tax escrowed at closing
+/* ⚠️ Property tax follows the assessed value, and both states cap how fast that can rise:
+   Oklahoma limits a homestead's taxable value to +3% a year (Okla. Const. art. X §8B). So the
+   OKC bill grows with the home's value, never faster than 3% — it used to ride INFLATION, which
+   at 4%+ ran the 2054 bill to ~$17k. */
+const OK_HS_TAX_CAP = 0.03;
 const nhTaxForYear = y => y<=2026 ? NH_LOT_TAX
-  : +(NH_TAX_FULL*Math.pow(1+INFL_PCT, Math.max(0,y-2027))).toFixed(2);
+  : +(NH_TAX_FULL*Math.pow(1+Math.min(OKC_APPREC, OK_HS_TAX_CAP), Math.max(0,y-2027))).toFixed(2);
 
 /* --- car loan: simple interest, actual/365. Anchored on the 8/27/26 statement, which
        splits the payment 587.47 principal / 237.29 interest. Working back:
@@ -2080,8 +2085,14 @@ function seasonal(days, amts, fromY, toY){
   return out;
 }
 
+/* ⚠️ Capped, like OKC's. Texas lets each taxing unit raise its levy on existing property only
+   ~3.5% a year without an election (schools 2.5%), so when values jump the RATE falls; a rented
+   house (no homestead) also has the 20% appraisal cap. The bill therefore tracks the house's
+   appreciation but not past MID_TAX_CAP — a high appreciation setting used to grow the tax at
+   that rate, ballooning the escrow (owner saw $4,207/mo by 2049). */
+const MID_TAX_CAP = 0.035;
 const midTaxForYear = y => +((y<=HOMESTEAD_LAST_YEAR? MID_TAX_HS : MID_TAX_NONHS)
-                             *Math.pow(1+MID_APPREC, y-2026)).toFixed(2);
+                             *Math.pow(1+Math.min(MID_APPREC, MID_TAX_CAP), y-2026)).toFixed(2);
 
 /* ONE escrow engine, used by both homes. Walk the account month by month: deposits in,
    insurance and tax out. At each annual analysis, project the next twelve months at the new
@@ -2174,6 +2185,13 @@ const midEscrowPlan = memoOn(()=>T1+'|'+MID_APPREC+'|'+INFL_PCT, () => escrowPla
   taxForYear:midTaxForYear, taxMonth:1, taxYearOffset:-1,  // Texas bills Jan 31 for the PRIOR year
   analysisMonth:ESC_ANALYSIS_M, firstAnalysis:'2027-01-01',
   cushion:ESC_CUSHION_MO, spread:12 }));
+
+/* What a PennyMac draft actually takes: the plan's figure, except the final one, which is only the
+   principal and interest still owed plus that month's escrow. */
+const midDraft = r => {
+  const E=midEscrowPlan(), pl=E.notes[r.draft], left=+(r.prin+r.int).toFixed(2);
+  return r.balAfter<=0 && left < MTG_PI-0.005 ? +(left+pl.pmi+pl.esc).toFixed(2) : E.plan[r.draft];
+};
 
 /* Rent runs on the 1st of the month: the first 1st on or after the start date, then one a
    month for the term. `end` is the day the tenancy is up — the earliest a sale can close. */
@@ -2424,9 +2442,15 @@ function buildEvents(sale, price, rent, home){
     const active = !sale || lt(r.draft, sale);
     if(active){
       const pl=ESC.notes[r.draft];
-      E(r.draft,-ESC.plan[r.draft],
-        `PennyMac mortgage (P&I ${fmt(MTG_PI-MTG_EXTRA)} + extra principal ${fmt(MTG_EXTRA)} + escrow ${fmt(pl.esc)}`
-        +`${pl.pmi? ' + PMI '+fmt(pl.pmi):''}${pl.short? ', incl. shortage '+fmt(pl.short):''})`);
+      /* The LAST payment is only what is left: $181.55 of principal and interest in July 2049,
+         not a full $2,131.90 (the escrow still collects that month and comes back as the refund). */
+      const left = +(r.prin + r.int).toFixed(2), final = r.balAfter<=0 && left < MTG_PI-0.005;
+      const amt = midDraft(r);
+      E(r.draft,-amt, final
+        ? `PennyMac mortgage — FINAL payment, loan paid off (P&I ${fmt(left)} + escrow ${fmt(pl.esc)}`
+          +`${pl.short? ', incl. shortage '+fmt(pl.short):''})`
+        : `PennyMac mortgage (P&I ${fmt(MTG_PI-MTG_EXTRA)} + extra principal ${fmt(MTG_EXTRA)} + escrow ${fmt(pl.esc)}`
+          +`${pl.pmi? ' + PMI '+fmt(pl.pmi):''}${pl.short? ', incl. shortage '+fmt(pl.short):''})`);
       /* Reimbursement needs ALL of: TWO ACTUAL PAYMENTS IN THE SAME CALENDAR MONTH, the
          Midland house genuinely vacant and on the market (a tenant disqualifies it), one of
          the first two such months, and inside the relo window. Months already reimbursed
@@ -4005,10 +4029,9 @@ function render(){
   const rG=wSum('gross'), rC=wSum('cost'), rT=wSum('tax');
   /* Less the WHOLE PennyMac draft (P&I, the $200 extra, escrow) for every month the house is let
      in the window — owner: "rent after the entire PennyMac payment". */
-  const mEsc=midEscrowPlan().plan;
   const rM=+(rent? mortgageSchedule().filter(r=>!lt(r.draft,rent.start) && !lt(r.draft,wFrom)
         && !lt(endDay.d,r.draft) && (!sale || lt(r.draft,sale)))
-      .reduce((a,r)=>a+(mEsc[r.draft]||0),0) : 0).toFixed(2);
+      .reduce((a,r)=>a+midDraft(r),0) : 0).toFixed(2);
   const rentNetCash = +(rG-rC-rT-rM).toFixed(2);
   const rentAny = rent && inW.length;
   set('t_rent', rentAny? fmt(rentNetCash):'—', !rentAny?'' : rentNetCash<0?'neg':'posv');
